@@ -10166,6 +10166,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "vautr-backup",
  "vautr-crypto",
  "webauthn-rs",
 ]
