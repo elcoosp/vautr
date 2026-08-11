@@ -12,6 +12,6 @@
 #   cd apps/desktop && cargo build
 #   cd apps/desktop && cargo test
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-08-10"
 components = ["rustfmt", "clippy"]
 profile = "default"

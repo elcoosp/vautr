@@ -7,7 +7,7 @@
 # stable-compatible and pass on this same nightly toolchain, so the workspace
 # stays coherent with a single toolchain.
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-08-10"
 components = ["rustfmt", "clippy"]
 targets = ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
 profile = "default"
