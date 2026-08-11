@@ -85,3 +85,19 @@ pub struct DomainModel {
 
 /// TOTP hash algorithm. (data.md §3.3)
 pub use TotpAlgorithm as TotpAlg;
+
+// --- Projects model (mlp-scope.md §2, Wave 0.1) -----------------------------
+// New, purely additive types. The pre-existing item types above are unchanged;
+// item → project is modelled by `ProjectItem` so existing constructors compile.
+
+pub mod project;
+pub mod roles;
+pub mod permissions;
+pub mod groups;
+pub mod offboarding;
+
+pub use project::{Project, ProjectItem, ProjectKind, ProjectScope};
+pub use roles::{OrgMembership, OrgRole, Organization};
+pub use permissions::{AccessGrantee, ProjectAccessGrant, ProjectPermission, ProjectPermissionSet};
+pub use groups::{GroupAccessGrant, GroupMemberRole, GroupMembership, UserGroup};
+pub use offboarding::{OffboardingRequest, OffboardingResult, OffboardingScope, OffboardingStatus};
