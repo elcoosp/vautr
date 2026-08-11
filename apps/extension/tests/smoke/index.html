@@ -6,9 +6,17 @@
   </head>
   <body>
     <h1>Login</h1>
-    <label for="username">Username</label>
-    <input id="username" name="username" autocomplete="off" />
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="off" />
+    <form id="login-form">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="off" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="off" />
+      <label for="pass-confirm">Confirm password</label>
+      <input id="pass-confirm" name="pass-confirm" type="password" autocomplete="off" />
+      <label for="search">Search (not a credential)</label>
+      <input id="search" name="search" type="search" autocomplete="off" />
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes"></textarea>
+    </form>
   </body>
 </html>

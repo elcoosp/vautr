@@ -1,17 +1,29 @@
-import { useEffect, useState } from 'react';
-import * as browser from 'webextension-polyfill';
-import type { DecryptedOverview } from '@vautr/ui-logic';
-import { useIsLocked, useOverviews, vaultEventBus } from '@vautr/ui-logic';
 import {
+  type AutofillResponse,
   createItemCiphertextStore,
   createSvkSessionStore,
-  type AutofillResponse,
 } from '@vautr/client-sdk/extension';
+import type { DecryptedOverview, VaultStoreState } from '@vautr/ui-logic';
+import { attachStoreToEventBus, useIsLocked, vaultEventBus, vaultStore } from '@vautr/ui-logic';
+import { useEffect, useState } from 'react';
+import * as browser from 'webextension-polyfill';
+import { useStore } from 'zustand/react';
 import { localArea, sessionArea } from '../lib/extensionStorage';
 import { DEMO_CIPHERTEXTS, DEMO_ITEMS, makeDemoKey } from './demo';
 import { disposePopupClient, getPopupClient } from './popupClient';
 
 const AUTOFILL_REQUEST = 'VAUTR_AUTOFILL';
+
+// Wire the shared `vaultEventBus` into the zustand store so `OverviewUpserted`
+// diffs emitted on unlock render into the popup list (ui-logic `attachStoreToEventBus`).
+attachStoreToEventBus(vaultEventBus);
+
+// Select the stable `items` map reference and derive the array in the render
+// body. `useSyncExternalStore` re-reads the snapshot on every render and
+// compares with `Object.is`, so a selector that materialises a fresh array
+// (`Object.values`) each render loops forever (React "Maximum update depth
+// exceeded"). Selecting the stable object keeps the snapshot reference-stable.
+const selectItems = (state: VaultStoreState): VaultStoreState['items'] => state.items;
 
 const styles = {
   shell: { padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 12 },
@@ -59,7 +71,7 @@ const styles = {
 
 export function App() {
   const isLocked = useIsLocked();
-  const overviews = useOverviews();
+  const overviews = Object.values(useStore(vaultStore, selectItems));
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -85,6 +97,10 @@ export function App() {
       // Cache the raw SVK in browser-encrypted session storage (build-env-deploy §3.3).
       const svkStore = createSvkSessionStore(sessionArea);
       await svkStore.cache(key);
+
+      // Mark the vault unlocked in the shared store (the popup drives the lock
+      // state itself; there is no `VaultUnlocked` core event in this milestone).
+      vaultStore.getState().unlock();
 
       for (const item of DEMO_ITEMS) {
         vaultEventBus.emit({ type: 'OverviewUpserted', overview: item });
@@ -155,7 +171,12 @@ export function App() {
               }
             }}
           />
-          <button style={{ ...styles.button, marginTop: 10 }} disabled={busy} onClick={() => void handleUnlock()}>
+          <button
+            type="button"
+            style={{ ...styles.button, marginTop: 10 }}
+            disabled={busy}
+            onClick={() => void handleUnlock()}
+          >
             Unlock
           </button>
         </div>
@@ -166,10 +187,14 @@ export function App() {
               <p style={styles.itemTitle}>{item.title}</p>
               <p style={styles.itemSubtitle}>{item.subtitle}</p>
               <div style={styles.row}>
-                <button style={styles.action} onClick={() => void handleAutofill(item)}>
+                <button
+                  type="button"
+                  style={styles.action}
+                  onClick={() => void handleAutofill(item)}
+                >
                   Autofill
                 </button>
-                <button style={styles.action} onClick={() => void handleCopy(item)}>
+                <button type="button" style={styles.action} onClick={() => void handleCopy(item)}>
                   Copy
                 </button>
               </div>
