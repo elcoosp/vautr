@@ -1,0 +1,115 @@
+name: verify-isolation
+
+# Phase 7 guardrails (docs/architecture/roadmap.md §9, build-env-deploy.md §6).
+#
+# 1. static-boundary-audit  — hard Zero-Knowledge boundary gate. Runs on every
+#    push / PR. The security logic below is authoritative and must NOT be
+#    weakened: `read_secret` is Desktop-(GPUI-)only and must never leak into a
+#    mobile / extension / shared SDK artifact, and the GPUI crate must never
+#    appear in the mobile or extension manifests.
+# 2. nightly-tests           — exhaustive nightly verification:
+#    `cargo test --workspace` + `pnpm typecheck` + `pnpm test`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Nightly build (build-env-deploy.md §6.2) against main, 02:17 UTC.
+    - cron: "17 2 * * *"
+
+concurrency:
+  group: verify-isolation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static boundary audit (fast, deterministic, no builds).
+  # ---------------------------------------------------------------------------
+  static-boundary-audit:
+    name: Static boundary audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: read_secret must be absent from mobile / extension / client-sdk
+        run: |
+          set -uo pipefail
+          # `read_secret` is compiled into the Desktop (GPUI) build ONLY via the
+          # `desktop-api` feature. Any occurrence in a JS/TS tree is a hard
+          # Zero-Knowledge breach. A match exits non-zero and fails the job.
+          if grep -rn "read_secret" \
+              apps/mobile \
+              apps/extension \
+              packages/vautr-client-sdk \
+              2>/dev/null; then
+            echo "::error::CRITICAL SECURITY BREACH: 'read_secret' found in a non-desktop artifact (apps/mobile, apps/extension, or packages/vautr-client-sdk). The Zero-Knowledge boundary is broken; remove it and re-run."
+            exit 1
+          fi
+          echo "::notice::read_secret absent from mobile/extension/client-sdk (Zero-Knowledge boundary intact)"
+
+      - name: GPUI crate markers must never appear in mobile / extension manifests
+        run: |
+          set -uo pipefail
+          # GPUI is the Desktop rendering crate. It must never be referenced by
+          # the React Native package.json or the Manifest V3 extension manifest.
+          if grep -q "gpui" \
+              apps/mobile/package.json \
+              apps/extension/manifest.json \
+              2>/dev/null; then
+            echo "::error::CRITICAL SECURITY BREACH: 'gpui' marker found in apps/mobile/package.json or apps/extension/manifest.json. Remove the Desktop dependency and re-run."
+            exit 1
+          fi
+          echo "::notice::No 'gpui' markers in mobile/extension manifests"
+
+      - name: Restricted API symbol check (scripts/check-restricted-api.sh)
+        run: |
+          set -uo pipefail
+          if [ -f scripts/check-restricted-api.sh ]; then
+            echo "::group::check-restricted-api.sh"
+            bash scripts/check-restricted-api.sh
+            echo "::endgroup::"
+          else
+            echo "::notice::scripts/check-restricted-api.sh not present; skipping FFI symbol check"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Nightly exhaustive verification (build-env-deploy.md §6.2 / roadmap §9).
+  # ---------------------------------------------------------------------------
+  nightly-tests:
+    name: Nightly tests (cargo + pnpm)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust workspace tests
+        run: cargo test --workspace
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (pnpm typecheck)
+        run: pnpm typecheck
+
+      - name: Test (pnpm test)
+        run: pnpm test

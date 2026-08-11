@@ -1,0 +1,54 @@
+# Vautr self-hosted stack: Postgres + Axum server (OCC blob store).
+# See docs/SELF-HOSTING.md for full instructions.
+#
+#   docker compose up -d --build
+#
+# The server binds :8080; the DB service is Postgres (build-env-deploy.md §4.2).
+#
+# NOTE ON THE DATABASE: the bundled vautr-server binary is SQLite-backed (sqlx
+# `sqlite` feature only; server-scaling.md §1/§4). So by default `server` runs
+# on a SQLite file mounted at /data, which works out of the box. The `postgres`
+# service is the production DB target — to use it, build a Postgres-enabled
+# server image and set VAUTR_DB_URL (see docs/SELF-HOSTING.md §"Database").
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vautr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vautr}
+      POSTGRES_DB: ${POSTGRES_DB:-vautr}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vautr} -d ${POSTGRES_DB:-vautr}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${VAUTR_PORT:-8080}:8080"
+    environment:
+      # Stock binary is SQLite-backed (see comment above + SELF-HOSTING.md).
+      # For a Postgres-enabled server build, use:
+      #   VAUTR_DB_URL: postgres://${POSTGRES_USER:-vautr}:${POSTGRES_PASSWORD:-vautr}@postgres:5432/${POSTGRES_DB:-vautr}
+      VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:/data/vautr.db}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - serverdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  serverdata:
