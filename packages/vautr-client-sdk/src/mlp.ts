@@ -193,3 +193,25 @@ export class VautrMlpClient {
     return this.api.request<StatusResponse>('POST', '/mfa/webauthn/enroll/finish', request);
   }
 }
+
+/**
+ * Open a **machine-account session** — a token-authenticated client for a
+ * non-human identity (Wave C seam).
+ *
+ * A machine account does not log in with OPAQUE; it authenticates with a
+ * long-lived access token issued under its granted scopes (Wave A2). This
+ * builds a token-authenticated [`VautrMlpClient`] directly from that token, so
+ * the caller can immediately `listSecrets` / `getSecretValue` (and any other
+ * operation the token's scopes permit) without any human handshake.
+ *
+ * Only operations within the token's granted scopes are permitted; the server
+ * rejects scope over-requests with `403 scope_not_allowed`.
+ */
+export function createMachineAccountSession(
+  token: string,
+  options: { baseUrl?: string } = {},
+): VautrMlpClient {
+  const api = new ApiClient({ baseUrl: options.baseUrl });
+  api.setToken(token);
+  return new VautrMlpClient(api);
+}
