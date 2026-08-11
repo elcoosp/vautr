@@ -46,6 +46,7 @@ fn json_request(method: &str, path: &str, body: serde_json::Value, token: Option
 }
 
 #[test]
+#[ignore = "requires a live Vautr server on http://localhost:8080 (gate 2); skipped by default"]
 fn live_register_login_sync_roundtrip() {
     // Unique account per run so re-runs don't collide.
     let username = format!("gate-{}-@example.com", now_ms());
