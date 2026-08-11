@@ -1,0 +1,17 @@
+# Desktop-only toolchain override.
+#
+# The desktop client builds against the git-master branches of `gpui`
+# (zed-industries/zed) and `gpui-component` (longbridge), per tech-stack.md §4.
+# Zed's master `gpui` requires nightly Rust (it uses unstable features such as
+# `std::hint::cold_path`, rust-lang/rust#136873). The rest of the monorepo is
+# pinned to a stable toolchain at the repo root, so this override applies ONLY
+# when cargo is run from within apps/desktop (Cargo selects the toolchain from
+# the nearest rust-toolchain.toml relative to the working directory).
+#
+# Build/test from this directory:
+#   cd apps/desktop && cargo build
+#   cd apps/desktop && cargo test
+[toolchain]
+channel = "nightly"
+components = ["rustfmt", "clippy"]
+profile = "default"

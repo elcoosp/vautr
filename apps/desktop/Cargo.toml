@@ -1,7 +1,9 @@
 [package]
 name = "vautr-desktop"
 version.workspace = true
-edition.workspace = true
+# CRITICAL: gpui + gpui-component master require edition 2024 (RAII drop order,
+# async closures, impl Trait capture rules, etc.). The workspace default is 2021.
+edition = "2024"
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -14,17 +16,12 @@ path = "src/main.rs"
 
 [dependencies]
 # ---------------------------------------------------------------------------
-# GPUI pinning (tech-stack.md §4).
-#
-# GPUI is an immutable, no-semver framework. gpui-component 0.5.1 (longbridge)
-# is compiled against the published `gpui` 0.2.2 artifact (Zed). Both are pinned
-# EXACTLY so there is no floating revision and no cross-commit type drift
-# (see longbridge/gpui-component#2532). This supersedes the historical git-hash
-# policy because Zed now publishes `gpui` to crates.io; the exact pins below are
-# the fixed, reproducible revision pair that tech-stack.md §4 mandates.
+# GPUI from zed-industries/zed master.  gpui-component from longbridge master.
+# Both use edition 2024 and share the same gpui crate, so NO [patch] needed.
 # ---------------------------------------------------------------------------
-gpui = "=0.2.2"
-gpui-component = "=0.5.1"
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
 
 # --- core (workspace-pinned) ---
 zeroize.workspace = true

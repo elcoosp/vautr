@@ -1,11 +1,12 @@
-//! Desktop application bootstrap. Starts a tokio runtime on a background
-//! thread, opens the GPUI window, and runs the `DesktopView` (which switches
-//! between login/register and the vault manager).
-
-use gpui::{AppContext, Application, WindowOptions};
-use tokio::runtime::Runtime;
+//! Desktop application bootstrap.
+//!
+//! Starts the GPUI event loop and opens the main window with `DesktopView`,
+//! wrapped in a gpui-component `Root`.
 
 use crate::desktop_view::DesktopView;
+use gpui::*;
+use gpui_component::Root;
+use gpui_platform::application;
 
 /// Server base URL. Read from `VAUTR_API_URL` env var, defaulting to localhost.
 pub fn base_url() -> String {
@@ -14,15 +15,17 @@ pub fn base_url() -> String {
 
 /// Entry point used by `cargo run --bin vautr-desktop`.
 pub fn run() {
-    // Start a multi-thread tokio runtime on the calling (main) thread.
-    // GPUI runs its event loop on the same thread inside `Application::run()`.
-    // Because `run()` is a blocking FnOnce, the runtime lives for the whole
-    // process lifetime.
-    let _rt = Runtime::new().expect("start tokio runtime");
+    application().run(move |cx: &mut App| {
+        // Must be called before any gpui-component widgets are used.
+        gpui_component::init(cx);
 
-    Application::new().run(move |cx| {
-        let _ = cx.open_window(WindowOptions::default(), |_window, cx| {
-            cx.new(|cx| DesktopView::new(cx))
-        });
+        cx.spawn(async move |cx| {
+            cx.open_window(WindowOptions::default(), |window, cx| {
+                let view = cx.new(|cx| DesktopView::new(window, cx));
+                cx.new(|cx| Root::new(view, window, cx))
+            })
+            .expect("Failed to open window");
+        })
+        .detach();
     });
 }
