@@ -89,3 +89,11 @@ wasm-bindgen = "0.2"
 
 # --- client HTTP transport (api.md §4 sync endpoints) ---
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# --- disk-space control ---
+# MLP parallel builds ballooned target/ to ~60GB (two toolchains + git-master
+# gpui for the desktop + incremental artifacts). Disable incremental so the
+# shared target dir stays small. Dev iteration on a single crate still rebuilds
+# only that crate; the full workspace is compiled at integration time.
+[profile.dev]
+incremental = false
