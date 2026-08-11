@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Vautr",
+    "slug": "vautr-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "vautr",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.vautr.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Vautr uses Face ID to unlock your vault securely.",
+        "NSBiometricsUsageDescription": "Vautr uses biometrics to unlock your vault."
+      }
+    },
+    "android": {
+      "package": "com.vautr.mobile",
+      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"]
+    },
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Vautr uses Face ID to unlock your vault securely."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

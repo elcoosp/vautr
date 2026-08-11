@@ -14,7 +14,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
-uniffi = { version = "0.28", features = ["tokio"] }
+uniffi = { version = "0.31", features = ["tokio"] }
 base64.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
@@ -25,6 +25,12 @@ tokio.workspace = true
 vautr-domain.workspace = true
 vautr-app-state.workspace = true
 vautr-crypto.workspace = true
+vautr-db.workspace = true
+
+[dev-dependencies]
+# In-crate integration tests exercise the full unlock->list->reveal->lock flow
+# against a real SQLite (temp-file) database, mirroring vautr-app-state/tests.
+tempfile = "3"
 
 [features]
 # `read_secret` is enabled ONLY for the desktop (GPUI) build — never mobile/web.

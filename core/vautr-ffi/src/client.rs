@@ -5,8 +5,18 @@
 //! by the Turbo Module) so the secret string never enters the JS/Kotlin heap.
 //! `read_secret` is desktop-gated (data.md §1 rule 4) and is compiled out of
 //! the mobile artifact — asserted by `scripts/check-restricted-api.sh`.
+//!
+//! ## Mobile boot surface (build-env-deploy.md §3.1)
+//! `initialize` links the core into the app (runs migrations on a fresh vault
+//! DB); `unlock` recovers the 32-byte SVK from the OS keystore (biometrics) or
+//! `unlock_with_password` re-derives it from the master password; `list_overviews`
+//! / `reveal_secret` / `lock` / `sync` drive the Lock/List/Detail screens.
+//! `SecureEnclaveBridge` is the native Keychain/Android-Keystore adapter that
+//! persists the SVK under biometric protection so unlock never re-prompts for a
+//! master password. `read_secret` remains desktop-only (build-env-deploy.md §2.5
+//! keeps `read_secret` out of mobile via the `desktop-api` gate).
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use base64::Engine;
 use uniffi::{Enum, Object};
@@ -79,6 +89,28 @@ impl PlatformAdapter for MobilePlatformAdapter {
     }
 }
 
+/// OS-keystore biometrics storage of the 32-byte SVK (build-env-deploy §2.5,
+/// crypto.md §6). Implemented natively (Keychain on iOS, Android Keystore via
+/// the Turbo Module) and registered with `MobileClient::set_secure_enclave_bridge`
+/// so a biometric unlock can recover the SVK without re-prompting for a master
+/// password. The SVK bytes are handed back as `Vec<u8>`; they are never logged
+/// and the implementer must zeroize any copy after unlock.
+#[uniffi::export(with_foreign)]
+pub trait SecureEnclaveBridge: Send + Sync {
+    /// Persist the 32-byte SVK under biometric (or device-passcode) protection.
+    fn save_svk(&self, svk: Vec<u8>) -> Result<(), FfiError>;
+
+    /// Load the stored SVK. Returns `None` if absent or if biometric auth was
+    /// cancelled/denied by the user.
+    fn load_svk(&self) -> Result<Option<Vec<u8>>, FfiError>;
+
+    /// Delete the stored SVK (e.g. on explicit lock or vault removal).
+    fn delete_svk(&self) -> Result<(), FfiError>;
+
+    /// Whether an SVK is currently stored and available for a biometric unlock.
+    fn has_svk(&self) -> Result<bool, FfiError>;
+}
+
 /// Map a core `TaskOutcome` to an FFI result.
 fn map_outcome(o: TaskOutcome) -> Result<(), FfiError> {
     match o {
@@ -91,6 +123,9 @@ fn map_outcome(o: TaskOutcome) -> Result<(), FfiError> {
 #[derive(Object)]
 pub struct MobileClient {
     inner: Arc<VautrClient>,
+    /// Native Keychain/Keystore SVK adapter (biometric unlock). Registered via
+    /// `set_secure_enclave_bridge`; read by the app to recover the SVK.
+    enclave: RwLock<Option<Arc<dyn SecureEnclaveBridge>>>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -108,13 +143,71 @@ impl MobileClient {
             .block_on(sea_orm::Database::connect(&url))
             .map_err(|e| FfiError::Core(format!("db connect: {e}")))?;
         let client = VautrClient::new(db);
-        Ok(Arc::new(Self { inner: Arc::new(client) }))
+        Ok(Arc::new(Self {
+            inner: Arc::new(client),
+            enclave: RwLock::new(None),
+        }))
+    }
+
+    /// Link the core into the app (build-env-deploy §3.1 / skill matrix boot
+    /// pattern). Opens the vault DB and runs schema migrations so a fresh vault
+    /// is usable on first launch. The vault starts locked; call `unlock` (or
+    /// `unlock_with_password`) before accessing secrets.
+    #[uniffi::constructor]
+    pub async fn initialize(db_path: String) -> Result<Arc<Self>, FfiError> {
+        let url = if db_path.starts_with("sqlite://") {
+            db_path
+        } else {
+            format!("sqlite://{db_path}?mode=rwc")
+        };
+        let db = sea_orm::Database::connect(&url)
+            .await
+            .map_err(|e| FfiError::Core(format!("db connect: {e}")))?;
+        vautr_db::migrate::init(&db)
+            .await
+            .map_err(|e| FfiError::Core(format!("migrate: {e}")))?;
+        let client = VautrClient::new(db);
+        Ok(Arc::new(Self {
+            inner: Arc::new(client),
+            enclave: RwLock::new(None),
+        }))
+    }
+
+    /// Register the native OS-keystore SVK bridge (biometric unlock).
+    pub fn set_secure_enclave_bridge(&self, bridge: Arc<dyn SecureEnclaveBridge>) {
+        *self.enclave.write().unwrap() = Some(bridge);
+    }
+
+    /// The currently-registered Secure Enclave bridge, if any.
+    pub fn secure_enclave_bridge(&self) -> Option<Arc<dyn SecureEnclaveBridge>> {
+        self.enclave.read().unwrap().clone()
     }
 
     /// Register the native platform handler (clipboard / autofill).
     pub async fn set_platform_handler(&self, handler: Arc<dyn PlatformActionHandler>) {
         let adapter: Arc<dyn PlatformAdapter> = Arc::new(MobilePlatformAdapter { handler });
         self.inner.set_platform_adapter(adapter).await;
+    }
+
+    /// Unlock with a raw 32-byte SVK recovered from the OS keystore (biometric
+    /// unlock, crypto.md §6). `local_gen` is the local vault key generation.
+    pub async fn unlock(&self, raw_key: Vec<u8>, local_gen: u64) -> Result<(), FfiError> {
+        if raw_key.len() != 32 {
+            return Err(FfiError::Core("raw key must be 32 bytes".into()));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&raw_key);
+        self.inner
+            .unlock_with_raw_key(Zeroizing::new(key), local_gen)
+            .await;
+        Ok(())
+    }
+
+    /// List all overviews (most-recently-used first) as a JSON array of
+    /// `DecryptedOverview`. Mirrors the web worker's empty-query search.
+    pub async fn list_overviews(&self) -> Result<String, FfiError> {
+        let items = self.inner.search("").await.map_err(FfiError::Core)?;
+        serde_json::to_string(&items).map_err(|e| FfiError::Core(format!("serialize: {e}")))
     }
 
     /// Unlock with the master password. `kdf_salt_b64` / `wrapped_svk_b64` come
@@ -166,6 +259,11 @@ impl MobileClient {
     /// Lock the vault (zeroizes keys + in-memory secrets).
     pub async fn lock(&self) {
         self.inner.lock().await;
+    }
+
+    /// Whether the vault is currently locked.
+    pub fn is_locked(&self) -> bool {
+        self.inner.is_locked()
     }
 
     /// FTS5 search. Returns JSON-encoded `Vec<DecryptedOverview>`.

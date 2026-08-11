@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
+      "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
+      "@vautr/client-sdk/mobile": ["../../packages/vautr-client-sdk/src/mobile.ts"]
+    }
+  },
+  "include": ["App.tsx", "index.ts", "src", "env.d.ts"]
+}
