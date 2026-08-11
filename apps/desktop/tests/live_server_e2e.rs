@@ -12,7 +12,9 @@
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use rand::RngCore;
 use vautr_crypto::{aead, kdf, key_tree};
+use vautr_desktop::api_client::{self, ApiClient};
 use vautr_desktop::auth_client::AuthClient;
 use vautr_desktop::state;
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
@@ -161,4 +163,109 @@ async fn full_auth_add_reveal_roundtrip() {
     // ── Cleanup ────────────────────────────────────────────────────────
     let _ = std::fs::remove_file(&db_path);
     eprintln!("✓ E2E round-trip passed for user '{user}'");
+}
+
+/// Derive the local DEK from the login material, matching the desktop unlock.
+fn derive_dek(
+    password: &str,
+    kdf_salt: &[u8; 32],
+    wrapped_svk: &[u8],
+) -> Zeroizing<[u8; 32]> {
+    let mp = Zeroizing::new(password.to_string());
+    let mk = kdf::derive_master_key(&mp, kdf_salt).expect("MK derive");
+    let kek = key_tree::derive_kek(&mk).expect("KEK derive");
+    let svk_bytes = aead::decrypt(&kek, &Uuid::nil(), 0, wrapped_svk).expect("SVK unwrap");
+    let mut svk = Zeroizing::new([0u8; 32]);
+    svk.copy_from_slice(&svk_bytes);
+    key_tree::derive_dek(&svk).expect("DEK derive")
+}
+
+/// Projects/Secrets E2E: register → login → create project → create secret →
+/// reveal secret (decrypt locally) → assert.
+#[tokio::test]
+#[ignore = "requires live Vautr server at VAUTR_API_URL or http://localhost:8080"]
+async fn projects_and_secrets_roundtrip() {
+    let base = base_url();
+    let auth = AuthClient::new(&base);
+
+    // ── Register a fresh user ─────────────────────────────────────────
+    let user = format!("e2e-proj-{}", Uuid::new_v4());
+    let pw = "correct horse battery staple";
+    let reg = auth
+        .register(&user, pw)
+        .await
+        .expect("registration should succeed");
+    let login = auth
+        .login(&user, pw, &reg.kdf_salt)
+        .await
+        .expect("login should succeed");
+    let token = login.session_token.clone();
+    let dek = derive_dek(pw, &reg.kdf_salt, &login.wrapped_svk);
+
+    let api = ApiClient::new(&base);
+
+    // ── Create a project ──────────────────────────────────────────────
+    let project = api
+        .create_project(&token, "E2E Project", "shared", Some("desktop e2e"))
+        .await
+        .expect("create project should succeed");
+    assert_eq!(project.name, "E2E Project");
+    assert_eq!(project.kind, "shared");
+
+    let projects = api
+        .list_projects(&token)
+        .await
+        .expect("list projects should succeed");
+    assert!(
+        projects.iter().any(|p| p.uuid == project.uuid),
+        "created project must appear in list"
+    );
+
+    // Members endpoint must respond (a fresh project lists no explicit grants).
+    let _members = api
+        .list_members(&token, &project.uuid)
+        .await
+        .expect("list members should succeed");
+
+    // ── Create a secret (value encrypted client-side, zero-knowledge) ─
+    let key = "DATABASE_URL";
+    let plaintext = "postgres://secret-db:5432/vault";
+    let ad = api_client::secret_ad(&project.uuid, key);
+    let mut nonce = [0u8; aead::NONCE_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let ct = aead::encrypt_with_nonce(&dek, &nonce, &ad, plaintext.as_bytes())
+        .expect("encrypt secret value");
+    let secret = api
+        .create_secret(
+            &token,
+            &project.uuid,
+            key,
+            &api_client::b64_encode(&ct),
+        )
+        .await
+        .expect("create secret should succeed");
+    assert_eq!(secret.key, key);
+
+    let secrets = api
+        .list_secrets(&token, &project.uuid)
+        .await
+        .expect("list secrets should succeed");
+    assert!(
+        secrets.iter().any(|s| s.uuid == secret.uuid),
+        "created secret must appear in project list"
+    );
+
+    // ── Reveal + decrypt locally, assert the plaintext round-trips ────
+    let value = api
+        .get_secret_value(&token, &secret.uuid)
+        .await
+        .expect("get secret value should succeed");
+    assert_eq!(value.key, key, "reveal must return the same key");
+
+    let ct2 = api_client::b64_decode(&value.value_ciphertext).expect("decode ciphertext");
+    let plain = aead::decrypt_with_ad(&dek, &ad, &ct2).expect("decrypt secret value");
+    let revealed = String::from_utf8(plain).expect("plaintext is UTF-8");
+    assert_eq!(revealed, plaintext, "revealed secret must match original");
+
+    eprintln!("✓ Projects/Secrets E2E passed for user '{user}'");
 }

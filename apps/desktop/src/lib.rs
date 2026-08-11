@@ -11,9 +11,11 @@
 //! - Local File Transfer hooks consume `vautr-app-state`'s `FileTransferWorker`
 //!   (file-storage.md §5.4 desktop auto-sync).
 
+pub mod api_client;
 pub mod app;
 pub mod auth_client;
 pub mod desktop_view;
+pub mod project_state;
 pub mod state;
 
 // Deprecated aliases kept for existing imports.

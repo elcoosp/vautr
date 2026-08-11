@@ -1,7 +1,10 @@
-//! The top-level desktop view. Conditionally renders either the login screen
-//! (when the vault is not yet unlocked) or the vault manager (after unlock).
+//! The top-level desktop view. Renders either the login screen (when the
+//! vault is not yet unlocked) or the post-login app shell (after unlock).
 //!
-//! Uses gpui-component widgets: Button, Input, Label, v_flex, h_flex.
+//! The app shell has two sections: **Vault** (local item list + reveal, the
+//! sole holder of `read_secret`) and **Projects** (server-backed Projects,
+//! roles, members, and Secrets UI). Uses gpui-component widgets throughout:
+//! Button, Input/InputState, h_flex/v_flex.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use gpui::*;
@@ -11,15 +14,25 @@ use gpui_component::{
     input::{Input, InputState},
     h_flex, v_flex,
 };
+use rand::RngCore;
 use std::sync::Arc;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use crate::api_client::{self, ApiClient};
 use crate::app::base_url;
 use crate::auth_client::AuthClient;
+use crate::project_state::{DetailTab, ProjectsState};
 use crate::state::{self, VaultConfig, VaultManagerState};
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, kdf, key_tree};
+
+/// Which post-login section is active.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Section {
+    Vault,
+    Projects,
+}
 
 /// The root desktop view.
 pub struct DesktopView {
@@ -40,9 +53,25 @@ pub struct DesktopView {
     client: Option<Arc<VautrClient>>,
     dek: Option<Zeroizing<[u8; 32]>>,
 
-    // ── Revealed secret ─────────────────────────────────────────────────
+    // ── Revealed secret (vault items) ───────────────────────────────────
     revealed: Option<Zeroizing<String>>,
     active_handle: Option<vautr_app_state::orchestrator::SecretHandle>,
+
+    // ── Projects / Secrets state ────────────────────────────────────────
+    /// The bearer session token from OPAQUE login, used for the Projects/Secrets API.
+    token: Option<String>,
+    projects: ProjectsState,
+    section: Section,
+    /// UUID of the secret whose value is being revealed.
+    reveal_target_uuid: Option<String>,
+
+    // ── Projects form inputs ────────────────────────────────────────────
+    project_name_input: Entity<InputState>,
+    project_desc_input: Entity<InputState>,
+    member_user_input: Entity<InputState>,
+    secret_key_input: Entity<InputState>,
+    secret_value_input: Entity<InputState>,
+    offboard_input: Entity<InputState>,
 }
 
 impl DesktopView {
@@ -69,6 +98,23 @@ impl DesktopView {
             });
         }
 
+        let project_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Project name"));
+        let project_desc_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Description (optional)")
+        });
+        let member_user_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("User UUID or email")
+        });
+        let secret_key_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Secret key, e.g. DATABASE_URL")
+        });
+        let secret_value_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Secret value")
+        });
+        let offboard_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("User UUID to revoke all access")
+        });
+
         let _subscriptions = vec![];
 
         Self {
@@ -83,6 +129,16 @@ impl DesktopView {
             dek: None,
             revealed: None,
             active_handle: None,
+            token: None,
+            projects: ProjectsState::new(),
+            section: Section::Vault,
+            reveal_target_uuid: None,
+            project_name_input,
+            project_desc_input,
+            member_user_input,
+            secret_key_input,
+            secret_value_input,
+            offboard_input,
         }
     }
 
@@ -96,6 +152,10 @@ impl DesktopView {
 
     fn password(&self, cx: &mut Context<Self>) -> String {
         self.password_input.read(cx).value().to_string()
+    }
+
+    fn api(&self) -> ApiClient {
+        ApiClient::new(&self.server_url)
     }
 
     // ── Login / Register ────────────────────────────────────────────────
@@ -271,7 +331,9 @@ impl DesktopView {
             this.update(cx, |this, cx| {
                 this.client = Some(client);
                 this.dek = Some(dek);
+                this.token = Some(login.session_token);
                 this.vault.set_items(items);
+                this.section = Section::Vault;
                 this.login_status.clear();
                 cx.notify();
             })
@@ -330,7 +392,6 @@ impl DesktopView {
         })
         .detach();
     }
-
 
     fn do_delete(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let uuid = match self.vault.selected_overview().map(|o| o.uuid) {
@@ -424,7 +485,540 @@ impl DesktopView {
         self.vault.lock();
         self.client = None;
         self.dek = None;
+        self.token = None;
+        self.projects = ProjectsState::new();
+        self.section = Section::Vault;
+        self.reveal_target_uuid = None;
         cx.notify();
+    }
+
+    // ── Projects / Secrets actions ──────────────────────────────────────
+
+    fn do_refresh_projects(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.projects.loading = true;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = api.list_projects(&token).await;
+            this.update(cx, |this, cx| match result {
+                Ok(projects) => {
+                    this.projects.loading = false;
+                    this.projects.set_projects(projects);
+                    this.projects.dismiss_error();
+                    this.projects.clear_detail();
+                    cx.notify();
+                    if this.projects.selected_project().is_some() {
+                        this.load_project_detail(cx);
+                    }
+                }
+                Err(e) => {
+                    this.projects.loading = false;
+                    this.projects.show_error(format!("Failed to load projects: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn load_project_detail(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let api = self.api();
+        self.projects.loading = true;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let members = api.list_members(&token, &uuid).await;
+            let secrets = api.list_secrets(&token, &uuid).await;
+            this.update(cx, |this, cx| {
+                this.projects.loading = false;
+                if let Ok(m) = members {
+                    this.projects.set_members(m);
+                }
+                if let Ok(s) = secrets {
+                    this.projects.set_secrets(s);
+                }
+                this.projects.dismiss_error();
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_select_project(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.projects.select_project(index) {
+            self.projects.clear_detail();
+            self.reveal_target_uuid = None;
+            cx.notify();
+            self.load_project_detail(cx);
+        }
+    }
+
+    fn do_create_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let name = self.project_name_input.read(cx).value().to_string();
+        let desc = self.project_desc_input.read(cx).value().to_string();
+        let kind = self.projects.new_kind.clone();
+        if name.trim().is_empty() {
+            self.projects.show_error("Project name is required.");
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.projects.set_status("Creating project...");
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let desc_opt = if desc.trim().is_empty() {
+                None
+            } else {
+                Some(desc.trim().to_string())
+            };
+            let result = api
+                .create_project(&token, name.trim(), &kind, desc_opt.as_deref())
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(created) => {
+                    this.projects
+                        .set_status(format!("Created project '{}'.", created.name));
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.do_refresh_projects_to(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Create failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Helper that refreshes the project list after a mutation.
+    fn do_refresh_projects_to(&mut self, cx: &mut Context<Self>) {
+        self.do_refresh_projects_impl(cx);
+    }
+
+    fn do_refresh_projects_impl(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.list_projects(&token).await;
+            this.update(cx, |this, cx| match result {
+                Ok(projects) => {
+                    this.projects.set_projects(projects);
+                    this.projects.clear_detail();
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    if this.projects.selected_project().is_some() {
+                        this.load_project_detail(cx);
+                    }
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Failed to reload projects: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_delete_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(uuid) = self.projects.selected_project_uuid() else {
+            self.projects.show_error("no project selected");
+            cx.notify();
+            return;
+        };
+        let name = self
+            .projects
+            .selected_project()
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        let api = self.api();
+        self.projects.set_status(format!("Deleting project '{}'...", name));
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = api.delete_project(&token, &uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.projects.set_status(format!("Deleted project '{}'.", name));
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.do_refresh_projects_impl(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Delete failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_add_member(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(project_uuid) = self.projects.selected_project_uuid() else {
+            self.projects.show_error("no project selected");
+            cx.notify();
+            return;
+        };
+        let user_uuid = self.member_user_input.read(cx).value().to_string();
+        let role = self.projects.member_role.clone();
+        let permission = self.projects.member_permission.clone();
+        if user_uuid.trim().is_empty() {
+            self.projects.show_error("Member user UUID is required.");
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.projects.set_status(format!("Adding member {user_uuid}..."));
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = api
+                .add_member(&token, &project_uuid, user_uuid.trim(), &role, &permission)
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(m) => {
+                    let who = m.display_name.clone().unwrap_or_else(|| m.user_uuid.clone());
+                    this.projects
+                        .set_status(format!("Added {who} as {} ({})", m.role, m.permission));
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.reload_members(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Add member failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn reload_members(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.list_members(&token, &uuid).await;
+            this.update(cx, |this, cx| {
+                if let Ok(members) = result {
+                    this.projects.set_members(members);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_update_member_permission(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+        user_uuid: String,
+        permission: String,
+    ) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(project_uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api
+                .update_member(&token, &project_uuid, &user_uuid, None, Some(&permission))
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => {
+                    this.projects
+                        .set_status(format!("Updated permission to {permission}."));
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.reload_members(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Update permission failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_remove_member(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+        user_uuid: String,
+    ) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(project_uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.remove_member(&token, &project_uuid, &user_uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.projects.set_status("Member removed.");
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.reload_members(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Remove member failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_add_secret(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(project_uuid) = self.projects.selected_project_uuid() else {
+            self.projects.show_error("no project selected");
+            cx.notify();
+            return;
+        };
+        let Some(dek) = self.dek.clone() else {
+            self.projects.show_error("vault is locked; cannot encrypt secret");
+            cx.notify();
+            return;
+        };
+        let key = self.secret_key_input.read(cx).value().to_string();
+        let value = self.secret_value_input.read(cx).value().to_string();
+        if key.trim().is_empty() {
+            self.projects.show_error("Secret key is required.");
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.projects.set_status(format!("Creating secret '{key}'..."));
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            // Encrypt the value client-side (zero-knowledge): the server only
+            // ever sees the AEAD ciphertext, bound to (project, key).
+            let ad = api_client::secret_ad(&project_uuid, key.trim());
+            let mut nonce = [0u8; aead::NONCE_LEN];
+            rand::rngs::OsRng.fill_bytes(&mut nonce);
+            let ciphertext =
+                aead::encrypt_with_nonce(&dek, &nonce, &ad, value.trim().as_bytes());
+            let ciphertext = match ciphertext {
+                Ok(c) => c,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.projects.show_error(format!("Encryption failed: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+            let value_b64 = api_client::b64_encode(&ciphertext);
+            let result = api
+                .create_secret(&token, &project_uuid, key.trim(), &value_b64)
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(secret) => {
+                    this.projects
+                        .set_status(format!("Created secret '{}' (v{}).", secret.key, secret.version));
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.reload_secrets(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Create secret failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn reload_secrets(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.list_secrets(&token, &uuid).await;
+            this.update(cx, |this, cx| {
+                if let Ok(secrets) = result {
+                    this.projects.set_secrets(secrets);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_reveal_secret(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(project_uuid) = self.projects.selected_project_uuid() else {
+            return;
+        };
+        let Some(dek) = self.dek.clone() else {
+            self.projects.show_error("vault is locked; cannot decrypt secret");
+            cx.notify();
+            return;
+        };
+        let Some(uuid) = self.reveal_target_uuid.clone() else {
+            self.projects.show_error("no secret selected");
+            cx.notify();
+            return;
+        };
+        let api = self.api();
+        self.projects.set_status("Revealing secret...");
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = api.get_secret_value(&token, &uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(value) => {
+                    let ad = api_client::secret_ad(&project_uuid, &value.key);
+                    let ct = match api_client::b64_decode(&value.value_ciphertext) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            this.projects.show_error(format!("Decode failed: {e}"));
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    match aead::decrypt_with_ad(&dek, &ad, &ct) {
+                        Ok(plain) => match String::from_utf8(plain) {
+                            Ok(s) => {
+                                this.projects
+                                    .reveal_secret(value.key.clone(), s);
+                                this.projects.set_status("Secret revealed.");
+                                this.projects.dismiss_error();
+                                cx.notify();
+                            }
+                            Err(e) => {
+                                this.projects.show_error(format!("Secret is not UTF-8: {e}"));
+                                cx.notify();
+                            }
+                        },
+                        Err(e) => {
+                            this.projects.show_error(format!("Decryption failed: {e}"));
+                            cx.notify();
+                        }
+                    }
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Reveal failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_delete_secret(&mut self, _window: &mut Window, cx: &mut Context<Self>, uuid: String) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.delete_secret(&token, &uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.projects.set_status("Secret deleted.");
+                    this.projects.dismiss_error();
+                    cx.notify();
+                    this.reload_secrets(cx);
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Delete secret failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_offboard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let user_uuid = self.offboard_input.read(cx).value().to_string();
+        if user_uuid.trim().is_empty() {
+            self.projects.show_error("User UUID is required to offboard.");
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.projects.set_status("Revoking all access...");
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let result = api.offboard(&token, user_uuid.trim(), Some("desktop offboard")).await;
+            this.update(cx, |this, cx| match result {
+                Ok(o) => {
+                    this.projects.offboard_result = Some(format!(
+                        "Revoked {} projects, {} memberships, {} tokens.",
+                        o.revoked_projects, o.revoked_memberships, o.revoked_tokens
+                    ));
+                    this.projects.set_status("Offboarding complete.");
+                    this.projects.dismiss_error();
+                    cx.notify();
+                }
+                Err(e) => {
+                    this.projects.show_error(format!("Offboard failed: {e}"));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 }
 
@@ -433,7 +1027,7 @@ impl DesktopView {
 impl Render for DesktopView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.is_unlocked() {
-            self.render_vault(cx).into_any_element()
+            self.render_app(cx).into_any_element()
         } else {
             self.render_login(cx).into_any_element()
         }
@@ -495,7 +1089,67 @@ impl DesktopView {
             )
     }
 
-    fn render_vault(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The post-login shell: nav (Vault | Projects) + active section content.
+    fn render_app(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let section = self.section;
+        v_flex()
+            .size_full()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .px_6()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(rgb(0x27272a))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("nav-vault")
+                                    .when(section == Section::Vault, |b| b.primary())
+                                    .label("Vault")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.section = Section::Vault;
+                                            cx.notify();
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("nav-projects")
+                                    .when(section == Section::Projects, |b| b.primary())
+                                    .label("Projects")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.section = Section::Projects;
+                                            this.do_refresh_projects(window, cx);
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        Button::new("lock-btn")
+                            .danger()
+                            .label("Lock")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.do_lock(cx);
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                match section {
+                    Section::Vault => self.render_vault_content(cx).into_any_element(),
+                    Section::Projects => self.render_projects(cx).into_any_element(),
+                },
+            )
+    }
+
+    // ── Vault section ────────────────────────────────────────────────────
+
+    fn render_vault_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut rows = Vec::new();
         for (index, item) in self.vault.items.iter().enumerate() {
             let selected = self.vault.selected_index == Some(index);
@@ -551,42 +1205,6 @@ impl DesktopView {
         v_flex()
             .size_full()
             .child(
-                // ── Header bar ───────────────────────────────────────
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .px_6()
-                    .py_3()
-                    .border_b_1()
-                    .border_color(rgb(0x27272a))
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_weight(FontWeight::BOLD)
-                            .child("Vautr"),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("sync-btn")
-                                    .label("Sync")
-                                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_sync(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("lock-btn")
-                                    .danger()
-                                    .label("Lock")
-                                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                        this.do_lock(cx);
-                                    })),
-                            ),
-                    ),
-            )
-            .child(
-                // ── Action bar ───────────────────────────────────────
                 h_flex()
                     .gap_2()
                     .px_6()
@@ -598,6 +1216,13 @@ impl DesktopView {
                             .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
                                 this.vault.show_error("Add item dialog not yet implemented");
                                 cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("sync-btn")
+                            .label("Sync")
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_sync(window, cx);
                             })),
                     )
                     .child(
@@ -617,7 +1242,6 @@ impl DesktopView {
                     ),
             )
             .child(
-                // ── Error banner ─────────────────────────────────────
                 div()
                     .when(has_error, |this| {
                         this.px_6()
@@ -634,7 +1258,6 @@ impl DesktopView {
                     }),
             )
             .child(
-                // ── Item list ────────────────────────────────────────
                 div()
                     .id("item-list")
                     .flex_1()
@@ -644,6 +1267,576 @@ impl DesktopView {
                     .children(rows),
             )
             .child(revealed_text)
+    }
+
+    // ── Projects section ─────────────────────────────────────────────────
+
+    fn render_projects(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let error = self.projects.error_message.clone().unwrap_or_default();
+        let status = self.projects.status.clone();
+        let has_error = !error.is_empty();
+
+        let mut project_rows = Vec::new();
+        for (i, p) in self.projects.projects.iter().enumerate() {
+            let selected = self.projects.selected_index == Some(i);
+            let name = p.name.clone();
+            let kind = p.kind.clone();
+            let role = p.role.clone();
+            let perm = p.permission.clone().unwrap_or_else(|| "—".into());
+            let meta = format!("{kind} · {role} · {perm}");
+            let row = div()
+                .id(SharedString::from(format!("project-row-{i}")))
+                .flex()
+                .flex_col()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .when(selected, |row| row.bg(rgb(0x27272a)))
+                .cursor_pointer()
+                .child(div().text_sm().font_weight(FontWeight::BOLD).child(name))
+                .child(div().text_xs().text_color(rgb(0x71717a)).child(meta))
+                .on_click(cx.listener(move |this, _, _window, cx| {
+                    this.do_select_project(i, cx);
+                }));
+            project_rows.push(row);
+        }
+
+        // Project list panel (left).
+        let list_panel = v_flex()
+            .w_72()
+            .border_r_1()
+            .border_color(rgb(0x27272a))
+            .p_3()
+            .gap_2()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(div().text_sm().font_weight(FontWeight::BOLD).child("Projects"))
+                    .child(
+                        Button::new("projects-refresh")
+                            .compact()
+                            .label("Refresh")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_refresh_projects(window, cx);
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                div()
+                    .id("project-list")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .children(project_rows),
+            )
+            .child(div().border_t_1().border_color(rgb(0x27272a)))
+            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("New project"))
+            .child(Input::new(&self.project_name_input).w_full())
+            .child(Input::new(&self.project_desc_input).w_full())
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("kind-personal")
+                            .when(self.projects.new_kind == "personal", |b| b.primary())
+                            .compact()
+                            .label("Personal")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.new_kind = "personal".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("kind-shared")
+                            .when(self.projects.new_kind == "shared", |b| b.primary())
+                            .compact()
+                            .label("Shared")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.new_kind = "shared".into();
+                                    cx.notify();
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                Button::new("create-project-btn")
+                    .primary()
+                    .label("Create project")
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                        this.do_create_project(window, cx);
+                    })),
+            )
+            .child(
+                Button::new("delete-project-btn")
+                    .danger()
+                    .label("Delete selected project")
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                        this.do_delete_project(window, cx);
+                    })),
+            );
+
+        // Detail panel (right): header + tabs + content.
+        let (proj_name, proj_type) = self
+            .projects
+            .selected_project()
+            .map(|p| (p.name.clone(), p.kind.clone()))
+            .unwrap_or_else(|| ("No project selected".into(), String::new()));
+
+        let detail = v_flex()
+            .flex_1()
+            .p_3()
+            .gap_2()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(FontWeight::BOLD)
+                            .child(proj_name),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0x71717a))
+                            .child(if proj_type.is_empty() {
+                                "Select a project to see its members and secrets.".into()
+                            } else {
+                                format!("Type: {proj_type}")
+                            }),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("tab-members")
+                            .when(self.projects.detail_tab == DetailTab::Members, |b| b.primary())
+                            .compact()
+                            .label("Members")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.detail_tab = DetailTab::Members;
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("tab-secrets")
+                            .when(self.projects.detail_tab == DetailTab::Secrets, |b| b.primary())
+                            .compact()
+                            .label("Secrets")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.detail_tab = DetailTab::Secrets;
+                                    cx.notify();
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                div()
+                    .id("projects-detail")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .child(match self.projects.detail_tab {
+                        DetailTab::Members => self.render_members(cx).into_any_element(),
+                        DetailTab::Secrets => self.render_secrets(cx).into_any_element(),
+                    }),
+            )
+            .child(self.render_offboard(cx));
+
+        v_flex()
+            .size_full()
+            .child(
+                div()
+                    .when(has_error, |this| {
+                        this.px_6()
+                            .pt_2()
+                            .child(
+                                div()
+                                    .px_3()
+                                    .py_2()
+                                    .rounded_md()
+                                    .bg(rgb(0x450a0a))
+                                    .text_color(rgb(0xfca5a5))
+                                    .text_sm()
+                                    .child(error),
+                            )
+                    }),
+            )
+            .child(
+                div()
+                    .when(!status.is_empty(), |this| {
+                        this.px_6()
+                            .pt_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0xa1a1aa))
+                                    .child(status),
+                            )
+                    }),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .child(list_panel)
+                    .child(detail),
+            )
+    }
+
+    fn render_members(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut rows = Vec::new();
+        for (i, m) in self.projects.members.iter().enumerate() {
+            let user_uuid = m.user_uuid.clone();
+            let display = m
+                .display_name
+                .clone()
+                .unwrap_or_else(|| m.user_uuid.clone());
+            let role = m.role.clone();
+            let permission = m.permission.clone();
+
+            let (u_view, u_edit, u_manage, u_remove) = (
+                user_uuid.clone(),
+                user_uuid.clone(),
+                user_uuid.clone(),
+                user_uuid.clone(),
+            );
+
+            let perm_controls = h_flex()
+                .gap_1()
+                .child(
+                    Button::new(format!("mperm-view-{i}"))
+                        .compact()
+                        .when(permission == "can_view", |b| b.primary())
+                        .label("View")
+                        .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                            this.do_update_member_permission(
+                                window,
+                                cx,
+                                u_view.clone(),
+                                "can_view".into(),
+                            );
+                        })),
+                )
+                .child(
+                    Button::new(format!("mperm-edit-{i}"))
+                        .compact()
+                        .when(permission == "can_edit", |b| b.primary())
+                        .label("Edit")
+                        .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                            this.do_update_member_permission(
+                                window,
+                                cx,
+                                u_edit.clone(),
+                                "can_edit".into(),
+                            );
+                        })),
+                )
+                .child(
+                    Button::new(format!("mperm-manage-{i}"))
+                        .compact()
+                        .when(permission == "can_manage", |b| b.primary())
+                        .label("Manage")
+                        .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                            this.do_update_member_permission(
+                                window,
+                                cx,
+                                u_manage.clone(),
+                                "can_manage".into(),
+                            );
+                        })),
+                )
+                .child(
+                    Button::new(format!("mremove-{i}"))
+                        .compact()
+                        .danger()
+                        .label("Remove")
+                        .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                            this.do_remove_member(window, cx, u_remove.clone());
+                        })),
+                );
+
+            let row = div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .border_1()
+                .border_color(rgb(0x27272a))
+                .child(
+                    v_flex()
+                        .gap_0()
+                        .child(div().text_sm().font_weight(FontWeight::BOLD).child(display))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0x71717a))
+                                .child(format!("{role} · {permission}")),
+                        ),
+                )
+                .child(perm_controls);
+            rows.push(row);
+        }
+
+        let user_uuid = self.member_user_input.read(cx).value().to_string();
+
+        v_flex()
+            .gap_2()
+            .child(
+                div().text_sm().font_weight(FontWeight::BOLD).child("Members"),
+            )
+            .children(rows)
+            .child(div().border_t_1().border_color(rgb(0x27272a)).mt_1())
+            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("Add member"))
+            .child(Input::new(&self.member_user_input).w_full())
+            .child(
+                h_flex()
+                    .gap_1()
+                    .flex_wrap()
+                    .child(
+                        Button::new("role-member")
+                            .when(self.projects.member_role == "member", |b| b.primary())
+                            .compact()
+                            .label("member")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_role = "member".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("role-manager")
+                            .when(self.projects.member_role == "manager", |b| b.primary())
+                            .compact()
+                            .label("manager")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_role = "manager".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("role-admin")
+                            .when(self.projects.member_role == "admin", |b| b.primary())
+                            .compact()
+                            .label("admin")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_role = "admin".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("role-owner")
+                            .when(self.projects.member_role == "owner", |b| b.primary())
+                            .compact()
+                            .label("owner")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_role = "owner".into();
+                                    cx.notify();
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Button::new("perm-canview")
+                            .when(self.projects.member_permission == "can_view", |b| b.primary())
+                            .compact()
+                            .label("Can View")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_permission = "can_view".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("perm-canedit")
+                            .when(self.projects.member_permission == "can_edit", |b| b.primary())
+                            .compact()
+                            .label("Can Edit")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_permission = "can_edit".into();
+                                    cx.notify();
+                                },
+                            )),
+                    )
+                    .child(
+                        Button::new("perm-canmanage")
+                            .when(self.projects.member_permission == "can_manage", |b| b.primary())
+                            .compact()
+                            .label("Can Manage")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.projects.member_permission = "can_manage".into();
+                                    cx.notify();
+                                },
+                            )),
+                    ),
+            )
+            .child(
+                Button::new("add-member-btn")
+                    .primary()
+                    .label("Add member")
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                        this.do_add_member(window, cx);
+                    })),
+            )
+            .child(div().text_xs().text_color(rgb(0x71717a)).child(format!(
+                "Current member field: {user_uuid}"
+            )))
+    }
+
+    fn render_secrets(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut rows = Vec::new();
+        for (i, s) in self.projects.secrets.iter().enumerate() {
+            let uuid = s.uuid.clone();
+            let uuid_reveal = uuid.clone();
+            let uuid_delete = uuid.clone();
+            let key = s.key.clone();
+            let version = s.version;
+            let updated_at = s.updated_at;
+            let row = div()
+                .id(SharedString::from(format!("secret-row-{i}")))
+                .flex()
+                .items_center()
+                .justify_between()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .border_1()
+                .border_color(rgb(0x27272a))
+                .child(
+                    v_flex()
+                        .gap_0()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(FontWeight::BOLD)
+                                .child(key.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(0x71717a))
+                                .child(format!("v{version} · updated {updated_at}")),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Button::new(format!("sreveal-{i}"))
+                                .compact()
+                                .label("Reveal")
+                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.reveal_target_uuid = Some(uuid_reveal.clone());
+                                    this.do_reveal_secret(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new(format!("sdelete-{i}"))
+                                .compact()
+                                .danger()
+                                .label("Delete")
+                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_delete_secret(window, cx, uuid_delete.clone());
+                                })),
+                        ),
+                );
+            rows.push(row);
+        }
+
+        let revealed = self
+            .projects
+            .revealed
+            .clone()
+            .map(|(key, value)| {
+                div()
+                    .px_3()
+                    .py_2()
+                    .mt_1()
+                    .bg(rgb(0x18181b))
+                    .rounded_md()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0xa1a1aa))
+                            .child(format!("Revealed {key}")),
+                    )
+                    .child(div().text_sm().child(value))
+            })
+            .unwrap_or_else(|| div());
+
+        v_flex()
+            .gap_2()
+            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Secrets"))
+            .children(rows)
+            .child(div().border_t_1().border_color(rgb(0x27272a)).mt_1())
+            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("New secret"))
+            .child(Input::new(&self.secret_key_input).w_full())
+            .child(Input::new(&self.secret_value_input).w_full())
+            .child(
+                Button::new("add-secret-btn")
+                    .primary()
+                    .label("Create secret")
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                        this.do_add_secret(window, cx);
+                    })),
+            )
+            .child(revealed)
+    }
+
+    fn render_offboard(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let result = self.projects.offboard_result.clone();
+        v_flex()
+            .mt_1()
+            .pt_2()
+            .border_t_1()
+            .border_color(rgb(0x27272a))
+            .gap_1()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(0xfca5a5))
+                    .child("Offboard (revoke all access)"),
+            )
+            .child(h_flex().gap_2().child(Input::new(&self.offboard_input).w_full()).child(
+                Button::new("offboard-btn")
+                    .danger()
+                    .label("Revoke all")
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                        this.do_offboard(window, cx);
+                    })),
+            ))
+            .child(
+                div()
+                    .when(result.is_some(), |this| {
+                        this.text_xs()
+                            .text_color(rgb(0x4ade80))
+                            .child(result.clone().unwrap_or_default())
+                    }),
+            )
     }
 }
 
