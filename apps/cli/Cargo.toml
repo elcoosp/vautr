@@ -1,0 +1,16 @@
+[package]
+name = "vautr-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Vautr bws-style command-line client (get, list, run, machine-account login) - docs/architecture/mlp-scope.md §4"
+
+[[bin]]
+name = "vautr-cli"
+path = "src/main.rs"
+
+[dependencies]
+thiserror.workspace = true

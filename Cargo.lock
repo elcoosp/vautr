@@ -9951,6 +9951,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "vautr-backup"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "vautr-cli"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "vautr-crypto"
 version = "0.1.0"
 dependencies = [
@@ -10036,6 +10052,7 @@ name = "vautr-domain"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "uuid",
  "vautr-crypto",

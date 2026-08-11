@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core/*", "apps/desktop"]
+members = ["core/*", "apps/desktop", "apps/cli"]
 
 # ---------------------------------------------------------------------------
 # Vautr Rust workspace
@@ -37,6 +37,8 @@ vautr-files     = { path = "core/vautr-files" }
 vautr-import    = { path = "core/vautr-import" }
 vautr-sharing   = { path = "core/vautr-sharing" }
 vautr-telemetry = { path = "core/vautr-telemetry" }
+vautr-backup    = { path = "core/vautr-backup" }
+vautr-cli       = { path = "apps/cli" }
 
 # --- common third-party ---
 tokio        = { version = "1", features = ["full"] }
