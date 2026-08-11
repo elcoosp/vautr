@@ -1,0 +1,25 @@
+[package]
+name = "vautr-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SQLite (SeaORM) + FTS5 persistence for the Vautr client. Spec: docs/architecture/db-contract.md"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+sea-orm.workspace = true
+vautr-domain.workspace = true
+vautr-crypto.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile = "3"

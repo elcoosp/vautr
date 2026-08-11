@@ -1,0 +1,36 @@
+name: 🚀 Feature Request
+description: Suggest an idea for Vautr
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please ensure your feature aligns with the [Vautr Constitution](./CONSTITUTION.md). Features that gate self-hosting, introduce closed-source telemetry, or violate user sovereignty will be rejected.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+      placeholder: "I find it difficult to [...]"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: constitution
+    attributes:
+      label: Constitutional Alignment
+      description: How does this feature support Vautr's core principles (AGPL, Self-Hosting, Data Sovereignty)?
+      placeholder: "This feature enhances self-hosting by..."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: A clear and concise description of any alternative solutions or features you've considered.

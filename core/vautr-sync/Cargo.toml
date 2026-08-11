@@ -1,0 +1,25 @@
+[package]
+name = "vautr-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Sync engine, DashMap blacklist, OCC resolution, Safety Reaper. Spec: arch-design ADR-002/004/006"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+dashmap.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+serde.workspace = true
+tokio.workspace = true
+vautr-domain.workspace = true
+vautr-db.workspace = true
+vautr-crypto.workspace = true
+
+[dev-dependencies]
+wiremock = "0.6"

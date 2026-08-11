@@ -1,0 +1,27 @@
+[package]
+name = "vautr-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "wasm-bindgen bindings for web/extension clients. Spec: arch-design §5.3, ADR-005"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+wasm-bindgen.workspace = true
+serde.workspace = true
+serde-wasm-bindgen = "0.6"
+vautr-domain.workspace = true
+vautr-app-state.workspace = true
+vautr-crypto.workspace = true
+
+[features]
+# `read_secret` enabled only for the desktop/web full client, NOT the
+# stateless extension service-worker build (ADR-005 uses crypto-only WASM).
+desktop-api = []

@@ -1,0 +1,581 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Vautr Server API",
+    "version": "0.1.0",
+    "description": "Zero-knowledge, untrusted encrypted blob store with strict OCC. Source: docs/architecture/api.md. Canonical for client/server contract tests (Pact / verification.md §6.2).",
+    "license": { "name": "AGPL-3.0" }
+  },
+  "servers": [{ "url": "https://api.vautr.local", "description": "Self-hosted / cloud instance" }],
+  "tags": [
+    { "name": "auth", "description": "OPAQUE PAKE registration & login" },
+    { "name": "sync", "description": "Metadata-first sync engine" },
+    { "name": "items", "description": "Single-item OCC mutations & tombstoning" },
+    { "name": "account", "description": "Key management & epoch rotation" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer" }
+    },
+    "parameters": {
+      "XRequestId": {
+        "name": "X-Request-ID",
+        "in": "header",
+        "required": true,
+        "description": "Client-generated UUID, sent on ALL requests.",
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "U64": {
+        "name": "u64",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "format": "uint64", "minimum": 0 }
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "payload_limit_exceeded",
+              "unauthorized",
+              "not_found",
+              "cursor_expired",
+              "precondition_failed",
+              "key_generation_too_old",
+              "rate_limited",
+              "internal_server_error"
+            ]
+          },
+          "message": { "type": "string", "description": "Human readable, dev logs only." },
+          "context": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "ServerState": {
+        "type": "object",
+        "required": ["version", "enc_key_gen"],
+        "properties": {
+          "version": { "type": "integer", "format": "uint64" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" }
+        }
+      },
+      "ItemMetadata": {
+        "type": "object",
+        "required": ["uuid", "version", "enc_key_gen"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "version": { "type": "integer", "format": "uint64" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" },
+          "deleted_date": { "type": "integer", "format": "int64", "nullable": true }
+        }
+      },
+      "PayloadResult": {
+        "type": "object",
+        "required": ["uuid", "status", "version", "enc_key_gen"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["payload_delivered", "version_mismatch"] },
+          "version": { "type": "integer", "format": "uint64" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" },
+          "deleted_date": { "type": "integer", "format": "int64", "nullable": true },
+          "payload": { "type": "string", "nullable": true, "description": "Base64 ciphertext blob; null on mismatch." }
+        }
+      },
+      "BatchItem": {
+        "type": "object",
+        "required": ["uuid", "target_version", "enc_key_gen"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "target_version": { "type": "integer", "format": "uint64" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" },
+          "payload": { "type": "string", "nullable": true, "description": "Base64 ciphertext; null for tombstone." },
+          "deleted_date": { "type": "integer", "format": "int64", "nullable": true }
+        }
+      },
+      "BatchResult": {
+        "type": "object",
+        "required": ["uuid"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["success", "conflict"] },
+          "version": { "type": "integer", "format": "uint64" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" },
+          "updated_at": { "type": "integer", "format": "int64" },
+          "current_server_state": { "$ref": "#/components/schemas/ServerState" }
+        }
+      }
+    }
+  },
+  "security": [{ "BearerAuth": [] }],
+  "paths": {
+    "/auth/register/start": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "authRegisterStart",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "registration_start"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "registration_start": { "type": "string", "description": "Base64 OPAQUE registration start." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OPAQUE registration response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["registration_response"],
+                  "properties": { "registration_response": { "type": "string", "description": "Base64." } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register/finish": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "authRegisterFinish",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "registration_finish", "server_public_key"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "registration_finish": { "type": "string", "description": "Base64." },
+                  "server_public_key": { "type": "string", "description": "Base64 OPAQUE server public key." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registration complete.",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "success" } } } } }
+          }
+        }
+      }
+    },
+    "/auth/login/start": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "authLoginStart",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "login_start"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "login_start": { "type": "string", "description": "Base64 OPAQUE login start." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OPAQUE login response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["login_response"],
+                  "properties": { "login_response": { "type": "string", "description": "Base64." } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login/finish": {
+      "post": {
+        "tags": ["auth"],
+        "operationId": "authLoginFinish",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "login_finish"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "login_finish": { "type": "string", "description": "Base64." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["session_token", "expires_at"],
+                  "properties": {
+                    "session_token": { "type": "string" },
+                    "expires_at": { "type": "integer", "format": "int64", "example": 1700000000000 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sync/pull": {
+      "get": {
+        "tags": ["sync"],
+        "operationId": "syncPull",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "cursor", "in": "query", "required": true, "schema": { "type": "integer", "format": "uint64", "minimum": 0 } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "format": "uint32", "minimum": 1, "default": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata changes since cursor (no payloads).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["new_cursor", "has_more", "min_enc_key_gen", "items"],
+                  "properties": {
+                    "new_cursor": { "type": "integer", "format": "uint64" },
+                    "has_more": { "type": "boolean" },
+                    "min_enc_key_gen": { "type": "integer", "format": "uint64" },
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/ItemMetadata" } }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Cursor expired (history pruned).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error", "message"],
+                  "properties": {
+                    "error": { "type": "string", "enum": ["cursor_expired"] },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sync/pull-payloads": {
+      "post": {
+        "tags": ["sync"],
+        "operationId": "syncPullPayloads",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["items"],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "required": ["uuid", "version"],
+                      "properties": {
+                        "uuid": { "type": "string", "format": "uuid" },
+                        "version": { "type": "integer", "format": "uint64" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exact-version payload fetch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["results"],
+                  "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/PayloadResult" } } }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "payload_limit_exceeded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/sync/push-batch": {
+      "post": {
+        "tags": ["sync"],
+        "operationId": "syncPushBatch",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["items"],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": { "$ref": "#/components/schemas/BatchItem" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Multi-status batch result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["results"],
+                  "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/BatchResult" } } }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "key_generation_too_old (epoch gate failure).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "400": {
+            "description": "payload_limit_exceeded",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/items/{uuid}": {
+      "put": {
+        "tags": ["items"],
+        "operationId": "itemUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "If-Match", "in": "header", "required": true, "description": "target_version as u64 string.", "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["enc_key_gen", "payload"],
+                "properties": {
+                  "enc_key_gen": { "type": "integer", "format": "uint64" },
+                  "payload": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["uuid", "version", "enc_key_gen", "updated_at"],
+                  "properties": {
+                    "uuid": { "type": "string", "format": "uuid" },
+                    "version": { "type": "integer", "format": "uint64" },
+                    "enc_key_gen": { "type": "integer", "format": "uint64" },
+                    "updated_at": { "type": "integer", "format": "int64" }
+                  }
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "precondition_failed (OCC mismatch).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error", "current_server_state"],
+                  "properties": {
+                    "error": { "type": "string", "enum": ["precondition_failed"] },
+                    "current_server_state": { "$ref": "#/components/schemas/ServerState" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "key_generation_too_old.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error", "min_enc_key_gen"],
+                  "properties": {
+                    "error": { "type": "string", "enum": ["key_generation_too_old"] },
+                    "min_enc_key_gen": { "type": "integer", "format": "uint64" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["items"],
+        "operationId": "itemDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "If-Match", "in": "header", "required": true, "description": "target_version as u64 string.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Soft-deleted (tombstoned).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["uuid", "version", "deleted_date"],
+                  "properties": {
+                    "uuid": { "type": "string", "format": "uuid" },
+                    "version": { "type": "integer", "format": "uint64" },
+                    "deleted_date": { "type": "integer", "format": "int64" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "412": {
+            "description": "precondition_failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error", "current_server_state"],
+                  "properties": {
+                    "error": { "type": "string", "enum": ["precondition_failed"] },
+                    "current_server_state": { "$ref": "#/components/schemas/ServerState" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account/status": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "accountStatus",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Account key state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["min_enc_key_gen", "svk_ciphertext_blob"],
+                  "properties": {
+                    "min_enc_key_gen": { "type": "integer", "format": "uint64" },
+                    "svk_ciphertext_blob": { "type": "string", "description": "Base64 KEK-wrapped SVK." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account/rotate-key": {
+      "post": {
+        "tags": ["account"],
+        "operationId": "accountRotateKey",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["new_min_enc_key_gen", "new_svK_ciphertext_blob"],
+                "properties": {
+                  "new_min_enc_key_gen": { "type": "integer", "format": "uint64" },
+                  "new_svK_ciphertext_blob": { "type": "string", "description": "Base64 KEK-wrapped SVK at new epoch." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Epoch raised (idempotent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "min_enc_key_gen"],
+                  "properties": {
+                    "status": { "type": "string", "example": "success" },
+                    "min_enc_key_gen": { "type": "integer", "format": "uint64" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Pinned toolchain. SRS §6.3 requires Rust 1.85+; 1.94.1 is the validated build.
+# CI uses the same channel. Adjust only after re-running the full test matrix.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
+profile = "default"

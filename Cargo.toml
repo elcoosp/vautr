@@ -1,0 +1,80 @@
+[workspace]
+resolver = "2"
+members = ["core/*"]
+
+# ---------------------------------------------------------------------------
+# Vautr Rust workspace
+# Dependency versions aligned to docs/architecture/tech-stack.md (v2.0, Jul 2026).
+# Pre-release crates (opaque-ke, sea-orm, chacha20poly1305, argon2, hkdf) are
+# EXACT-pinned because Cargo's `^`/caret rules exclude pre-releases, so a bare
+# `4.1`/`2.0` constraint would fail to resolve.
+# ---------------------------------------------------------------------------
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"          # SRS §6.3 DEP-1 (Rust 1.85+). Toolchain pinned in rust-toolchain.toml.
+license = "AGPL-3.0"
+authors = ["Vautr Core Team"]
+repository = "https://github.com/vautrorg/vautr"
+homepage = "https://github.com/vautrorg/vautr"
+description = "Vautr — the password manager that belongs to you."
+
+[workspace.dependencies]
+# --- internal crates (path) ---
+vautr-crypto    = { path = "core/vautr-crypto" }
+vautr-domain    = { path = "core/vautr-domain" }
+vautr-db        = { path = "core/vautr-db" }
+vautr-sync      = { path = "core/vautr-sync" }
+vautr-auth      = { path = "core/vautr-auth" }
+vautr-keyring   = { path = "core/vautr-keyring" }
+vautr-app-state = { path = "core/vautr-app-state" }
+vautr-ffi       = { path = "core/vautr-ffi" }
+vautr-wasm      = { path = "core/vautr-wasm" }
+vautr-server    = { path = "core/vautr-server" }
+
+# --- common third-party ---
+tokio        = { version = "1", features = ["full"] }
+thiserror    = "2"
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zeroize      = { version = "1.8", features = ["zeroize_derive", "serde"] }
+rand         = "0.8"
+uuid         = { version = "1", features = ["v4", "serde"] }
+serde        = { version = "1", features = ["derive"] }
+serde_json   = "1"
+base64       = "0.22"
+chrono       = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dashmap      = "6"
+async-trait = "0.1"
+
+# --- crypto (CON-2: pure Rust, no external crypto libs beyond these) ---
+# Pre-release exact pins (tech-stack.md §1.1).
+argon2            = { version = "=0.6.0-rc.8", features = ["rand_core"] }
+chacha20poly1305  = "=0.11.0-rc.3"
+hkdf              = "0.12"
+hmac              = "0.12"
+sha2              = "0.10"
+bip39             = { version = "2", features = ["rand"] }
+x25519-dalek      = { version = "2", features = ["static_secrets"] }
+ed25519-dalek     = "2"
+opaque-ke         = "=4.1.0-pre.1"
+
+# --- client persistence (db-contract.md: SeaORM 2.0 + SQLite WAL + FTS5) ---
+# Pre-release exact pin (tech-stack.md §1.2).
+sea-orm = { version = "=2.0.0-rc.38", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-chrono",
+] }
+
+# --- server (arch-design §3.3: Axum 0.8 + sqlx 0.9 repository, SQLite WAL) ---
+sqlx        = { version = "0.9", features = ["sqlite", "runtime-tokio", "tls-rustls", "chrono", "migrate", "macros"] }
+axum        = "0.8"
+tower       = "0.5"
+tower-http  = { version = "0.6", features = ["cors", "trace", "auth"] }
+
+# --- FFI / WASM bindings ---
+uniffi      = "0.28"
+wasm-bindgen = "0.2"

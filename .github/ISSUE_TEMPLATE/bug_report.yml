@@ -1,0 +1,57 @@
+name: 🐛 Bug Report
+description: Report a non-security bug in Vautr
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ SECURITY VULNERABILITIES ⚠️**
+        Do NOT report security vulnerabilities here. Please follow our [Security Policy](./SECURITY.md) to report them responsibly.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: "The vault sync hangs when..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Examples:
+        - **OS:** Ubuntu 22.04 / macOS 14 / Windows 11
+        - **Client:** Desktop v0.1.0 / Web Extension v0.1.0
+        - **Server:** vautr-server v0.1.0 (Docker)
+      value: |
+        - OS:
+        - Client:
+        - Server:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell

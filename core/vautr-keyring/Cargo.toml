@@ -1,0 +1,23 @@
+[package]
+name = "vautr-keyring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SVK lifecycle, rotation, dual-wrapping (MP + Recovery Key). Spec: arch-design ADR-006, REQ-ROTATE/RECOVERY"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+zeroize.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+vautr-crypto.workspace = true
+vautr-domain.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

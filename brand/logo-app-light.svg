@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="light-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F8FAFC" />
+      <stop offset="100%" style="stop-color:#E2E8F0" />
+    </linearGradient>
+    <linearGradient id="aurora-deep" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5" />
+      <stop offset="100%" style="stop-color:#06B6D4" />
+    </linearGradient>
+  </defs>
+
+  <!-- Light Background -->
+  <rect width="120" height="120" rx="26" fill="url(#light-bg)" />
+
+  <g transform="translate(15, 20)">
+    <!-- Back Layer -->
+    <path d="M 10 80 L 40 10 C 45 0 55 0 60 10 L 90 80" 
+          fill="none" stroke="url(#aurora-deep)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.3" />
+    
+    <!-- Front Layer -->
+    <path d="M 10 80 L 40 10 C 45 0 55 0 60 10 L 90 80" 
+          fill="none" stroke="url(#aurora-deep)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" 
+          stroke-dasharray="140 100" stroke-dashoffset="-10" />
+  </g>
+</svg>

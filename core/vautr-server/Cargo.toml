@@ -1,0 +1,32 @@
+[package]
+name = "vautr-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Axum HTTP server (SQLite, OCC) for Vautr. Spec: docs/architecture/api.md, arch-design §3.3"
+
+[[bin]]
+name = "vautr-server"
+path = "src/main.rs"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+uuid.workspace = true
+sqlx.workspace = true
+vautr-crypto.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

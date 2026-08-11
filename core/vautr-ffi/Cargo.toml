@@ -1,0 +1,25 @@
+[package]
+name = "vautr-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "UniFFI bindings (Swift/Kotlin) for the Vautr client. Spec: arch-design §5.3, data.md"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+uniffi.workspace = true
+vautr-domain.workspace = true
+vautr-app-state.workspace = true
+vautr-crypto.workspace = true
+
+[features]
+# `read_secret` is enabled ONLY for the desktop (GPUI) build — never mobile/web.
+# CI symbol-check (prd.md) asserts `read_secret` is absent from UniFFI artifacts.
+desktop-api = []

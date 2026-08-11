@@ -1,0 +1,16 @@
+[package]
+name = "vautr-domain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared Vautr data types (no logic). Spec: docs/architecture/data.md"
+
+[dependencies]
+serde.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+vautr-crypto.workspace = true

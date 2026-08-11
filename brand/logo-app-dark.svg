@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="dark-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A" />
+      <stop offset="100%" style="stop-color:#1E293B" />
+    </linearGradient>
+    
+    <!-- High-Luminance Aurora Gradient for Dark Backgrounds -->
+    <linearGradient id="aurora-bright" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#818CF8" /> <!-- Lighter Violet -->
+      <stop offset="100%" style="stop-color:#22D3EE" /> <!-- Bright Cyan -->
+    </linearGradient>
+  </defs>
+
+  <!-- Sleek Dark Background -->
+  <rect width="120" height="120" rx="26" fill="url(#dark-bg)" />
+
+  <g transform="translate(15, 20)">
+    <!-- Back Layer of the Ribbon (Visible but recessed) -->
+    <path d="M 10 80 L 40 10 C 45 0 55 0 60 10 L 90 80" 
+          fill="none" stroke="url(#aurora-bright)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+    
+    <!-- Front Layer of the Ribbon (Overlapping the bottom right, bright and solid) -->
+    <path d="M 10 80 L 40 10 C 45 0 55 0 60 10 L 90 80" 
+          fill="none" stroke="url(#aurora-bright)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" 
+          stroke-dasharray="140 100" stroke-dashoffset="-10" />
+  </g>
+</svg>
