@@ -35,6 +35,7 @@ vautr-server    = { path = "core/vautr-server" }
 vautr-files     = { path = "core/vautr-files" }
 vautr-import    = { path = "core/vautr-import" }
 vautr-sharing   = { path = "core/vautr-sharing" }
+vautr-telemetry = { path = "core/vautr-telemetry" }
 
 # --- common third-party ---
 tokio        = { version = "1", features = ["full"] }
