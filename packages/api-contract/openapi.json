@@ -89,7 +89,11 @@
           "version": { "type": "integer", "format": "uint64" },
           "enc_key_gen": { "type": "integer", "format": "uint64" },
           "deleted_date": { "type": "integer", "format": "int64", "nullable": true },
-          "payload": { "type": "string", "nullable": true, "description": "Base64 ciphertext blob; null on mismatch." }
+          "payload": {
+            "type": "string",
+            "nullable": true,
+            "description": "Base64 ciphertext blob; null on mismatch."
+          }
         }
       },
       "BatchItem": {
@@ -99,7 +103,11 @@
           "uuid": { "type": "string", "format": "uuid" },
           "target_version": { "type": "integer", "format": "uint64" },
           "enc_key_gen": { "type": "integer", "format": "uint64" },
-          "payload": { "type": "string", "nullable": true, "description": "Base64 ciphertext; null for tombstone." },
+          "payload": {
+            "type": "string",
+            "nullable": true,
+            "description": "Base64 ciphertext; null for tombstone."
+          },
           "deleted_date": { "type": "integer", "format": "int64", "nullable": true }
         }
       },
@@ -119,33 +127,63 @@
         "type": "object",
         "required": ["nonce"],
         "properties": {
-          "nonce": { "type": "string", "description": "Base64 random 32-byte nonce to sign with the RK-derived Ed25519 private key." }
+          "nonce": {
+            "type": "string",
+            "description": "Base64 random 32-byte nonce to sign with the RK-derived Ed25519 private key."
+          }
         }
       },
       "RecoveryVerify": {
         "type": "object",
         "required": ["nonce", "signature"],
         "properties": {
-          "nonce": { "type": "string", "description": "Nonce returned by GET /account/recover/challenge." },
-          "signature": { "type": "string", "description": "Base64 Ed25519 signature over the nonce using the RK-derived private key." }
+          "nonce": {
+            "type": "string",
+            "description": "Nonce returned by GET /account/recover/challenge."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64 Ed25519 signature over the nonce using the RK-derived private key."
+          }
         }
       },
       "RecoveryVerifyResponse": {
         "type": "object",
         "required": ["session_token", "expires_at"],
         "properties": {
-          "session_token": { "type": "string", "description": "Short-lived, single-use RecoverySessionToken." },
+          "session_token": {
+            "type": "string",
+            "description": "Short-lived, single-use RecoverySessionToken."
+          },
           "expires_at": { "type": "integer", "format": "int64", "example": 1700000000000 }
         }
       },
       "RecoveryComplete": {
         "type": "object",
-        "required": ["registration_finish", "server_public_key", "wrapped_svk_mp", "wrapped_svk_rk", "rk_public_key"],
+        "required": [
+          "registration_finish",
+          "server_public_key",
+          "wrapped_svk_mp",
+          "wrapped_svk_rk",
+          "rk_public_key"
+        ],
         "properties": {
-          "registration_finish": { "type": "string", "description": "Base64 OPAQUE new registration payload." },
-          "server_public_key": { "type": "string", "description": "Base64 OPAQUE server public key." },
-          "wrapped_svk_mp": { "type": "string", "description": "Base64 AEAD KEK_MP-wrapped SVK at the new epoch." },
-          "wrapped_svk_rk": { "type": "string", "description": "Base64 AEAD KEK_RK-wrapped SVK at the new epoch." },
+          "registration_finish": {
+            "type": "string",
+            "description": "Base64 OPAQUE new registration payload."
+          },
+          "server_public_key": {
+            "type": "string",
+            "description": "Base64 OPAQUE server public key."
+          },
+          "wrapped_svk_mp": {
+            "type": "string",
+            "description": "Base64 AEAD KEK_MP-wrapped SVK at the new epoch."
+          },
+          "wrapped_svk_rk": {
+            "type": "string",
+            "description": "Base64 AEAD KEK_RK-wrapped SVK at the new epoch."
+          },
           "rk_public_key": { "type": "string", "description": "Base64 new Ed25519 RK public key." }
         }
       },
@@ -162,19 +200,37 @@
         "type": "object",
         "required": ["wrapped_sik", "ephemeral_public_key"],
         "properties": {
-          "wrapped_sik": { "type": "string", "description": "Base64 AEAD KEM-wrapped Symmetric Item Key." },
-          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key used in the KEM." }
+          "wrapped_sik": {
+            "type": "string",
+            "description": "Base64 AEAD KEM-wrapped Symmetric Item Key."
+          },
+          "ephemeral_public_key": {
+            "type": "string",
+            "description": "Base64 X25519 ephemeral public key used in the KEM."
+          }
         }
       },
       "ShareCreateRequest": {
         "type": "object",
-        "required": ["sender_uuid", "recipient_uuid", "item_uuid", "wrapped_sik", "ephemeral_public_key"],
+        "required": [
+          "sender_uuid",
+          "recipient_uuid",
+          "item_uuid",
+          "wrapped_sik",
+          "ephemeral_public_key"
+        ],
         "properties": {
           "sender_uuid": { "type": "string", "format": "uuid" },
           "recipient_uuid": { "type": "string", "format": "uuid" },
           "item_uuid": { "type": "string", "format": "uuid" },
-          "wrapped_sik": { "type": "string", "description": "Base64 KEM-wrapped SIK for the recipient." },
-          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key." }
+          "wrapped_sik": {
+            "type": "string",
+            "description": "Base64 KEM-wrapped SIK for the recipient."
+          },
+          "ephemeral_public_key": {
+            "type": "string",
+            "description": "Base64 X25519 ephemeral public key."
+          }
         }
       },
       "ShareResult": {
@@ -187,13 +243,26 @@
       },
       "ShareInboxItem": {
         "type": "object",
-        "required": ["share_id", "sender_uuid", "item_uuid", "wrapped_sik", "ephemeral_public_key", "created_at"],
+        "required": [
+          "share_id",
+          "sender_uuid",
+          "item_uuid",
+          "wrapped_sik",
+          "ephemeral_public_key",
+          "created_at"
+        ],
         "properties": {
           "share_id": { "type": "string", "format": "uuid" },
           "sender_uuid": { "type": "string", "format": "uuid" },
           "item_uuid": { "type": "string", "format": "uuid" },
-          "wrapped_sik": { "type": "string", "description": "Base64 KEM-wrapped SIK for the recipient." },
-          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key." },
+          "wrapped_sik": {
+            "type": "string",
+            "description": "Base64 KEM-wrapped SIK for the recipient."
+          },
+          "ephemeral_public_key": {
+            "type": "string",
+            "description": "Base64 X25519 ephemeral public key."
+          },
           "created_at": { "type": "integer", "format": "int64" }
         }
       },
@@ -236,12 +305,24 @@
         "required": ["user_uuid", "wrapped_group_sik"],
         "properties": {
           "user_uuid": { "type": "string", "format": "uuid" },
-          "wrapped_group_sik": { "type": "string", "description": "Base64 KEM-wrapped GroupSIK for the new member." }
+          "wrapped_group_sik": {
+            "type": "string",
+            "description": "Base64 KEM-wrapped GroupSIK for the new member."
+          }
         }
       },
       "FileManifest": {
         "type": "object",
-        "required": ["file_uuid", "total_size", "chunk_size", "total_chunks", "enc_key_gen", "content_type", "last_modified", "status"],
+        "required": [
+          "file_uuid",
+          "total_size",
+          "chunk_size",
+          "total_chunks",
+          "enc_key_gen",
+          "content_type",
+          "last_modified",
+          "status"
+        ],
         "properties": {
           "file_uuid": { "type": "string", "format": "uuid" },
           "total_size": { "type": "integer", "format": "uint64" },
@@ -266,7 +347,10 @@
         "required": ["upload_id", "presigned_urls"],
         "properties": {
           "upload_id": { "type": "string" },
-          "presigned_urls": { "type": "array", "items": { "$ref": "#/components/schemas/PresignedUrl" } }
+          "presigned_urls": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PresignedUrl" }
+          }
         }
       },
       "UploadStatus": {
@@ -274,7 +358,10 @@
         "required": ["upload_id", "received_chunks", "total_chunks"],
         "properties": {
           "upload_id": { "type": "string" },
-          "received_chunks": { "type": "array", "items": { "type": "integer", "format": "uint32" } },
+          "received_chunks": {
+            "type": "array",
+            "items": { "type": "integer", "format": "uint32" }
+          },
           "total_chunks": { "type": "integer", "format": "uint32" }
         }
       },
@@ -290,7 +377,10 @@
         "type": "object",
         "required": ["presigned_urls"],
         "properties": {
-          "presigned_urls": { "type": "array", "items": { "$ref": "#/components/schemas/PresignedUrl" } }
+          "presigned_urls": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PresignedUrl" }
+          }
         }
       },
       "StatusResponse": {
@@ -316,7 +406,10 @@
                 "required": ["username", "registration_start"],
                 "properties": {
                   "username": { "type": "string" },
-                  "registration_start": { "type": "string", "description": "Base64 OPAQUE registration start." }
+                  "registration_start": {
+                    "type": "string",
+                    "description": "Base64 OPAQUE registration start."
+                  }
                 }
               }
             }
@@ -330,7 +423,9 @@
                 "schema": {
                   "type": "object",
                   "required": ["registration_response"],
-                  "properties": { "registration_response": { "type": "string", "description": "Base64." } }
+                  "properties": {
+                    "registration_response": { "type": "string", "description": "Base64." }
+                  }
                 }
               }
             }
@@ -353,7 +448,10 @@
                 "properties": {
                   "username": { "type": "string" },
                   "registration_finish": { "type": "string", "description": "Base64." },
-                  "server_public_key": { "type": "string", "description": "Base64 OPAQUE server public key." }
+                  "server_public_key": {
+                    "type": "string",
+                    "description": "Base64 OPAQUE server public key."
+                  }
                 }
               }
             }
@@ -362,7 +460,14 @@
         "responses": {
           "200": {
             "description": "Registration complete.",
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "success" } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "example": "success" } }
+                }
+              }
+            }
           }
         }
       }
@@ -448,8 +553,18 @@
         "operationId": "syncPull",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "cursor", "in": "query", "required": true, "schema": { "type": "integer", "format": "uint64", "minimum": 0 } },
-          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "format": "uint32", "minimum": 1, "default": 100 } }
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "format": "uint64", "minimum": 0 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "uint32", "minimum": 1, "default": 100 }
+          }
         ],
         "responses": {
           "200": {
@@ -463,7 +578,10 @@
                     "new_cursor": { "type": "integer", "format": "uint64" },
                     "has_more": { "type": "boolean" },
                     "min_enc_key_gen": { "type": "integer", "format": "uint64" },
-                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/ItemMetadata" } }
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/ItemMetadata" }
+                    }
                   }
                 }
               }
@@ -525,14 +643,21 @@
                 "schema": {
                   "type": "object",
                   "required": ["results"],
-                  "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/PayloadResult" } } }
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/PayloadResult" }
+                    }
+                  }
                 }
               }
             }
           },
           "400": {
             "description": "payload_limit_exceeded",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -568,18 +693,27 @@
                 "schema": {
                   "type": "object",
                   "required": ["results"],
-                  "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/BatchResult" } } }
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/BatchResult" }
+                    }
+                  }
                 }
               }
             }
           },
           "422": {
             "description": "key_generation_too_old (epoch gate failure).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "400": {
             "description": "payload_limit_exceeded",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -590,8 +724,19 @@
         "operationId": "itemUpdate",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "If-Match", "in": "header", "required": true, "description": "target_version as u64 string.", "schema": { "type": "string" } }
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "target_version as u64 string.",
+            "schema": { "type": "string" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -663,8 +808,19 @@
         "operationId": "itemDelete",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "If-Match", "in": "header", "required": true, "description": "target_version as u64 string.", "schema": { "type": "string" } }
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "target_version as u64 string.",
+            "schema": { "type": "string" }
+          }
         ],
         "responses": {
           "200": {
@@ -685,7 +841,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "412": {
             "description": "precondition_failed.",
@@ -720,7 +878,10 @@
                   "required": ["min_enc_key_gen", "svk_ciphertext_blob"],
                   "properties": {
                     "min_enc_key_gen": { "type": "integer", "format": "uint64" },
-                    "svk_ciphertext_blob": { "type": "string", "description": "Base64 KEK-wrapped SVK." }
+                    "svk_ciphertext_blob": {
+                      "type": "string",
+                      "description": "Base64 KEK-wrapped SVK."
+                    }
                   }
                 }
               }
@@ -743,7 +904,10 @@
                 "required": ["new_min_enc_key_gen", "new_svK_ciphertext_blob"],
                 "properties": {
                   "new_min_enc_key_gen": { "type": "integer", "format": "uint64" },
-                  "new_svK_ciphertext_blob": { "type": "string", "description": "Base64 KEK-wrapped SVK at new epoch." }
+                  "new_svK_ciphertext_blob": {
+                    "type": "string",
+                    "description": "Base64 KEK-wrapped SVK at new epoch."
+                  }
                 }
               }
             }
@@ -785,7 +949,9 @@
           },
           "429": {
             "description": "rate_limited.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -815,15 +981,21 @@
           },
           "401": {
             "description": "unauthorized (bad signature).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "404": {
             "description": "not_found (unknown account).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "429": {
             "description": "rate_limited.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -853,15 +1025,21 @@
           },
           "410": {
             "description": "Recovery token expired (single-use).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "412": {
             "description": "precondition_failed (stale epoch).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "422": {
             "description": "key_generation_too_old.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -883,11 +1061,15 @@
           },
           "404": {
             "description": "not_found (unknown email).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "429": {
             "description": "rate_limited.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -908,11 +1090,15 @@
           },
           "401": {
             "description": "unauthorized.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -923,7 +1109,12 @@
         "operationId": "usersPublicKey",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -936,7 +1127,9 @@
           },
           "404": {
             "description": "not_found (no public key registered).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -965,11 +1158,15 @@
           },
           "404": {
             "description": "not_found (unknown recipient or item).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "422": {
             "description": "precondition_failed.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -980,7 +1177,12 @@
         "operationId": "shareUploadPayload",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "share_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "share_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -990,7 +1192,10 @@
                 "type": "object",
                 "required": ["payload"],
                 "properties": {
-                  "payload": { "type": "string", "description": "Base64 SIK-encrypted shared payload." }
+                  "payload": {
+                    "type": "string",
+                    "description": "Base64 SIK-encrypted shared payload."
+                  }
                 }
               }
             }
@@ -1007,7 +1212,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1026,7 +1233,10 @@
                   "type": "object",
                   "required": ["shares"],
                   "properties": {
-                    "shares": { "type": "array", "items": { "$ref": "#/components/schemas/ShareInboxItem" } }
+                    "shares": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/ShareInboxItem" }
+                    }
                   }
                 }
               }
@@ -1041,7 +1251,12 @@
         "operationId": "shareRevoke",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "share_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "share_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -1054,7 +1269,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1083,7 +1300,9 @@
           },
           "422": {
             "description": "precondition_failed.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       },
@@ -1115,7 +1334,12 @@
         "operationId": "groupGet",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -1128,7 +1352,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       },
@@ -1137,7 +1363,12 @@
         "operationId": "groupDelete",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -1150,7 +1381,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1161,7 +1394,12 @@
         "operationId": "groupAddMember",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1182,11 +1420,15 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "422": {
             "description": "precondition_failed.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1197,7 +1439,12 @@
         "operationId": "groupAddItem",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1208,7 +1455,10 @@
                 "required": ["item_uuid", "payload"],
                 "properties": {
                   "item_uuid": { "type": "string", "format": "uuid" },
-                  "payload": { "type": "string", "description": "Base64 GroupSIK-encrypted payload." }
+                  "payload": {
+                    "type": "string",
+                    "description": "Base64 GroupSIK-encrypted payload."
+                  }
                 }
               }
             }
@@ -1225,7 +1475,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1236,7 +1488,12 @@
         "operationId": "fileUploadInitiate",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "file_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1257,11 +1514,15 @@
           },
           "412": {
             "description": "precondition_failed (manifest not in PendingUpload state).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "422": {
             "description": "precondition_failed (enc_key_gen too old).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1272,7 +1533,12 @@
         "operationId": "fileUploadStatus",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "file_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -1285,7 +1551,9 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1296,7 +1564,12 @@
         "operationId": "fileUploadComplete",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "file_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1317,11 +1590,15 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "412": {
             "description": "precondition_failed (missing chunks).",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
@@ -1332,7 +1609,12 @@
         "operationId": "fileDownload",
         "parameters": [
           { "$ref": "#/components/parameters/XRequestId" },
-          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "file_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
         ],
         "responses": {
           "200": {
@@ -1345,11 +1627,15 @@
           },
           "404": {
             "description": "not_found.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           },
           "410": {
             "description": "Upload incomplete; not yet available.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
           }
         }
       }
