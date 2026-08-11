@@ -28,11 +28,17 @@ use crate::repository::Repository;
 pub mod account;
 pub mod audit;
 pub mod auth;
+pub mod backup;
 pub mod files;
 pub mod items;
+pub mod machine_accounts;
+pub mod mfa;
+pub mod projects;
 pub mod recovery;
+pub mod secrets;
 pub mod sharing;
 pub mod sync;
+pub mod tokens;
 /// WebAuthn (FIDO2) optional second factor (VTR-052). Feature-gated, off by default.
 #[cfg(feature = "webauthn")]
 pub mod webauthn;
@@ -80,13 +86,29 @@ pub fn build_router(state: AppState) -> Router {
         .merge(sharing::routes())
         .merge(files::routes())
         .merge(recovery::routes())
-        .merge(audit::routes());
+        .merge(audit::routes())
+        // Wave 0.2 pre-registered stub routers (Wave A fills these in).
+        .merge(projects::routes())
+        .merge(machine_accounts::routes())
+        .merge(tokens::routes())
+        .merge(secrets::routes())
+        .merge(mfa::routes())
+        .merge(backup::routes())
+        // Liveness/readiness probe (minimal; A6 owns the full health endpoint).
+        .route("/health", get(health))
+        .route("/health/ready", get(health));
     // WebAuthn (FIDO2) optional second factor (VTR-052), feature-gated.
     #[cfg(feature = "webauthn")]
     {
         router = router.merge(webauthn::routes());
     }
     router.with_state(state)
+}
+
+/// Minimal liveness/readiness probe (A6 owns the full dependency-aware health
+/// endpoint in Wave A). Returns 200 OK whenever the process is serving.
+pub async fn health() -> Response {
+    (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response()
 }
 
 // ---------------------------------------------------------------------------
