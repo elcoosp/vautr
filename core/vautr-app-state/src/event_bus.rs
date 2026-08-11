@@ -7,6 +7,7 @@
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use vautr_domain::{DecryptedOverview, DomainModel};
+use vautr_import::ImportReport;
 
 /// Reactive event pushed from Core to UI. data.md §6.3 (full surface).
 #[derive(Clone, Debug)]
@@ -31,6 +32,29 @@ pub enum VaultStateUpdate {
         error: String,
         original_state: RevertibleState,
     },
+    // --- Wave C: import / files / sharing / recovery / offline (VTR-027/051/026/043) ---
+    /// Bulk import finished. Carries the strongly-typed [`ImportReport`]
+    /// (data-import-seeding.md §5.1). Emitted once per import, after seeding.
+    ImportCompleted(ImportReport),
+    /// Throttled file transfer progress (file-storage.md §5.2), max 4/s.
+    FileTransferProgress {
+        file_uuid: Uuid,
+        bytes_transferred: u64,
+        total_bytes: u64,
+    },
+    /// A share was posted to the relay (share_id).
+    ShareSent(Uuid),
+    /// An incoming share was accepted/decrypted (share_id).
+    ShareReceived(Uuid),
+    /// A share was revoked (share_id).
+    ShareRevoked(Uuid),
+    /// The vault was unlocked via the Recovery Key (RK) and now requires a
+    /// forced MP + RK rotation (emergency-recovery-account.md §2.3).
+    RecoveryModeEntered,
+    /// The forced post-recovery rotation completed; vault is healthy again.
+    RecoveryCompleted,
+    /// An offline mutation was queued for later push (queued receipt).
+    OfflineMutationQueued(u64),
 }
 
 /// Payload for 412 Resolution UI (data.md §7.2).

@@ -20,14 +20,28 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use vautr_crypto::{aead, key_tree};
-use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel};
+use vautr_crypto::sharing::{SharingKeyPair, SharingPublicKey};
+use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 use vautr_sync::dashmap::{DashMapEntryState, LocalBlacklist};
 use vautr_sync::engine::{Engine, PulledOverview, Transport};
 use vautr_db::entity::{item_overview, item_payload};
+use vautr_import::{ImportReport, RawImportItem, VaultKeys};
+use vautr_sharing::{
+    accept_share as kem_accept, add_group_member as kem_add_member,
+    create_group as kem_create_group, remove_group_member as kem_remove_member,
+    rotate_group_sik as kem_rotate_group, share_item as kem_share,
+    share_to_group as kem_share_group, IncomingShare, ShareBundle, ShareGroupKey,
+    WrappedGroupKey,
+};
+
+use base64::Engine as _;
 
 use crate::epoch::EpochState;
 use crate::event_bus::{EventBus, VaultStateUpdate};
+use crate::file_transfer::{FileTransferWorker, FileTransportHandle};
 use crate::handles::{CoreAction, PlatformAdapter, SecretStore};
+use crate::offline::{OfflineQueue, QueuedMutation};
+use crate::sharing::{ShareGroupStore, ShareTransportHandle};
 use crate::worker::{DeleteCommand, PersistenceWorker, SaveCommand, TaskOutcome};
 
 /// Type alias to avoid `>>>>` in a struct field (edition parse limit).
@@ -64,6 +78,21 @@ pub struct VautrClient {
     transport: Arc<tokio::sync::RwLock<Option<TransportHandle>>>,
     /// Server user id (for AD-bound crypto + RK recovery).
     server_user_id: Arc<tokio::sync::RwLock<Option<Uuid>>>,
+    // --- Wave C: sharing / files / recovery / offline (VTR-026/051/043/047) ---
+    /// Sharing PKI relay. Set via `connect_sharing`.
+    share_transport: Arc<tokio::sync::RwLock<Option<ShareTransportHandle>>>,
+    /// This client's sharing keypair (generated at vault creation, VTR-057).
+    sharing_keypair: Arc<tokio::sync::RwLock<Option<SharingKeyPair>>>,
+    /// Admin-held group keys for this session (sharing-pki.md §6).
+    groups: ShareGroupStore,
+    /// File blob-store relay. Set via `connect_files`.
+    file_transport: Arc<tokio::sync::RwLock<Option<FileTransportHandle>>>,
+    /// Set when the vault was unlocked via the RK; forces MP+RK rotation.
+    recovery_pending: Arc<AtomicBool>,
+    /// Derived RK auth credential held while a recovery is pending (§2.3).
+    recovery_creds: Arc<tokio::sync::Mutex<Option<crate::recovery::RecoveryCredentials>>>,
+    /// Offline mutation queue (VTR-047).
+    offline: OfflineQueue,
 }
 
 impl VautrClient {
@@ -89,6 +118,13 @@ impl VautrClient {
             platform: Arc::new(tokio::sync::RwLock::new(None)),
             transport: Arc::new(tokio::sync::RwLock::new(None)),
             server_user_id: Arc::new(tokio::sync::RwLock::new(None)),
+            share_transport: Arc::new(tokio::sync::RwLock::new(None)),
+            sharing_keypair: Arc::new(tokio::sync::RwLock::new(None)),
+            groups: ShareGroupStore::new(),
+            file_transport: Arc::new(tokio::sync::RwLock::new(None)),
+            recovery_pending: Arc::new(AtomicBool::new(false)),
+            recovery_creds: Arc::new(tokio::sync::Mutex::new(None)),
+            offline: OfflineQueue::new(),
         }
     }
 
@@ -110,6 +146,11 @@ impl VautrClient {
     /// used by tests and alternative sync backends).
     pub async fn connect_sync_with_transport(&self, transport: Arc<dyn Transport>, user_id: Uuid) {
         *self.transport.write().await = Some(transport);
+        *self.server_user_id.write().await = Some(user_id);
+    }
+
+    /// Set the server user id used for AD-bound crypto and RK recovery.
+    pub async fn set_server_user_id(&self, user_id: Uuid) {
         *self.server_user_id.write().await = Some(user_id);
     }
 
@@ -595,6 +636,565 @@ impl VautrClient {
         };
         self.blacklist.insert(uuid, ignored_version, state);
         self.blacklist_dirty.store(true, Ordering::SeqCst);
+    }
+
+    // === Wave C: transport wiring -----------------------------------------
+
+    /// Install the sharing PKI relay (HTTP by default, in-memory in tests).
+    pub async fn connect_sharing(&self, transport: ShareTransportHandle) {
+        *self.share_transport.write().await = Some(transport);
+    }
+
+    /// Install the file blob-store relay for the `FileTransferWorker`.
+    pub async fn connect_files(&self, transport: FileTransportHandle) {
+        *self.file_transport.write().await = Some(transport);
+    }
+
+    /// True while the vault was unlocked via the RK and a forced MP+RK rotation
+    /// is still pending (emergency-recovery-account.md §2.3).
+    pub fn recovery_pending(&self) -> bool {
+        self.recovery_pending.load(Ordering::SeqCst)
+    }
+
+    // === Vault creation (VTR-057) -----------------------------------------
+
+    /// Create a fresh vault: generate the SVK, the sharing keypair (VTR-057)
+    /// and a new 24-word Recovery Key. Unlocks the client in-place and returns
+    /// the material the caller must persist (wrapped SVK, RK mnemonic).
+    pub async fn create_vault(
+        &self,
+    ) -> Result<(Zeroizing<[u8; 32]>, SharingKeyPair, String), String> {
+        let (svk, _oek, dek) = vautr_keyring::svk::new_vault_keys();
+        let kp = crate::sharing::generate_vault_sharing_keypair();
+        let rk = crate::recovery::generate_recovery_key();
+        *self.svk.lock().await = Some(svk.clone());
+        *self.dek.lock().await = Some(dek);
+        *self.sharing_keypair.write().await = Some(kp.clone());
+        self.locked.store(false, Ordering::SeqCst);
+        Ok((svk, kp, rk))
+    }
+
+    /// Install a sharing keypair (used by tests / device restore).
+    pub async fn set_sharing_keypair(&self, kp: SharingKeyPair) {
+        *self.sharing_keypair.write().await = Some(kp);
+    }
+
+    /// This client's sharing public key (VTR-057), if a keypair is installed.
+    pub async fn sharing_public_key(&self) -> Option<SharingPublicKey> {
+        self.sharing_keypair.read().await.as_ref().map(|k| k.public)
+    }
+
+    // === Import → seed (VTR-027/045, data-import-seeding.md) ---------------
+
+    /// Import a competitor export file (SVK → OEK/DEK), ingest into the local
+    /// DB via the bulk fast-path, seed the server, and emit a single
+    /// `ImportCompleted(report)` event.
+    pub async fn import_file(&self, path: &str, progress: impl Fn(u8)) -> Result<ImportReport, String> {
+        let svk = self.require_svk().await?;
+        let keys = VaultKeys::from_svk(&svk).map_err(|e| e.to_string())?;
+        let report = vautr_import::import_file(path, &self.db, &keys, progress)
+            .await
+            .map_err(|e| e.to_string())?;
+        self.seed().await?;
+        self.bus.publish(VaultStateUpdate::ImportCompleted(report.clone()));
+        Ok(report)
+    }
+
+    /// Import already-parsed raw items (no disk), ingest + seed, emit
+    /// `ImportCompleted(report)`.
+    pub async fn import_items(
+        &self,
+        items: Vec<RawImportItem>,
+        progress: impl Fn(u8),
+    ) -> Result<ImportReport, String> {
+        let svk = self.require_svk().await?;
+        let keys = VaultKeys::from_svk(&svk).map_err(|e| e.to_string())?;
+        let report = vautr_import::import_items(items, &self.db, &keys, progress)
+            .await
+            .map_err(|e| e.to_string())?;
+        self.seed().await?;
+        self.bus.publish(VaultStateUpdate::ImportCompleted(report.clone()));
+        Ok(report)
+    }
+
+    /// Seed the server with all locally-persisted items via `push_batch`
+    /// (data-import-seeding.md §4). Reads the local vault and pushes every item
+    /// whose payload is present, in batches of 100.
+    pub async fn seed(&self) -> Result<(), String> {
+        self.push_local_changes().await
+    }
+
+    /// Push every locally-persisted item to the server (save→sync→push path).
+    /// Used by import seeding, offline flush, and the Phase 4 save→sync→pull
+    /// flow (Client A pushes, Client B pulls).
+    pub async fn push_local_changes(&self) -> Result<(), String> {
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
+        let transport = self
+            .transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sync not connected".to_string())?;
+        let rows = self.list_local_items().await?;
+        for chunk in rows.chunks(100) {
+            let items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)> = chunk
+                .iter()
+                .map(|(u, v, g, p)| (*u, *v as u64, *g, Some(p.clone())))
+                .collect();
+            let _outcomes = transport
+                .push_batch(items)
+                .await
+                .map_err(|e| format!("push batch: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Read `(uuid, version, enc_key_gen, payload)` for every local item.
+    async fn list_local_items(&self) -> Result<Vec<(Uuid, i64, u64, Vec<u8>)>, String> {
+        use sea_orm::FromQueryResult;
+        #[derive(FromQueryResult)]
+        struct Row {
+            uuid: String,
+            version: i64,
+            enc_key_gen: i64,
+            payload: Vec<u8>,
+        }
+        let sql = "SELECT o.uuid, o.version, o.enc_key_gen, p.payload \
+                   FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid";
+        let stmt = sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            sql,
+            [],
+        );
+        let rows = Row::find_by_statement(stmt)
+            .all(&self.db)
+            .await
+            .map_err(|e| format!("list local items: {e}"))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                Uuid::parse_str(&r.uuid)
+                    .ok()
+                    .map(|u| (u, r.version, r.enc_key_gen as u64, r.payload))
+            })
+            .collect())
+    }
+
+    // === Sharing (VTR-026/041, sharing-pki.md §3-6) ------------------------
+
+    /// Share `item_uuid`'s plaintext with a recipient (1:1, §3). Looks up the
+    /// recipient's public key, KEM-wraps a fresh SIK, DEM-encrypts the payload,
+    /// relays both through the share transport, and emits `ShareSent`.
+    pub async fn share_item(
+        &self,
+        recipient_uuid: Uuid,
+        item_uuid: Uuid,
+        plaintext: &[u8],
+    ) -> Result<ShareBundle, String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        let sender = self
+            .server_user_id
+            .read()
+            .await
+            .ok_or_else(|| "no server user id".to_string())?;
+        let pk = share_t.fetch_public_key(recipient_uuid).await?;
+        let bundle =
+            kem_share(sender, recipient_uuid, item_uuid, &pk, plaintext).map_err(|e| e.to_string())?;
+        share_t.post_share(&bundle).await?;
+        // Deliver the DEM ciphertext separately (§5).
+        let payload = base64::engine::general_purpose::STANDARD
+            .decode(&bundle.encrypted_payload)
+            .map_err(|e| format!("decode payload: {e}"))?;
+        share_t.post_share_payload(bundle.share_id, payload).await?;
+        self.bus.publish(VaultStateUpdate::ShareSent(bundle.share_id));
+        Ok(bundle)
+    }
+
+    /// Fetch this client's inbox of pending shares.
+    pub async fn fetch_shares(&self) -> Result<Vec<IncomingShare>, String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        share_t.fetch_inbox().await
+    }
+
+    /// Accept an incoming share: decapsulate the SIK with our sharing keypair,
+    /// decrypt the DEM payload, and emit `ShareReceived`. Returns the plaintext.
+    pub async fn accept_share(&self, incoming: &IncomingShare) -> Result<Vec<u8>, String> {
+        let kp = self
+            .sharing_keypair
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "no sharing keypair installed".to_string())?;
+        let pt = kem_accept(&kp, incoming).map_err(|e| e.to_string())?;
+        self.bus.publish(VaultStateUpdate::ShareReceived(incoming.share_id));
+        Ok(pt)
+    }
+
+    /// Revoke a share and its payload (1:1, §5).
+    pub async fn revoke_share(&self, share_id: Uuid) -> Result<(), String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        share_t.revoke_share(share_id).await?;
+        self.bus.publish(VaultStateUpdate::ShareRevoked(share_id));
+        Ok(())
+    }
+
+    /// Create a sharing group with a fresh unified Group SIK (§6.1).
+    pub async fn create_group(&self, name: String) -> Result<Arc<ShareGroupKey>, String> {
+        let admin = self
+            .server_user_id
+            .read()
+            .await
+            .ok_or_else(|| "no server user id".to_string())?;
+        let key = kem_create_group(name, admin).map_err(|e| e.to_string())?;
+        let id = key.group.group_id;
+        self.groups.put(key);
+        self.groups
+            .get(&id)
+            .ok_or_else(|| "group store insert failed".to_string())
+    }
+
+    /// Add a member: wrap the Group SIK for their public key and relay it (§6.2).
+    pub async fn add_group_member(
+        &self,
+        group_id: Uuid,
+        member_uuid: Uuid,
+    ) -> Result<WrappedGroupKey, String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let pk = share_t.fetch_public_key(member_uuid).await?;
+        let wrapped =
+            kem_add_member(key.as_ref(), member_uuid, &pk).map_err(|e| e.to_string())?;
+        share_t.store_group_wrapped_key(&wrapped).await?;
+        Ok(wrapped)
+    }
+
+    /// Remove a member: rotate the Group SIK, re-wrap for remaining members
+    /// (forward secrecy, §6.3), and relay.
+    pub async fn remove_group_member(
+        &self,
+        group_id: Uuid,
+        member_uuid: Uuid,
+    ) -> Result<(), String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let admin_uuid = key.group.admin_uuid;
+        let pk = share_t.fetch_public_key(admin_uuid).await?;
+        let rotation =
+            kem_remove_member(key.as_ref(), member_uuid, &[(admin_uuid, pk)])
+                .map_err(|e| e.to_string())?;
+        share_t.replace_group_wrapped_keys(rotation.rewrapped).await?;
+        self.groups.replace(rotation.new_key);
+        Ok(())
+    }
+
+    /// Rotate a group's SIK and re-wrap for remaining members (§6.3).
+    pub async fn rotate_group_sik(&self, group_id: Uuid) -> Result<(), String> {
+        let share_t = self
+            .share_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sharing not connected".to_string())?;
+        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let admin_uuid = key.group.admin_uuid;
+        let pk = share_t.fetch_public_key(admin_uuid).await?;
+        let rotation =
+            kem_rotate_group(&key.group, &[(admin_uuid, pk)]).map_err(|e| e.to_string())?;
+        share_t.replace_group_wrapped_keys(rotation.rewrapped).await?;
+        self.groups.replace(rotation.new_key);
+        Ok(())
+    }
+
+    /// Encrypt a payload under a group's SIK for every member (§6).
+    pub async fn share_to_group(
+        &self,
+        group_id: Uuid,
+        item_uuid: Uuid,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        kem_share_group(key.as_ref(), &item_uuid, plaintext).map_err(|e| e.to_string())
+    }
+
+    // === Files (VTR-051, file-storage.md §4-5) -----------------------------
+
+    /// Build a `FileTransferWorker` over the installed file transport.
+    async fn file_worker(&self) -> Result<FileTransferWorker, String> {
+        let t = self
+            .file_transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "file transport not connected".to_string())?;
+        Ok(FileTransferWorker::new(t, self.bus.clone()))
+    }
+
+    /// Upload a binary attachment through the multipart protocol. Returns the
+    /// finalized (Available) manifest. Progress events are throttled to 4/s.
+    pub async fn upload_file(
+        &self,
+        plaintext: &[u8],
+        content_type: &str,
+        last_modified: i64,
+    ) -> Result<vautr_files::manifest::FileManifest, String> {
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
+        let svk = self.require_svk().await?;
+        let worker = self.file_worker().await?;
+        worker.upload_bytes(&svk, plaintext, content_type, last_modified).await
+    }
+
+    /// Download + decrypt an attachment by manifest.
+    pub async fn download_file(
+        &self,
+        manifest: &vautr_files::manifest::FileManifest,
+    ) -> Result<Vec<u8>, String> {
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
+        let svk = self.require_svk().await?;
+        let worker = self.file_worker().await?;
+        worker.download(&svk, manifest).await
+    }
+
+    // === Recovery (VTR-043, emergency-recovery-account.md §2-4) ------------
+
+    /// Generate a fresh 24-word Recovery Key (Emergency Kit mnemonic).
+    pub fn generate_recovery_key(&self) -> String {
+        crate::recovery::generate_recovery_key()
+    }
+
+    /// Onboarding proof-of-possession gate (§3.2): verify the user retyped the
+    /// correct words at positions 4, 12 and 20.
+    pub fn verify_recovery_key_possession(&self, mnemonic: &str, supplied: &[&str]) -> bool {
+        crate::recovery::verify_recovery_key_possession(mnemonic, supplied)
+    }
+
+    /// Render the Emergency Kit PDF (BR-7: readable words, no QR code).
+    pub fn render_emergency_kit_pdf(&self, email: &str, mnemonic: &str) -> Result<Vec<u8>, String> {
+        vautr_files::pdf::render_emergency_kit_pdf(email, mnemonic).map_err(|e| e.to_string())
+    }
+
+    /// Unlock a vault via the RK (§2.3): derive KEK_RK, unwrap the SVK, derive
+    /// the Ed25519 recovery-auth credential, and enter the forced-rotation gate.
+    pub async fn recover_with_key(
+        &self,
+        mnemonic: &str,
+        wrapped_svk_rk: &[u8],
+        server_user_id: Uuid,
+    ) -> Result<(), String> {
+        let creds = crate::recovery::derive_recovery_credentials(mnemonic)
+            .ok_or_else(|| "invalid recovery key".to_string())?;
+        let svk = vautr_keyring::recover::recover_svk(mnemonic, wrapped_svk_rk, &server_user_id)
+            .ok_or_else(|| "recovery unwrap failed (bad recovery key?)".to_string())?;
+        let dek = key_tree::derive_dek(&svk).map_err(|e| format!("dek: {e}"))?;
+        *self.svk.lock().await = Some(svk);
+        *self.dek.lock().await = Some(dek);
+        *self.server_user_id.write().await = Some(server_user_id);
+        self.locked.store(false, Ordering::SeqCst);
+        *self.recovery_creds.lock().await = Some(creds);
+        self.recovery_pending.store(true, Ordering::SeqCst);
+        self.bus.publish(VaultStateUpdate::RecoveryModeEntered);
+        Ok(())
+    }
+
+    /// Sign the server recovery challenge nonce with the RK Ed25519 key
+    /// (proof of possession, §2.3 step 2). Requires a pending recovery.
+    pub async fn recovery_sign_challenge(&self, nonce: &[u8]) -> Result<String, String> {
+        let creds = self
+            .recovery_creds
+            .lock()
+            .await
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| "no pending recovery".to_string())?;
+        Ok(crate::recovery::sign_nonce(&creds, nonce))
+    }
+
+    /// Complete the forced post-recovery rotation (§2.3 step 4-7): derive a new
+    /// KEK_MP, re-wrap the SVK for the new MP, generate a new RK, re-wrap the
+    /// SVK for the new RK, and clear the gate. The new MP-wrapped blob is
+    /// persisted locally; the server round-trip is driven by the caller through
+    /// the recovery endpoints using `recovery_sign_challenge`.
+    pub async fn complete_recovery(
+        &self,
+        new_mp: Zeroizing<String>,
+        kdf_salt: &[u8; 32],
+    ) -> Result<String, String> {
+        if !self.recovery_pending() {
+            return Err("no pending recovery".into());
+        }
+        let svk = self.require_svk().await?;
+        let user_id = self
+            .server_user_id
+            .read()
+            .await
+            .ok_or_else(|| "no server user id".to_string())?;
+
+        // New KEK_MP from the fresh Master Password; re-wrap the SVK.
+        let mk = vautr_crypto::kdf::derive_master_key(&new_mp, kdf_salt)
+            .map_err(|e| format!("mk derive: {e}"))?;
+        let kek_mp = key_tree::derive_kek(&mk).map_err(|e| format!("kek: {e}"))?;
+        let wrapped_mp = vautr_keyring::wrap::wrap_svk(&kek_mp, &svk);
+
+        // New RK: re-wrap the SVK under the new KEK_RK and derive the new
+        // Ed25519 recovery-auth keypair.
+        let new_rk = crate::recovery::generate_recovery_key();
+        let mnemonic = vautr_crypto::recovery::decode_recovery_mnemonic(&new_rk)
+            .map_err(|e| format!("decode rk: {e}"))?;
+        let kek_rk = vautr_crypto::recovery::derive_kek_rk(&mnemonic)
+            .map_err(|e| format!("kek_rk: {e}"))?;
+        let _wrapped_rk =
+            vautr_crypto::recovery::wrap_svk_with_rk(&svk, &kek_rk, &user_id)
+                .map_err(|e| format!("wrap rk: {e}"))?;
+        let creds = crate::recovery::derive_recovery_credentials(&new_rk)
+            .ok_or_else(|| "derive creds".to_string())?;
+
+        // Persist the new MP-wrapped SVK locally and clear the gate.
+        vautr_db::txn::store_svk_blob(&self.db, &wrapped_mp)
+            .await
+            .map_err(|e| format!("store svk: {e}"))?;
+        *self.recovery_creds.lock().await = Some(creds);
+        self.recovery_pending.store(false, Ordering::SeqCst);
+        self.bus.publish(VaultStateUpdate::RecoveryCompleted);
+        Ok(new_rk)
+    }
+
+    // === Export (VTR-058) --------------------------------------------------
+
+    /// Export the whole vault as encrypted-safe JSON mirroring the import path:
+    /// every item's plaintext secret is decrypted in memory and serialized as a
+    /// `DomainModel` list. The caller is responsible for writing/zeroizing.
+    pub async fn export_to_json(&self) -> Result<Vec<u8>, String> {
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
+        let dek = self.dek.lock().await.clone().ok_or_else(|| "vault locked".to_string())?;
+        let rows = vautr_db::query::list_enc_key_gens(&self.db).await?;
+        let mut items = Vec::with_capacity(rows.len());
+        for (uuid, gen, payload) in rows {
+            let pt = aead::decrypt(&dek, &uuid, gen as u64, &payload)
+                .map_err(|_| format!("export decrypt {uuid}"))?;
+            let secret: DecryptedSecret =
+                serde_json::from_slice(&pt).map_err(|e| format!("export parse: {e}"))?;
+            let overview = self.get_overview(uuid).await?;
+            let metadata = ItemMetadata {
+                created_at: 0,
+                updated_at: overview.updated_at,
+                trashed: false,
+            };
+            items.push(DomainModel {
+                uuid,
+                enc_key_gen: gen as u64,
+                overview,
+                secret,
+                metadata,
+            });
+        }
+        serde_json::to_vec(&items).map_err(|e| format!("export serialize: {e}"))
+    }
+
+    /// Write the encrypted-safe JSON export to `path`.
+    pub async fn export_file(&self, path: &str) -> Result<(), String> {
+        let bytes = self.export_to_json().await?;
+        std::fs::write(path, bytes).map_err(|e| format!("write export: {e}"))
+    }
+
+    // === Offline sync (VTR-047) -------------------------------------------
+
+    /// Number of offline-queued mutations awaiting push.
+    pub fn offline_queue_len(&self) -> usize {
+        self.offline.len()
+    }
+
+    /// Queue a save for later push when offline. Returns the queue length.
+    pub async fn offline_save(&self, item: DomainModel, payload: Vec<u8>) -> u64 {
+        let n = self.offline.push(QueuedMutation::Save { item, payload });
+        self.bus.publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
+        n as u64
+    }
+
+    /// Queue a delete for later push when offline. Returns the queue length.
+    pub async fn offline_delete(&self, uuid: Uuid) -> u64 {
+        let n = self.offline.push(QueuedMutation::Delete { uuid });
+        self.bus.publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
+        n as u64
+    }
+
+    /// Re-apply queued offline mutations locally, then push them to the server.
+    pub async fn flush_offline_queue(&self) -> Result<usize, String> {
+        let mutations = self.offline.drain();
+        let count = mutations.len();
+        for m in mutations {
+            match m {
+                QueuedMutation::Save { item, payload } => {
+                    let _ = self.save_item(item, payload).await;
+                }
+                QueuedMutation::Delete { uuid } => {
+                    let _ = self.delete_item(uuid).await;
+                }
+            }
+        }
+        if count > 0 {
+            self.push_local_changes().await?;
+        }
+        Ok(count)
+    }
+
+    // === Safety Reaper hooks -----------------------------------------------
+
+    /// Quarantine an item on a toxic conflict (Reaper + DashMap integration,
+    /// core.md §3). Marks it ignored so the sync layer never re-downloads its
+    /// payload; the persisted DashMap is flushed at the next sync boundary.
+    pub fn reaper_quarantine(&self, uuid: Uuid, server_version: u64, toxic: bool) {
+        self.mark_ignored(uuid, server_version as i64, toxic);
+        self.bus.publish(VaultStateUpdate::NewerVersionAvailable { uuid });
+    }
+
+    /// Persist the DashMap now (crash safety) rather than waiting for the next
+    /// sync boundary. Public hook for flows that mutate the blacklist outside a
+    /// sync (e.g. import/sharing reaper integration).
+    pub async fn persist_blacklist_now(&self) -> Result<(), String> {
+        self.persist_blacklist_if_dirty().await
+    }
+
+    // --- Internal helpers --------------------------------------------------
+
+    /// Active SVK (error when locked).
+    async fn require_svk(&self) -> Result<Zeroizing<[u8; 32]>, String> {
+        self.svk
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| "vault locked".to_string())
     }
 }
 
