@@ -22,6 +22,7 @@ pub mod audit;
 pub mod config;
 pub mod files;
 pub mod items;
+pub mod mfa;
 pub mod recovery;
 pub mod sessions;
 pub mod sharing;

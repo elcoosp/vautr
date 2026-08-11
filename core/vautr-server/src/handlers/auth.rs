@@ -151,6 +151,12 @@ pub(crate) async fn login_finish(
     let sfin = opaque::server_login_finish(&sstate, &lupload)
         .map_err(|e| ApiError::internal(&e.to_string()))?;
 
+    // Mandatory-MFA enforcement (Wave A4): when the org policy makes MFA
+    // required, a user with no configured method cannot complete login. This
+    // keeps the OPAQUE handshake intact and only adds a business gate before a
+    // session token is minted.
+    super::mfa::enforce_mfa_required(&st, &user.id).await?;
+
     let token = b64(&sfin);
     let expires_at = now_ms() + 86_400_000; // 24h
     st.repo
