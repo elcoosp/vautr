@@ -2,6 +2,11 @@
 
 This document defines the exact sequence of engineering execution for the Vautr ecosystem. This roadmap is explicitly architected for **maximum parallelism**, designed to be executed by multiple autonomous AI coding agents and human engineering pods simultaneously. 
 
+> **MLP v1 target:** The product scope to ship is defined in
+> [`mlp-scope.md`](./mlp-scope.md) (authoritative English scope), with its
+> conflict-free parallel execution plan in [`mlp-wave-plan.md`](./mlp-wave-plan.md).
+> The phases below are the delivery vehicle for that MLP v1 scope.
+
 A distributed, zero-Knowledge system cannot be built horizontally; it must be built vertically, proving the hardest constraints first. However, vertical slicing often creates merge conflicts and dependency bottlenecks. This specification solves that by enforcing a **Contract-Driven, Skeleton-First** methodology. Interfaces are locked before implementations begin, allowing agents to work in isolated swimlanes with zero blocking.
 
 The previous version of this document underspecified the massive scope defined in our 18 architectural specifications. This version maps every specification—Agile Crypto, RustFS, SQLite, Recovery PKI, Sharing KEM, File Import—into precise, gated phases.
