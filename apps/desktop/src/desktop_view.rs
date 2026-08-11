@@ -27,6 +27,7 @@ use crate::state::{self, VaultConfig, VaultManagerState};
 use crate::theme;
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, kdf, key_tree};
+use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 
 /// Which post-login section is active.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,6 +69,8 @@ pub struct DesktopView {
     // ── Revealed secret (vault items) ───────────────────────────────────
     revealed: Option<Zeroizing<String>>,
     active_handle: Option<vautr_app_state::orchestrator::SecretHandle>,
+    /// Whether the inline "Add item" form is shown in the Vault section.
+    vault_adding: bool,
 
     // ── Projects / Secrets state ────────────────────────────────────────
     /// The bearer session token from OPAQUE login, used for the Projects/Secrets API.
@@ -164,6 +167,7 @@ impl DesktopView {
             dek: None,
             revealed: None,
             active_handle: None,
+            vault_adding: false,
             token: None,
             projects: ProjectsState::new(),
             section: Section::Vault,
@@ -520,6 +524,110 @@ impl DesktopView {
                         this.vault.show_error(format!("Sync failed: {e}"));
                         cx.notify();
                     }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Create a new vault item from the inline Add form: build a
+    /// [`DomainModel`], encrypt the secret payload client-side with the DEK
+    /// (zero-knowledge — the server never sees plaintext), then `save_item`.
+    fn do_add_vault_item(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+        let Some(dek) = self.dek.clone() else {
+            self.vault.show_error("vault is locked; cannot encrypt item");
+            cx.notify();
+            return;
+        };
+        let title = self.secret_key_input.read(cx).value().to_string();
+        let value = self.secret_value_input.read(cx).value().to_string();
+        if title.trim().is_empty() {
+            self.vault.show_error("Item title is required.");
+            cx.notify();
+            return;
+        }
+
+        // Clear the form fields now (the async path has no `Window` to do so).
+        self.secret_key_input.update(cx, |s, cx| {
+            s.set_value("", window, cx);
+        });
+        self.secret_value_input.update(cx, |s, cx| {
+            s.set_value("", window, cx);
+        });
+
+        let uuid = Uuid::new_v4();
+        let item = DomainModel {
+            uuid,
+            enc_key_gen: 1,
+            overview: DecryptedOverview {
+                uuid,
+                title: title.trim().to_string(),
+                subtitle: "secret".to_string(),
+                icon_key: "key".to_string(),
+                urls: Vec::new(),
+                updated_at: 0,
+            },
+            secret: DecryptedSecret {
+                password: Zeroizing::new(value.clone()),
+                totp: None,
+                notes: Zeroizing::new(String::new()),
+                fields: Vec::new(),
+            },
+            metadata: ItemMetadata {
+                created_at: 0,
+                updated_at: 0,
+                trashed: false,
+            },
+        };
+        let plaintext = match serde_json::to_vec(&item.secret) {
+            Ok(pt) => pt,
+            Err(e) => {
+                self.vault.show_error(format!("Encode failed: {e}"));
+                cx.notify();
+                return;
+            }
+        };
+        let envelope = match aead::encrypt(&dek, &uuid, 1, &plaintext) {
+            Ok(e) => e,
+            Err(e) => {
+                self.vault.show_error(format!("Encryption failed: {e}"));
+                cx.notify();
+                return;
+            }
+        };
+
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let outcome = client.save_item(item, envelope).await;
+            this.update(cx, |this, cx| match outcome {
+                vautr_app_state::worker::TaskOutcome::Committed(_) => {
+                    this.vault.dismiss_error();
+                    this.vault_adding = false;
+                    cx.notify();
+                    let c = this.client.clone();
+                    cx.spawn(async move |this, cx| {
+                        let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+                        if let Some(c) = c {
+                            if let Ok(items) = c.search("").await {
+                                this.update(cx, |this, cx| {
+                                    this.vault.set_items(items);
+                                    cx.notify();
+                                })
+                                .ok();
+                            }
+                        }
+                    })
+                    .detach();
+                }
+                _ => {
+                    this.vault.show_error("Add item failed");
+                    cx.notify();
                 }
             })
             .ok();
@@ -1350,10 +1458,10 @@ impl DesktopView {
                     .border_1()
                     .border_color(theme::BORDER)
                     .bg(theme::SURFACE)
-                    .p_8()
+                    .p_6()
                     .flex()
                     .flex_col()
-                    .gap_4()
+                    .gap_3()
                     .child(
                         div()
                             .text_2xl()
@@ -1482,7 +1590,7 @@ impl DesktopView {
             .flex_1()
             .rounded_md()
             .px_3()
-            .py_1_5()
+            .h_8()
             .text_sm()
             .font_weight(FontWeight::MEDIUM)
             .items_center()
@@ -1640,6 +1748,70 @@ impl DesktopView {
         }
     }
 
+    // ── Web-style page primitives ───────────────────────────────────────
+    // The web app lays every authed page out as `p-6 space-y-6`: a heading
+    // (title + muted subtitle) followed by bordered rounded cards. These
+    // helpers reproduce that structure so the desktop reads as the web.
+
+    /// Padded, vertically-scrolling page column (`p-6 space-y-6`).
+    fn page(&self) -> Stateful<Div> {
+        v_flex()
+            .id("section-page")
+            .size_full()
+            .overflow_y_scroll()
+            .p_6()
+            .gap_6()
+    }
+
+    /// Web-style page heading: `text-2xl` title + `text-sm` muted subtitle.
+    fn page_header(&self, title: &str, subtitle: &str) -> Div {
+        v_flex()
+            .gap_1()
+            .child(
+                div()
+                    .text_2xl()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(theme::TEXT)
+                    .child(title.to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(theme::TEXT_MUTED)
+                    .child(subtitle.to_string()),
+            )
+    }
+
+    /// Web-style card: bordered, rounded, surface background, with a title +
+    /// description header block. Callers append card body children.
+    fn card(&self, title: &str, description: &str) -> Div {
+        v_flex()
+            .w_full()
+            .border_1()
+            .border_color(theme::BORDER)
+            .rounded_lg()
+            .bg(theme::SURFACE)
+            .p_5()
+            .gap_4()
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_base()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme::TEXT)
+                            .child(title.to_string()),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(description.to_string()),
+                    ),
+            )
+    }
+
     // ── Vault section ────────────────────────────────────────────────────
 
     fn render_vault_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1674,92 +1846,148 @@ impl DesktopView {
             rows.push(row);
         }
 
-        let revealed_text = self
-            .revealed
-            .as_deref()
-            .map(|s| {
-                div()
-                    .px_3()
-                    .py_2()
-                    .mt_2()
-                    .bg(theme::SURFACE)
-                    .rounded_md()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_xs().text_color(theme::TEXT_MUTED).child("Secret"))
-                    .child(div().text_sm().child(s.to_string()))
-            })
-            .unwrap_or_else(|| div());
-
         let error = self.vault.error_message.clone().unwrap_or_default();
         let has_error = !error.is_empty();
 
-        v_flex()
-            .size_full()
+        let mut page = self
+            .page()
+            .child(self.page_header(
+                "Vault",
+                "Your encrypted secrets, unlocked locally.",
+            ))
             .child(
-                h_flex()
-                    .gap_2()
-                    .px_6()
-                    .py_2()
+                self.card("Items", "Select an item to view or reveal its secret.")
                     .child(
-                        Button::new("add-btn")
-                            .primary()
-                            .label("+ Add")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                this.vault.show_error("Add item dialog not yet implemented");
-                                cx.notify();
-                            })),
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("add-btn")
+                                    .primary()
+                                    .label("Add item")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.vault_adding = !this.vault_adding;
+                                            this.vault.dismiss_error();
+                                            cx.notify();
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("sync-btn")
+                                    .label("Sync")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_sync(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("reveal-btn")
+                                    .label("Reveal")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_reveal(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("delete-btn")
+                                    .danger()
+                                    .label("Delete")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_delete(window, cx);
+                                        },
+                                    )),
+                            ),
                     )
-                    .child(
-                        Button::new("sync-btn")
-                            .label("Sync")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_sync(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("reveal-btn")
-                            .label("Reveal")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_reveal(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("delete-btn")
-                            .danger()
-                            .label("Delete")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_delete(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                div()
                     .when(has_error, |this| {
-                        this.px_6()
+                        this.child(
+                            div()
+                                .px_3()
+                                .py_2()
+                                .rounded_md()
+                                .bg(theme::DANGER_BG)
+                                .text_color(theme::DANGER_TEXT)
+                                .text_sm()
+                                .child(error),
+                        )
+                    })
+                    .when(rows.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No vault items yet. Add one below."),
+                        )
+                    })
+                    .children(rows),
+            );
+
+        if self.vault_adding {
+            page = page.child(
+                self.card("Add item", "Save a new username/password entry to your vault.")
+                    .child(
+                        v_flex()
+                            .gap_2()
                             .child(
                                 div()
-                                    .px_3()
-                                    .py_2()
-                                    .rounded_md()
-                                    .bg(theme::DANGER_BG)
-                                    .text_color(theme::DANGER_TEXT)
                                     .text_sm()
-                                    .child(error),
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::TEXT)
+                                    .child("Title"),
                             )
-                    }),
-            )
-            .child(
-                div()
-                    .id("item-list")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .px_4()
-                    .py_2()
-                    .children(rows),
-            )
-            .child(revealed_text)
+                            .child(Input::new(&self.secret_key_input).w_full())
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::TEXT)
+                                    .child("Password / value"),
+                            )
+                            .child(Input::new(&self.secret_value_input).w_full()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("vault-save-btn")
+                                    .primary()
+                                    .label("Save item")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_add_vault_item(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("vault-cancel-btn")
+                                    .label("Cancel")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.vault_adding = false;
+                                            cx.notify();
+                                        },
+                                    )),
+                            ),
+                    ),
+            );
+        }
+
+        if let Some(s) = self.revealed.as_deref() {
+            page = page.child(
+                self.card("Revealed secret", "Plaintext for the selected item.")
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_family("ui-monospace")
+                            .text_color(theme::TEXT)
+                            .child(s.to_string()),
+                    ),
+            );
+        }
+
+        page
     }
 
     // ── Projects section ─────────────────────────────────────────────────
@@ -1946,39 +2174,48 @@ impl DesktopView {
 
         v_flex()
             .size_full()
+            .p_6()
+            .gap_4()
+            .child(self.page_header(
+                "Projects",
+                "Create and manage shared vaults with members and secrets.",
+            ))
             .child(
                 div()
                     .when(has_error, |this| {
-                        this.px_6()
-                            .pt_2()
-                            .child(
-                                div()
-                                    .px_3()
-                                    .py_2()
-                                    .rounded_md()
-                                    .bg(theme::DANGER_BG)
-                                    .text_color(theme::DANGER_TEXT)
-                                    .text_sm()
-                                    .child(error),
-                            )
+                        this.child(
+                            div()
+                                .px_3()
+                                .py_2()
+                                .rounded_md()
+                                .bg(theme::DANGER_BG)
+                                .text_color(theme::DANGER_TEXT)
+                                .text_sm()
+                                .child(error),
+                        )
                     }),
             )
             .child(
                 div()
                     .when(!status.is_empty(), |this| {
-                        this.px_6()
-                            .pt_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child(status),
-                            )
+                        this.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::TEXT_MUTED)
+                                .child(status),
+                        )
                     }),
             )
             .child(
                 h_flex()
                     .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .rounded_lg()
+                    .bg(theme::SURFACE)
+                    .overflow_x_hidden()
                     .child(list_panel)
                     .child(detail),
             )
@@ -2336,42 +2573,41 @@ impl DesktopView {
 
     fn render_generator(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let password = self.generator_password.clone();
-        v_flex()
-            .px_6()
-            .py_4()
-            .gap_3()
+        self.page()
+            .child(self.page_header(
+                "Password generator",
+                "Generate strong passwords and detect weak or reused ones.",
+            ))
             .child(
-                div()
-                    .text_lg()
-                    .font_weight(FontWeight::BOLD)
-                    .child("Password Generator"),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(theme::TEXT_MUTED)
-                    .child("Generate a strong, random password for a new account."),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .p_3()
-                    .rounded_md()
-                    .bg(theme::SURFACE)
-                    .border_1()
-                    .border_color(theme::BORDER)
-                    .font_family("ui-monospace")
-                    .text_color(theme::WARN)
-                    .child(password),
-            )
-            .child(
-                h_flex().gap_2().child(
-                    Button::new("generator-btn")
-                        .primary()
-                        .label("Generate")
-                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                            this.do_regenerate_generator(cx);
-                        })),
+                self.card(
+                    "Generator",
+                    "Options for a cryptographically-secure random password.",
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .p_3()
+                        .rounded_md()
+                        .bg(theme::SURFACE_RAISED)
+                        .border_1()
+                        .border_color(theme::BORDER)
+                        .font_family("ui-monospace")
+                        .text_color(theme::WARN)
+                        .child(password),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("generator-btn")
+                                .primary()
+                                .label("Generate")
+                                .on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, _window, cx| {
+                                        this.do_regenerate_generator(cx);
+                                    },
+                                )),
+                        ),
                 ),
             )
     }
@@ -2393,79 +2629,90 @@ impl DesktopView {
             }
             None => "MFA status: unknown".to_string(),
         };
-        v_flex()
-            .px_6()
-            .py_4()
-            .gap_3()
+        let mut body = self
+            .page()
+            .child(self.page_header(
+                "MFA & security",
+                "Manage two-factor authentication for your account.",
+            ))
             .child(
-                div()
-                    .text_lg()
-                    .font_weight(FontWeight::BOLD)
-                    .child("Two-Factor Authentication"),
-            )
-            .child(div().text_sm().text_color(theme::TEXT_MUTED).child(status_line))
-            .child(
-                h_flex().gap_2().child(
-                    Button::new("mfa-refresh-btn")
-                        .label("Refresh")
-                        .on_click(cx.listener(
-                            |this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_refresh_mfa(window, cx);
-                            },
-                        )),
-                ),
-            )
-            .when(!text.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_sm()
-                        .text_color(theme::WARN)
-                        .child(text.clone()),
-                )
-            })
-            .when(enrolled.is_some(), |this| {
-                let issued = enrolled.clone().unwrap();
-                this.child(
-                    v_flex().gap_2().child(
-                        div()
-                            .text_sm()
-                            .text_color(theme::TEXT_MUTED)
-                            .child("Scan the QR code / enter this TOTP secret into your authenticator:"),
-                    ).child(
-                        div()
-                            .p_2()
-                            .rounded_md()
-                            .bg(theme::SURFACE)
-                            .font_family("ui-monospace")
-                            .child(issued.secret.clone()),
-                    ).child(
+                self.card("Status", "Your current two-factor authentication state.")
+                    .child(div().text_sm().text_color(theme::TEXT_MUTED).child(status_line))
+                    .child(
                         h_flex().gap_2().child(
-                            Input::new(&self.mfa_code_input).w_full(),
-                        ).child(
-                            Button::new("mfa-verify-btn")
-                                .primary()
-                                .label("Verify")
+                            Button::new("mfa-refresh-btn")
+                                .label("Refresh")
                                 .on_click(cx.listener(
                                     |this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_verify_totp(window, cx);
+                                        this.do_refresh_mfa(window, cx);
                                     },
                                 )),
                         ),
+                    )
+                    .when(!text.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(theme::WARN)
+                                .child(text.clone()),
+                        )
+                    }),
+            );
+
+        if let Some(issued) = enrolled {
+            body = body.child(
+                self.card("Enrollment", "Finish enrolling your authenticator.")
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(
+                                "Scan the QR code / enter this TOTP secret into your authenticator:",
+                            ),
+                    )
+                    .child(
+                        div()
+                            .p_2()
+                            .rounded_md()
+                            .bg(theme::SURFACE_RAISED)
+                            .font_family("ui-monospace")
+                            .child(issued.secret.clone()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(Input::new(&self.mfa_code_input).w_full())
+                            .child(
+                                Button::new("mfa-verify-btn")
+                                    .primary()
+                                    .label("Verify")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_verify_totp(window, cx);
+                                        },
+                                    )),
+                            ),
                     ),
-                )
-            })
-            .child(
-                h_flex().gap_2().child(
-                    Button::new("mfa-enroll-btn")
-                        .primary()
-                        .label("Enroll TOTP")
-                        .on_click(cx.listener(
-                            |this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_enroll_totp(window, cx);
-                            },
-                        )),
+            );
+        }
+
+        body = body.child(
+            self.card("Setup", "Enroll a new authenticator app.")
+                .child(
+                    h_flex().gap_2().child(
+                        Button::new("mfa-enroll-btn")
+                            .primary()
+                            .label("Enroll TOTP")
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_enroll_totp(window, cx);
+                                },
+                            )),
+                    ),
                 ),
-            )
+        );
+
+        body
     }
 
     // ── Settings section ──────────────────────────────────────────────────
@@ -2480,7 +2727,7 @@ impl DesktopView {
                 v_flex()
                     .p_2()
                     .rounded_md()
-                    .bg(theme::SURFACE)
+                    .bg(theme::SURFACE_RAISED)
                     .gap_1()
                     .child(div().text_sm().font_weight(FontWeight::BOLD).child(m.name.clone()))
                     .child(
@@ -2497,7 +2744,7 @@ impl DesktopView {
                 v_flex()
                     .p_2()
                     .rounded_md()
-                    .bg(theme::SURFACE)
+                    .bg(theme::SURFACE_RAISED)
                     .gap_1()
                     .child(div().text_sm().font_weight(FontWeight::BOLD).child(t.name.clone()))
                     .child(
@@ -2508,27 +2755,14 @@ impl DesktopView {
                     ),
             );
         }
-        v_flex()
-            .px_6()
-            .py_4()
-            .gap_3()
-            .child(
-                div()
-                    .text_lg()
-                    .font_weight(FontWeight::BOLD)
-                    .child("Settings"),
-            )
-            .child(
-                h_flex().gap_2().child(
-                    Button::new("settings-refresh-btn")
-                        .label("Refresh")
-                        .on_click(cx.listener(
-                            |this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_refresh_settings(window, cx);
-                            },
-                        )),
-                ),
-            )
+        let machine_empty = machine_rows.is_empty();
+        let token_empty = token_rows.is_empty();
+
+        self.page()
+            .child(self.page_header(
+                "Settings",
+                "Organization and security administration.",
+            ))
             .when(!text.is_empty(), |this| {
                 this.child(
                     div()
@@ -2538,49 +2772,67 @@ impl DesktopView {
                 )
             })
             .child(
-                v_flex()
-                    .gap_1()
+                self.card("Machine accounts", "Service identities with scoped API access.")
                     .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .child("Machine accounts"),
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("{} account(s)", machines.len())),
+                            )
+                            .child(
+                                Button::new("settings-refresh-btn")
+                                    .compact()
+                                    .label("Refresh")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_refresh_settings(window, cx);
+                                        },
+                                    )),
+                            ),
                     )
+                    .when(machine_empty, |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No machine accounts yet."),
+                        )
+                    })
                     .children(machine_rows),
             )
             .child(
-                v_flex()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .child("API tokens"),
-                    )
+                self.card("API tokens", "Long-lived tokens for API access.")
+                    .when(token_empty, |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No API tokens yet."),
+                        )
+                    })
                     .children(token_rows),
             )
             .child(
-                div()
-                    .text_sm()
-                    .text_color(theme::TEXT_MUTED)
-                    .child("Create a machine account"),
-            )
-            .child(
-                h_flex().gap_2().child(
-                    Input::new(&self.settings_name_input).w_full(),
-                ),
-            )
-            .child(
-                h_flex().gap_2().child(
-                    Button::new("settings-create-machine-btn")
-                        .primary()
-                        .label("Create machine account")
-                        .on_click(cx.listener(
-                            |this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_create_machine(window, cx);
-                            },
-                        )),
-                ),
+                self.card("Create a machine account", "Register a new service identity.")
+                    .child(
+                        h_flex().gap_2().child(Input::new(&self.settings_name_input).w_full()),
+                    )
+                    .child(
+                        h_flex().gap_2().child(
+                            Button::new("settings-create-machine-btn")
+                                .primary()
+                                .label("Create machine account")
+                                .on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_create_machine(window, cx);
+                                    },
+                                )),
+                        ),
+                    ),
             )
     }
 }
