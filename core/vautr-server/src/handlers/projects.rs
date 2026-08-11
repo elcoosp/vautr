@@ -1047,6 +1047,20 @@ async fn offboard(
     st.repo.revoke_sharing_keys_for_user(&req.user_uuid).await.map_err(internal_err)?;
     st.repo.complete_offboarding(&request.id.to_string(), now).await.map_err(internal_err)?;
 
+    st.repo
+        .audit_org_event(
+            Some(&caller),
+            Some(&req.user_uuid),
+            "offboard",
+            "offboarding",
+            Some(&request.id.to_string()),
+            req.reason.as_deref(),
+            None,
+            now,
+        )
+        .await
+        .map_err(internal_err)?;
+
     Ok(Json(OffboardResp {
         status: "success",
         user_uuid: req.user_uuid,

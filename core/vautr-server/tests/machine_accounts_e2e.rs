@@ -226,6 +226,23 @@ async fn machine_accounts_live_server_e2e() {
     assert_eq!(resp["status"], "active");
     assert_eq!(resp["scopes"][0], "secrets:read");
 
+    // Wave C audit seam: machine-account creation is recorded as an org event.
+    let audit = repo
+        .query_audit_events(
+            &vautr_server::repository::audit::AuditFilter {
+                resource_type: Some("machine_account"),
+                ..Default::default()
+            },
+            100,
+            0,
+        )
+        .await
+        .expect("query audit events");
+    assert!(
+        audit.iter().any(|r| r.action == "machine_account_create"),
+        "expected machine_account_create audit event"
+    );
+
     // List shows it.
     let (status, resp) = http(addr, "GET", "/machine-accounts", Some(&tok), None).await;
     assert_eq!(status, 200);
@@ -285,6 +302,27 @@ async fn machine_accounts_live_server_e2e() {
     assert!(vautr_server::handlers::tokens::verify_access_token(&repo, &secret)
         .await
         .is_err());
+
+    // Wave C audit seam: token create + revoke are recorded as org events.
+    let token_audit = repo
+        .query_audit_events(
+            &vautr_server::repository::audit::AuditFilter {
+                resource_type: Some("access_token"),
+                ..Default::default()
+            },
+            100,
+            0,
+        )
+        .await
+        .expect("query token audit");
+    assert!(
+        token_audit.iter().any(|r| r.action == "token_create"),
+        "expected token_create audit event"
+    );
+    assert!(
+        token_audit.iter().any(|r| r.action == "token_revoke"),
+        "expected token_revoke audit event"
+    );
 
     // 6. Expiry: issue a token, force its expiry into the past, then it is denied.
     let (status, resp) = http(

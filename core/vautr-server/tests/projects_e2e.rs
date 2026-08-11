@@ -276,6 +276,24 @@ async fn projects_live_server_offboarding_e2e() {
     assert_eq!(resp["status"], "success");
     assert_eq!(resp["revoked_projects"], 1);
 
+    // Wave C audit seam: offboarding is recorded as an org event.
+    let audit_repo = Repository::new(pool_for_lookup.clone());
+    let audit = audit_repo
+        .query_audit_events(
+            &vautr_server::repository::audit::AuditFilter {
+                resource_type: Some("offboarding"),
+                ..Default::default()
+            },
+            100,
+            0,
+        )
+        .await
+        .expect("query audit events");
+    assert!(
+        audit.iter().any(|r| r.action == "offboard"),
+        "expected offboard audit event"
+    );
+
     // 6. Access revoked:
     //   a) The member's session was revoked -> 401 on their old token.
     let (status, _) = http(addr, "GET", "/projects", Some(&member_tok), None).await;

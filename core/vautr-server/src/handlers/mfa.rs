@@ -394,6 +394,20 @@ pub(crate) async fn verify_totp(
                 Some(codes)
             };
 
+            st.repo
+                .audit_org_event(
+                    Some(&user_id),
+                    Some(&user_id),
+                    "mfa_totp_enroll",
+                    "mfa",
+                    None,
+                    None,
+                    None,
+                    now,
+                )
+                .await
+                .map_err(internal)?;
+
             Ok(Json(TotpVerifyResp {
                 status: "success".into(),
                 recovery_codes,

@@ -323,6 +323,20 @@ async fn create_token(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
 
+    st.repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "token_create",
+            "access_token",
+            Some(&uuid),
+            Some(&format!("prefix:{prefix}")),
+            None,
+            now,
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+
     Ok((
         StatusCode::CREATED,
         Json(CreateResponse {
@@ -364,6 +378,19 @@ async fn revoke_token(
     if !ok {
         return Err(not_found(&uuid));
     }
+    st.repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "token_revoke",
+            "access_token",
+            Some(&uuid),
+            None,
+            None,
+            now_ms(),
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
     Ok(Json(serde_json::json!({ "status": "revoked" })))
 }
 

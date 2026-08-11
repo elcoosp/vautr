@@ -165,6 +165,20 @@ async fn create_machine_account(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
 
+    st.repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "machine_account_create",
+            "machine_account",
+            Some(&uuid),
+            Some(&format!("name:{name}")),
+            None,
+            now,
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+
     let row = st
         .repo
         .get_machine_account(&uuid, &user_id)
@@ -267,6 +281,20 @@ async fn update_machine_account(
     if !ok {
         return Err(not_found(&uuid));
     }
+    let now = now_ms();
+    st.repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "machine_account_update",
+            "machine_account",
+            Some(&uuid),
+            Some(&format!("status:{status}")),
+            None,
+            now,
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
     let row = st
         .repo
         .get_machine_account(&uuid, &user_id)
@@ -291,6 +319,19 @@ async fn delete_machine_account(
     if !ok {
         return Err(not_found(&uuid));
     }
+    st.repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "machine_account_delete",
+            "machine_account",
+            Some(&uuid),
+            None,
+            None,
+            now_ms(),
+        )
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
     Ok(Json(serde_json::json!({ "status": "deleted" })))
 }
 
