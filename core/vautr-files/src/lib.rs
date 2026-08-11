@@ -20,6 +20,7 @@
 pub mod error;
 pub mod file;
 pub mod manifest;
+pub mod pdf;
 
 pub use error::{FileError, Result};
 pub use file::{decrypt_file_stream, encrypt_file_stream};

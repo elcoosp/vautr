@@ -27,6 +27,7 @@ base64 = "0.22"
 uuid.workspace = true
 sqlx.workspace = true
 vautr-crypto.workspace = true
+ed25519-dalek.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
