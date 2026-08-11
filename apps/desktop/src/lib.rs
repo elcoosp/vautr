@@ -12,8 +12,10 @@
 //!   (file-storage.md §5.4 desktop auto-sync).
 
 pub mod app;
+pub mod auth_client;
+pub mod desktop_view;
 pub mod state;
-pub mod vault_manager_view;
 
+// Deprecated aliases kept for existing imports.
+pub use desktop_view::DesktopView;
 pub use state::VaultManagerState;
-pub use vault_manager_view::VaultManagerView;

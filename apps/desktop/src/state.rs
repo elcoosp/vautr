@@ -1,14 +1,122 @@
-//! Testable, GPUI-agnostic view state for the desktop `VaultManagerView`.
+//! Testable, GPUI-agnostic view state for the desktop client.
 //!
-//! The view renders this state; all selection / error-dialog transitions live
-//! here so they can be unit-tested without a GPU runtime. The GPUI layer
-//! (`vault_manager_view`) applies these transitions inside `cx.update_mut(...)`
-//! followed by `cx.notify()` — never the other way around — which upholds the
-//! notify rule (no `notify` outside an update/event-dispatch closure).
+//! Three state machines:
+//! 1. `LoginScreenState` — login/register form. Pure data + an `on_unlock`
+//!    callback fired on successful login.
+//! 2. `VaultManagerState` — item list, selection, error dialog, lock.
+//! 3. `VaultConfig` — locally-persisted config (KDF salt, username) so the
+//!    desktop client can re-derive the MK on subsequent logins.
+//!
+//! The GPUI layer applies transitions inside `cx.update_mut(...)` followed by
+//! `cx.notify()` — never the other way around — which upholds the notify rule
+//! (no `notify` outside an update/event-dispatch closure).
 
 use std::sync::Arc;
 use vautr_app_state::VautrClient;
 use vautr_domain::DecryptedOverview;
+
+// ── VaultConfig (locally persisted) ─────────────────────────────────────
+
+/// Persisted config stored alongside the local SQLite vault DB.
+/// Serialized as JSON to `~/.vautr/config.json`.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct VaultConfig {
+    /// The username (email) used to register/login.
+    pub username: String,
+    /// Argon2id KDF salt (32 bytes), base64-encoded for JSON.
+    pub kdf_salt_b64: String,
+}
+
+impl VaultConfig {
+    /// Load from the default config path, or `None` if no config exists.
+    pub fn load() -> Option<Self> {
+        let path = config_path();
+        let data = std::fs::read_to_string(&path).ok()?;
+        serde_json::from_str(&data).ok()
+    }
+
+    /// Persist to the default config path.
+    pub fn save(&self) -> Result<(), String> {
+        let path = config_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create config dir: {e}"))?;
+        }
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("serialize config: {e}"))?;
+        std::fs::write(&path, json)
+            .map_err(|e| format!("write config: {e}"))
+    }
+
+    /// Decode the stored base64 KDF salt to bytes.
+    pub fn kdf_salt_bytes(&self) -> Result<[u8; 32], String> {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        let bytes = B64
+            .decode(&self.kdf_salt_b64)
+            .map_err(|e| format!("decode kdf_salt: {e}"))?;
+        if bytes.len() != 32 {
+            return Err("kdf_salt is not 32 bytes".into());
+        }
+        let mut salt = [0u8; 32];
+        salt.copy_from_slice(&bytes);
+        Ok(salt)
+    }
+}
+
+/// Default config directory: `$HOME/.vautr/`.
+fn config_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home).join(".vautr").join("config.json")
+}
+
+/// Default vault DB path: `$HOME/.vautr/vault.db`.
+pub fn db_path() -> String {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".into());
+    format!("{}/.vautr/vault.db", home)
+}
+
+// ── LoginScreenState ─────────────────────────────────────────────────────
+
+/// The login/register form state.
+pub struct LoginScreenState {
+    /// The server base URL (from env var or default).
+    pub base_url: String,
+    /// The username (email) entered by the user.
+    pub username: String,
+    /// The password entered by the user (never persisted).
+    pub password: String,
+    /// Locally-persisted KDF salt. `None` means the user must register first.
+    pub kdf_salt: Option<[u8; 32]>,
+    /// Set after a successful registration (shown to the user once).
+    pub recovery_mnemonic: Option<String>,
+    /// Status message (e.g. "Registering...", "Login failed: ...").
+    pub status: String,
+    /// Callback fired on successful login: `(session_token, wrapped_svk, min_enc_key_gen)`.
+    pub on_unlock: Option<Box<dyn Fn(String, Vec<u8>, u64) + Send + 'static>>,
+}
+
+impl LoginScreenState {
+    pub fn new(base_url: &str) -> Self {
+        let config = VaultConfig::load();
+        Self {
+            base_url: base_url.to_string(),
+            username: config.as_ref().map(|c| c.username.clone()).unwrap_or_default(),
+            password: String::new(),
+            kdf_salt: config
+                .as_ref()
+                .and_then(|c| c.kdf_salt_bytes().ok()),
+            recovery_mnemonic: None,
+            status: String::new(),
+            on_unlock: None,
+        }
+    }
+}
+
+// ── VaultManagerState (unchanged core) ───────────────────────────────────
 
 /// The vault-lock screen's password entry + the items the client holds.
 pub struct VaultManagerState {
@@ -38,7 +146,6 @@ impl VaultManagerState {
     pub fn attach_client(&mut self, client: Arc<VautrClient>, items: Vec<DecryptedOverview>) {
         self.client = Some(client);
         self.items = items;
-        // Keep a stale selection in range after a refresh.
         if let Some(sel) = self.selected_index {
             if sel >= self.items.len() {
                 self.selected_index = None;
@@ -102,12 +209,9 @@ impl VaultManagerState {
     }
 
     /// Lock the vault: zeroize the in-memory SVK/DEK and every live secret
-    /// handle, then clear the UI list + selection. Only touches the core when a
-    /// client is attached.
+    /// handle, then clear the UI list + selection.
     pub fn lock(&mut self) {
         if let Some(client) = &self.client {
-            // Spawn so the async `lock()` (which wipes the Zeroizing keys and
-            // releases all secret handles) runs without blocking the UI thread.
             let client = client.clone();
             let handle = tokio::runtime::Handle::current();
             let _ = handle.spawn(async move {
@@ -125,6 +229,45 @@ impl Default for VaultManagerState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ── Client construction helpers ──────────────────────────────────────────
+
+/// Build a real `VautrClient` connected to a local SQLite DB, initialized with
+/// the schema, and wired to the sync transport with the given bearer token.
+pub async fn build_client(
+    db_path: &str,
+    base_url: &str,
+    token: &str,
+) -> Result<Arc<VautrClient>, String> {
+    use sea_orm::Database;
+
+    // Ensure the parent directory exists.
+    if let Some(parent) = std::path::Path::new(db_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create db dir: {e}"))?;
+    }
+
+    let db_url = format!("sqlite://{}?mode=rwc", db_path);
+    let db = Database::connect(&db_url)
+        .await
+        .map_err(|e| format!("db connect: {e}"))?;
+
+    // Initialize the schema (idempotent via IF NOT EXISTS).
+    vautr_db::migrate::init(&db)
+        .await
+        .map_err(|e| format!("db init: {e}"))?;
+
+    let client = Arc::new(VautrClient::new(db));
+
+    // Connect the sync transport. Uses Uuid::nil() as the server_user_id
+    // because the MP-wrapped SVK from vautr_keyring::wrap::wrap_svk
+    // binds to Uuid::nil() via AEAD AD.
+    client
+        .connect_sync(base_url, token, uuid::Uuid::nil())
+        .await;
+
+    Ok(client)
 }
 
 #[cfg(test)]
@@ -148,16 +291,13 @@ mod tests {
         let mut state = VaultManagerState::new();
         state.set_items(vec![overview("Email"), overview("Bank"), overview("SSH")]);
 
-        // Selecting an item drives the highlighted index.
         assert!(state.select_item(1));
         assert_eq!(state.selected_index, Some(1));
         assert_eq!(state.selected_overview().unwrap().title, "Bank");
 
-        // Out-of-range selection is rejected and leaves state unchanged.
         assert!(!state.select_item(99));
         assert_eq!(state.selected_index, Some(1));
 
-        // Keyboard navigation wraps.
         state.select_next();
         assert_eq!(state.selected_index, Some(2));
         state.select_next();
@@ -169,14 +309,12 @@ mod tests {
     #[test]
     fn error_dialog_drives_and_dismisses() {
         let mut state = VaultManagerState::new();
-        // Trigger the error dialog (e.g. a failed reveal).
         state.show_error("vault locked: cannot reveal secret");
         assert_eq!(
             state.error_message.as_deref(),
             Some("vault locked: cannot reveal secret")
         );
 
-        // Dismiss clears it.
         state.dismiss_error();
         assert!(state.error_message.is_none());
     }
