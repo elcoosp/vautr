@@ -2,9 +2,9 @@
 name: Vautr
 description: Zero-knowledge password & secrets manager — "The Vault Ledger"
 colors:
-  primary: "#2bbca0"
-  neutral-bg: "#12151c"
-  neutral-fg: "#e7eaf0"
+  primary: "#42b59a"
+  neutral-bg: "#080e16"
+  neutral-fg: "#e4ecf5"
 typography:
   display:
     fontFamily: "Geist Variable, system-ui, sans-serif"
@@ -59,16 +59,16 @@ tinted graphite-blue, never pure gray.
 ### Dark (default)
 | Token | Value | Role |
 |-------|-------|------|
-| `--background` | `oklch(0.16 0.02 255)` / `#12151c` | canvas |
-| `--card` / `--popover` | `oklch(0.195 0.018 255)` | surface |
-| `--foreground` | `oklch(0.94 0.015 250)` / `#e7eaf0` | ink |
-| `--muted-foreground` | `oklch(0.68 0.02 250)` / `#9aa3b4` | secondary ink |
-| `--primary` | `oklch(0.70 0.11 175)` / `#2bbca0` | emerald accent, "verified" |
-| `--primary-foreground` | `oklch(0.16 0.02 250)` | dark ink on accent |
-| `--border` | `oklch(0.27 0.018 255)` / `#2a3140` | hairline |
-| `--destructive` | `oklch(0.66 0.17 22)` / `#e5484d` | error |
-| `--warn` | `oklch(0.80 0.12 75)` / `#f0b429` | warning |
-| `--success` | `oklch(0.78 0.15 165)` / `#3dd68c` | verified |
+| `--background` | `oklch(0.16 0.02 255)` / `#080e16` | canvas |
+| `--card` / `--popover` | `oklch(0.195 0.018 255)` / `#0f151d` | surface |
+| `--foreground` | `oklch(0.94 0.015 250)` / `#e4ecf5` | ink |
+| `--muted-foreground` | `oklch(0.68 0.02 250)` / `#8f9aa4` | secondary ink |
+| `--primary` | `oklch(0.70 0.11 175)` / `#42b59a` | emerald accent, "verified" |
+| `--primary-foreground` | `oklch(0.16 0.02 250)` / `#070e16` | dark ink on accent |
+| `--border` | `oklch(0.27 0.018 255)` / `#21272f` | hairline |
+| `--destructive` | `oklch(0.66 0.17 22)` / `#e85f61` | error |
+| `--warn` | `oklch(0.80 0.12 75)` / `#ebb25f` | warning |
+| `--success` | `oklch(0.78 0.15 165)` / `#37d59f` | verified |
 
 ### Light (`.light`)
 Tuned daylight variants of the same world: cool paper `oklch(0.985 0.004 250)`,

@@ -57,7 +57,7 @@ export function App() {
   if (booting) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator size="large" color="#2bba99" />
+        <ActivityIndicator size="large" color="#42b59a" />
         <Text className="mt-4 text-sm text-muted-foreground">Restoring secure session…</Text>
       </View>
     );

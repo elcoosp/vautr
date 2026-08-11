@@ -83,7 +83,7 @@ function ProjectDetailScreen() {
   };
 
   if (!loaded) {
-    return <ActivityIndicator className="mt-8" color="#2bba99" />;
+    return <ActivityIndicator className="mt-8" color="#42b59a" />;
   }
 
   if (!project) {

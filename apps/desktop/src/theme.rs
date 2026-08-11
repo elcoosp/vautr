@@ -22,31 +22,34 @@ const fn c(hex: u32) -> Rgba {
     }
 }
 
-/// Deep graphite-blue canvas. Mirrors `--background` (oklch 0.16 0.02 255).
-pub const BG: Rgba = c(0x12151c);
-/// Raised card / surface. Mirrors `--card`.
-pub const SURFACE: Rgba = c(0x181c25);
-/// Further-raised surface (hover/selection wells). Mirrors `--accent`/raised.
-pub const SURFACE_RAISED: Rgba = c(0x20242e);
-/// Hairline structure. Mirrors `--border`.
-pub const BORDER: Rgba = c(0x2a3140);
-/// Primary ink. Mirrors `--foreground`.
-pub const TEXT: Rgba = c(0xe7eaf0);
-/// Muted ink. Mirrors `--muted-foreground`.
-pub const TEXT_MUTED: Rgba = c(0x9aa3b4);
-/// Dimmer secondary ink.
-pub const TEXT_DIM: Rgba = c(0x7b8494);
-/// Emerald-teal accent (brand primary). Mirrors `--primary` (oklch 0.70 0.11 175).
-pub const ACCENT: Rgba = c(0x2bbca0);
-/// Dark ink placed on the accent (primary-foreground).
-pub const ACCENT_INK: Rgba = c(0x0c1713);
-/// Destructive / error. Mirrors `--destructive`.
-pub const DANGER: Rgba = c(0xe5484d);
-/// Destructive surface tint.
-pub const DANGER_BG: Rgba = c(0x3a1416);
-/// Destructive foreground text.
-pub const DANGER_TEXT: Rgba = c(0xf8a3a3);
-/// Warning amber.
-pub const WARN: Rgba = c(0xf0b429);
-/// Success / verified green.
-pub const SUCCESS: Rgba = c(0x3dd68c);
+/// Deep canvas. Mirrors web `--background` oklch(0.16 0.02 255) → #080e16.
+pub const BG: Rgba = c(0x080e16);
+/// Raised card / surface. Mirrors web `--card` oklch(0.195 0.018 255) → #0f151d.
+pub const SURFACE: Rgba = c(0x0f151d);
+/// Further-raised surface (hover/selection wells). Mirrors web `--accent`
+/// oklch(0.26 0.02 255) → #1e252e.
+pub const SURFACE_RAISED: Rgba = c(0x1e252e);
+/// Hairline structure. Mirrors web `--border` oklch(0.27 0.018 255) → #21272f.
+pub const BORDER: Rgba = c(0x21272f);
+/// Primary ink. Mirrors web `--foreground` oklch(0.94 0.015 250) → #e4ecf5.
+pub const TEXT: Rgba = c(0xe4ecf5);
+/// Muted ink. Mirrors web `--muted-foreground` oklch(0.68 0.02 250) → #8f9aa4.
+pub const TEXT_MUTED: Rgba = c(0x8f9aa4);
+/// Dimmer secondary ink (tuned below muted-fg).
+pub const TEXT_DIM: Rgba = c(0x6b7480);
+/// Emerald-teal accent (brand primary). Mirrors `--primary` (oklch 0.70 0.11 175,
+/// which resolves to #42b59a in CSS Color 4 — the value web/extension actually render).
+pub const ACCENT: Rgba = c(0x42b59a);
+/// Dark ink placed on the accent. Mirrors web `--primary-foreground`
+/// oklch(0.16 0.02 250) → #070e16.
+pub const ACCENT_INK: Rgba = c(0x070e16);
+/// Destructive / error. Mirrors web `--destructive` oklch(0.66 0.17 22) → #e85f61.
+pub const DANGER: Rgba = c(0xe85f61);
+/// Destructive surface tint (tuned).
+pub const DANGER_BG: Rgba = c(0x3c1517);
+/// Destructive foreground text (tuned).
+pub const DANGER_TEXT: Rgba = c(0xf2b4b5);
+/// Warning amber. Mirrors oklch(0.80 0.12 75) → #ebb25f.
+pub const WARN: Rgba = c(0xebb25f);
+/// Success / verified green. Mirrors oklch(0.78 0.15 165) → #37d59f.
+pub const SUCCESS: Rgba = c(0x37d59f);
