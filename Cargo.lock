@@ -4620,6 +4620,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vautr-import"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "vautr-crypto",
+ "vautr-db",
+ "vautr-domain",
+]
+
+[[package]]
 name = "vautr-keyring"
 version = "0.1.0"
 dependencies = [
@@ -4652,6 +4664,18 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "vautr-crypto",
+]
+
+[[package]]
+name = "vautr-sharing"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.20",
+ "uuid",
+ "vautr-crypto",
+ "vautr-domain",
+ "zeroize",
 ]
 
 [[package]]

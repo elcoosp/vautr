@@ -1,0 +1,17 @@
+[package]
+name = "vautr-sharing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Zero-knowledge E2E-encrypted item & group sharing for Vautr (docs/architecture/sharing-pki.md)"
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+vautr-domain.workspace = true
+vautr-crypto.workspace = true

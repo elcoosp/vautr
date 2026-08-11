@@ -33,6 +33,8 @@ vautr-ffi       = { path = "core/vautr-ffi" }
 vautr-wasm      = { path = "core/vautr-wasm" }
 vautr-server    = { path = "core/vautr-server" }
 vautr-files     = { path = "core/vautr-files" }
+vautr-import    = { path = "core/vautr-import" }
+vautr-sharing   = { path = "core/vautr-sharing" }
 
 # --- common third-party ---
 tokio        = { version = "1", features = ["full"] }

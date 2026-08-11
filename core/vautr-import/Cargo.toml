@@ -1,0 +1,17 @@
+[package]
+name = "vautr-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "High-throughput, zero-trust import pipeline for Vautr (docs/architecture/data-import-seeding.md)"
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+vautr-domain.workspace = true
+vautr-db.workspace = true
+vautr-crypto.workspace = true
