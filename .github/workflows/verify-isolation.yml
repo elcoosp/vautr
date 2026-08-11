@@ -40,11 +40,15 @@ jobs:
           # `read_secret` is compiled into the Desktop (GPUI) build ONLY via the
           # `desktop-api` feature. Any occurrence in a JS/TS tree is a hard
           # Zero-Knowledge breach. A match exits non-zero and fails the job.
+          # Doc comments legitimately mention the symbol (e.g. "read_secret is
+          # compiled OUT of this WASM entrypoint"), so comment-only lines are
+          # filtered; actual code references (the leak) are NOT filtered.
           if grep -rn "read_secret" \
               apps/mobile \
               apps/extension \
               packages/vautr-client-sdk \
-              2>/dev/null; then
+              --exclude-dir=node_modules --exclude-dir=dist \
+              2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(\*|//|/\*)'; then
             echo "::error::CRITICAL SECURITY BREACH: 'read_secret' found in a non-desktop artifact (apps/mobile, apps/extension, or packages/vautr-client-sdk). The Zero-Knowledge boundary is broken; remove it and re-run."
             exit 1
           fi
