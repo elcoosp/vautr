@@ -7,10 +7,13 @@
     "baseUrl": ".",
     "types": ["node"],
     "paths": {
+      "@/*": ["./src/*"],
       "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
       "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
       "@vautr/client-sdk/extension": ["../../packages/vautr-client-sdk/src/extension.ts"],
       "@vautr/client-sdk/real": ["../../packages/vautr-client-sdk/src/realClient.ts"],
+      "@vautr/client-sdk/storage": ["../../packages/vautr-client-sdk/src/storage.ts"],
+      "@vautr/api-contract": ["../../packages/api-contract/src/index.ts"],
       "vautr-wasm": ["./src/lib/wasmWeb.ts"],
       "vautr-wasm-nodejs": ["./src/lib/wasmNodejs.ts"]
     }

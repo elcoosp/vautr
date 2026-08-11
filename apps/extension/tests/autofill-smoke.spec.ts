@@ -1,5 +1,6 @@
 import { test, expect, chromium } from '@playwright/test';
 import type { BrowserContext, Page, Worker } from '@playwright/test';
+import { buildSecretEnvelope } from './helpers';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -71,8 +72,9 @@ test.describe.serial('stateless autofill service worker', () => {
   }
 
   async function seedStorage(worker: Worker) {
+    const envelope = buildSecretEnvelope(DEMO_SECRET, UUID, SVK);
     await worker.evaluate(
-      ({ svk, uuid }) => {
+      ({ svk, uuid, payload, encKeyGen }) => {
         const chromeApi = globalThis as unknown as {
           chrome: {
             storage: {
@@ -84,11 +86,11 @@ test.describe.serial('stateless autofill service worker', () => {
         return Promise.all([
           chromeApi.chrome.storage.session.set({ vautrSvk: svk }),
           chromeApi.chrome.storage.local.set({
-            vautrCiphertext: { [uuid]: { uuid, encKeyGen: 1, payload: [1, 2, 3, 4] } },
+            vautrCiphertext: { [uuid]: { uuid, encKeyGen, payload } },
           }),
         ]);
       },
-      { svk: SVK, uuid: UUID },
+      { svk: SVK, uuid: UUID, payload: envelope.payload, encKeyGen: envelope.encKeyGen },
     );
   }
 

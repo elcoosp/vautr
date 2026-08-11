@@ -148,6 +148,15 @@ export class VautrWebClient {
     return this.svk !== null && this.dek !== null;
   }
 
+  /**
+   * The underlying HTTP transport (shares the session bearer token). Used by
+   * the MLP client (`VautrMlpClient`) so one login drives both the vault sync
+   * and the Projects/Secrets/MFA surfaces.
+   */
+  getApi(): ApiClient {
+    return this.api;
+  }
+
   // -------------------------------------------------------------------------
   // Auth: register + login (OPAQUE, api.md §3)
   // -------------------------------------------------------------------------
@@ -439,6 +448,23 @@ export class VautrWebClient {
     const handle = String(this.nextHandle++);
     this.handles.set(handle, { secret: parsed.password, lastAccess: Date.now() });
     return handle;
+  }
+
+  /**
+   * Decrypt and return an item's secret as a string for the authenticated UI
+   * (popup/web). The plaintext is returned to the caller's JS momentarily and is
+   * never persisted. Prefer the opaque-handle `reveal()`/`performAction()` path
+   * where the platform can consume the secret directly without JS retention.
+   */
+  async revealSecret(uuid: string): Promise<string> {
+    const handle = await this.reveal(uuid);
+    const active = this.handles.get(handle);
+    if (!active) {
+      throw new Error('handle expired or unknown');
+    }
+    const secret = active.secret;
+    this.handles.delete(handle);
+    return secret;
   }
 
   /** Delegate copy/autofill to the platform clipboard handler. */

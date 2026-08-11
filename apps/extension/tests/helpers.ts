@@ -1,4 +1,5 @@
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type { BrowserContext, Page, Worker } from '@playwright/test';
 import { chromium, expect } from '@playwright/test';
@@ -19,6 +20,44 @@ export const SVK = Array.from(new Uint8Array(32).fill(7));
 
 const extensionRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const distPath = join(extensionRoot, 'dist');
+
+// Real WASM crypto (nodejs build) used to produce genuine AEAD envelopes that the
+// stateless SW can decrypt. The SW's `decrypt_secret_with_svk` expects the same
+// DEK-derived ciphertext format that `encrypt_item_js` produces.
+const require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const wasm: any = require(join(extensionRoot, 'wasm-pkg-nodejs/vautr_wasm.js'));
+
+export interface SecretEnvelope {
+  encKeyGen: number;
+  payload: number[];
+}
+
+/**
+ * Build a real AEAD-encrypted item envelope for `secret` under the given raw SVK
+ * and uuid. Matches what the app stores server-side and what the stateless SW
+ * decrypts on autofill.
+ */
+export function buildSecretEnvelope(
+  secret: string,
+  uuid: string,
+  svk: number[] = SVK,
+  encKeyGen = 1,
+): SecretEnvelope {
+  const dek = wasm.derive_dek_js(Uint8Array.from(svk));
+  const plaintext = Buffer.from(
+    JSON.stringify({
+      title: 'Demo',
+      subtitle: 'demo@example.com',
+      iconKey: 'key',
+      urls: ['https://example.com'],
+      password: secret,
+    }),
+    'utf8',
+  );
+  const payload = wasm.encrypt_item_js(uuid, BigInt(encKeyGen), dek, plaintext);
+  return { encKeyGen, payload: Array.from(payload) };
+}
 
 export interface LaunchOptions {
   profileDir: string;
@@ -88,8 +127,9 @@ export async function seedStorage(
   options: { svk?: number[]; uuid?: string } = {},
 ): Promise<void> {
   const { svk = SVK, uuid = DEFAULT_UUID } = options;
+  const envelope = buildSecretEnvelope(DEMO_SECRET, uuid, svk);
   await worker.evaluate(
-    ({ svkValue, uuidValue }) => {
+    ({ svkValue, uuidValue, payloadValue, encKeyGen }) => {
       const chromeApi = globalThis as unknown as {
         chrome: {
           storage: {
@@ -102,12 +142,17 @@ export async function seedStorage(
         chromeApi.chrome.storage.session.set({ vautrSvk: svkValue }),
         chromeApi.chrome.storage.local.set({
           vautrCiphertext: {
-            [uuidValue]: { uuid: uuidValue, encKeyGen: 1, payload: [1, 2, 3, 4] },
+            [uuidValue]: { uuid: uuidValue, encKeyGen, payload: payloadValue },
           },
         }),
       ]);
     },
-    { svkValue: svk, uuidValue: uuid },
+    {
+      svkValue: svk,
+      uuidValue: uuid,
+      payloadValue: envelope.payload,
+      encKeyGen: envelope.encKeyGen,
+    },
   );
 }
 

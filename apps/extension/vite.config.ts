@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.config';
 
@@ -15,9 +16,10 @@ import manifest from './manifest.config';
  * Point these aliases at the real wasm-pack outputs to exercise real crypto.
  */
 export default defineConfig({
-  plugins: [react(), crx({ manifest })],
+  plugins: [react(), tailwindcss(), crx({ manifest })],
   resolve: {
     alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@vautr/ui-logic': fileURLToPath(
         new URL('../../packages/ui-logic/src/index.ts', import.meta.url),
       ),
@@ -26,11 +28,17 @@ export default defineConfig({
       '@vautr/client-sdk/extension': fileURLToPath(
         new URL('../../packages/vautr-client-sdk/src/extension.ts', import.meta.url),
       ),
+      '@vautr/client-sdk/storage': fileURLToPath(
+        new URL('../../packages/vautr-client-sdk/src/storage.ts', import.meta.url),
+      ),
       '@vautr/client-sdk/real': fileURLToPath(
         new URL('../../packages/vautr-client-sdk/src/realClient.ts', import.meta.url),
       ),
       '@vautr/client-sdk': fileURLToPath(
         new URL('../../packages/vautr-client-sdk/src/index.ts', import.meta.url),
+      ),
+      '@vautr/api-contract': fileURLToPath(
+        new URL('../../packages/api-contract/src/index.ts', import.meta.url),
       ),
       'vautr-wasm': fileURLToPath(new URL('./src/lib/wasmWeb.ts', import.meta.url)),
       'vautr-wasm-nodejs': fileURLToPath(

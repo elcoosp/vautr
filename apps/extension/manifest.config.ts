@@ -32,4 +32,9 @@ export default defineManifest({
   ],
   permissions: ['storage', 'activeTab', 'scripting', 'clipboardWrite'],
   host_permissions: ['<all_urls>'],
+  // The real wasm-bindgen crypto needs `WebAssembly.instantiateStreaming`, which
+  // the default MV3 CSP forbids. Allow wasm so the stateless SW can decrypt.
+  content_security_policy: {
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+  },
 });

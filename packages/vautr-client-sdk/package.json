@@ -29,6 +29,7 @@
     "test": "echo \"sdk: no tests yet\""
   },
   "dependencies": {
+    "@vautr/api-contract": "workspace:*",
     "@vautr/ui-logic": "workspace:*"
   },
   "devDependencies": {

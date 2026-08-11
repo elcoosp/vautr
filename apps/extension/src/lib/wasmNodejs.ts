@@ -6,14 +6,17 @@
  * that must be called once before any other function.
  */
 
-import * as raw from '../../sw-wasm-pkg/vautr_crypto_wasm.js';
+import initWasm, * as raw from '../../sw-wasm-pkg/vautr_crypto_wasm.js';
 
 /**
  * One-time async initialization of the WASM instance.
- * The web-target glue uses `init()` to load + instantiate the WASM bytes.
+ * The wasm-bindgen `--target web` glue exposes the async loader as its default
+ * export (`__wbg_init`); the named `init()` is a no-op that assumes the instance
+ * is already loaded. We must await the default loader so the WASM is ready
+ * before `decrypt_secret_with_svk` is callable.
  */
 export async function init(): Promise<void> {
-  await raw.init();
+  await initWasm();
 }
 
 /**

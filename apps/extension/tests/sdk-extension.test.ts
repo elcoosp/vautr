@@ -6,6 +6,7 @@ import {
   statelessAutofill,
   type StorageArea,
 } from '@vautr/client-sdk/extension';
+import { buildSecretEnvelope } from './helpers';
 
 /**
  * Unit tests for the extension-autofill entrypoints (SDK `src/extension.ts`).
@@ -17,6 +18,11 @@ import {
  */
 
 const DEMO_SECRET = 'vautr-demo-password-0x3f9a';
+const DEFAULT_UUID = 'b2e7b6d0-8c1a-4b2e-9f0a-6c2d3e4f5a6b';
+
+function realEnvelope(): { encKeyGen: number; payload: number[] } {
+  return buildSecretEnvelope(DEMO_SECRET, DEFAULT_UUID);
+}
 
 function fakeStorage(): StorageArea & { data: Record<string, unknown> } {
   const data: Record<string, unknown> = {};
@@ -56,9 +62,10 @@ describe('vautr-client-sdk extension autofill entrypoints', () => {
     const crypto = createStatelessCrypto();
 
     await svkStore.cache(new Uint8Array(32).fill(7));
-    await ciphertextStore.cache({ uuid: 'u1', encKeyGen: 1, payload: [1, 2, 3, 4] });
+    const env = realEnvelope();
+    await ciphertextStore.cache({ uuid: DEFAULT_UUID, encKeyGen: env.encKeyGen, payload: env.payload });
 
-    const secret = await statelessAutofill(svkStore, ciphertextStore, crypto, 'u1');
+    const secret = await statelessAutofill(svkStore, ciphertextStore, crypto, DEFAULT_UUID);
     expect(secret).toBe(DEMO_SECRET);
   });
 
