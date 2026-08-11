@@ -119,6 +119,98 @@ struct StatusEnvelope {
     status: String,
 }
 
+// ── MFA / machine-account / token wire types (Wave A2/A4) ────────────────
+
+/// MFA status: whether MFA is required + which methods are configured.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MfaStatusDto {
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub configured_methods: Vec<String>,
+}
+
+/// TOTP enrollment result (otpauth URL + manual secret).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TotpIssueDto {
+    pub enrollment_id: String,
+    pub otpauth_url: String,
+    pub secret: String,
+    #[serde(default)]
+    pub qr_code_data_url: Option<String>,
+}
+
+/// TOTP verify result (enrollment complete + optional recovery codes).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TotpVerifyDto {
+    pub status: String,
+    #[serde(default)]
+    pub recovery_codes: Option<Vec<String>>,
+}
+
+/// A machine account (non-human identity).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MachineAccountDto {
+    pub uuid: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub project_uuid: Option<String>,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    #[serde(default)]
+    pub last_used_at: Option<i64>,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+/// An access token (metadata; the raw secret is only returned on creation).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AccessTokenDto {
+    pub uuid: String,
+    pub name: String,
+    #[serde(default)]
+    pub machine_account_uuid: Option<String>,
+    #[serde(default)]
+    pub project_uuid: Option<String>,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub prefix: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    #[serde(default)]
+    pub revoked_at: Option<i64>,
+    #[serde(default)]
+    pub last_used_at: Option<i64>,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+/// The one-time raw token value returned by `POST /tokens`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AccessTokenCreateDto {
+    pub token: String,
+    pub token_id: String,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct MachineAccountListEnvelope {
+    machine_accounts: Vec<MachineAccountDto>,
+}
+
+#[derive(Deserialize)]
+struct AccessTokenListEnvelope {
+    tokens: Vec<AccessTokenDto>,
+}
+
 // ── The client ────────────────────────────────────────────────────────────
 
 /// Lightweight HTTP client for the authenticated Projects/Secrets API.
@@ -412,6 +504,108 @@ impl ApiClient {
             Method::POST,
             token,
             "/offboard",
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    // ── MFA (Wave A4: mandatory MFA + TOTP) ─────────────────────────────
+
+    /// Whether the account requires MFA + which methods are configured.
+    pub async fn mfa_status(&self, token: &str) -> Result<MfaStatusDto, String> {
+        self.send(Method::GET, token, "/mfa/status", None).await
+    }
+
+    /// Begin TOTP enrollment (returns the otpauth URL + manual secret).
+    pub async fn mfa_totp_issue(&self, token: &str) -> Result<TotpIssueDto, String> {
+        self.send(Method::POST, token, "/mfa/totp/issue", None)
+            .await
+    }
+
+    /// Verify a TOTP code to complete enrollment.
+    pub async fn mfa_totp_verify(
+        &self,
+        token: &str,
+        enrollment_id: Option<&str>,
+        code: &str,
+    ) -> Result<TotpVerifyDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("code".into(), serde_json::json!(code));
+        if let Some(id) = enrollment_id {
+            body.insert("enrollment_id".into(), serde_json::json!(id));
+        }
+        self.send(
+            Method::POST,
+            token,
+            "/mfa/totp/verify",
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    // ── Machine accounts (Wave A2) ──────────────────────────────────────
+
+    pub async fn list_machine_accounts(&self, token: &str) -> Result<Vec<MachineAccountDto>, String> {
+        let env: MachineAccountListEnvelope = self
+            .send(Method::GET, token, "/machine-accounts", None)
+            .await?;
+        Ok(env.machine_accounts)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_machine_account(
+        &self,
+        token: &str,
+        name: &str,
+        description: Option<&str>,
+        project_uuid: Option<&str>,
+        scopes: &[&str],
+    ) -> Result<MachineAccountDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("name".into(), serde_json::json!(name));
+        body.insert(
+            "scopes".into(),
+            serde_json::json!(scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>()),
+        );
+        if let Some(d) = description {
+            body.insert("description".into(), serde_json::json!(d));
+        }
+        if let Some(p) = project_uuid {
+            body.insert("project_uuid".into(), serde_json::json!(p));
+        }
+        self.send(
+            Method::POST,
+            token,
+            "/machine-accounts",
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    // ── Access tokens (Wave A2) ─────────────────────────────────────────
+
+    pub async fn list_tokens(&self, token: &str) -> Result<Vec<AccessTokenDto>, String> {
+        let env: AccessTokenListEnvelope =
+            self.send(Method::GET, token, "/tokens", None).await?;
+        Ok(env.tokens)
+    }
+
+    pub async fn create_token(
+        &self,
+        token: &str,
+        name: &str,
+        scopes: &[&str],
+    ) -> Result<AccessTokenCreateDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("name".into(), serde_json::json!(name));
+        body.insert(
+            "scopes".into(),
+            serde_json::json!(scopes.iter().map(|s| s.to_string()).collect::<Vec<_>>()),
+        );
+        self.send(
+            Method::POST,
+            token,
+            "/tokens",
             Some(serde_json::Value::Object(body)),
         )
         .await

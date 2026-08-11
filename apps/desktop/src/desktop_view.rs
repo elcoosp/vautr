@@ -32,6 +32,9 @@ use vautr_crypto::{aead, kdf, key_tree};
 enum Section {
     Vault,
     Projects,
+    Generator,
+    Mfa,
+    Settings,
 }
 
 /// The root desktop view.
@@ -72,6 +75,22 @@ pub struct DesktopView {
     secret_key_input: Entity<InputState>,
     secret_value_input: Entity<InputState>,
     offboard_input: Entity<InputState>,
+
+    // ── Generator section (canonical screen, ui-logic equivalent) ───────
+    generator_password: String,
+
+    // ── MFA section (canonical screen) ──────────────────────────────────
+    mfa_status: Option<api_client::MfaStatusDto>,
+    mfa_enrolled: Option<api_client::TotpIssueDto>,
+    mfa_code_input: Entity<InputState>,
+    mfa_text: String,
+
+    // ── Settings section (canonical screen) ─────────────────────────────
+    machines: Vec<api_client::MachineAccountDto>,
+    tokens: Vec<api_client::AccessTokenDto>,
+    settings_name_input: Entity<InputState>,
+    settings_scopes: Vec<String>,
+    settings_text: String,
 }
 
 impl DesktopView {
@@ -114,6 +133,12 @@ impl DesktopView {
         let offboard_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("User UUID to revoke all access")
         });
+        let mfa_code_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("000000")
+        });
+        let settings_name_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Machine account name, e.g. ci-deploy")
+        });
 
         let _subscriptions = vec![];
 
@@ -139,6 +164,16 @@ impl DesktopView {
             secret_key_input,
             secret_value_input,
             offboard_input,
+            generator_password: generate_password(20),
+            mfa_status: None,
+            mfa_enrolled: None,
+            mfa_code_input,
+            mfa_text: String::new(),
+            machines: Vec::new(),
+            tokens: Vec::new(),
+            settings_name_input,
+            settings_scopes: vec!["secrets:read".into()],
+            settings_text: String::new(),
         }
     }
 
@@ -1020,9 +1055,198 @@ impl DesktopView {
         })
         .detach();
     }
-}
 
-// ── Render ──────────────────────────────────────────────────────────────
+    // ── Generator (canonical screen) ────────────────────────────────────
+
+    fn do_regenerate_generator(&mut self, cx: &mut Context<Self>) {
+        self.generator_password = generate_password(20);
+        cx.notify();
+    }
+
+    // ── MFA (canonical screen) ──────────────────────────────────────────
+
+    fn do_refresh_mfa(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let result = api.mfa_status(&token).await;
+            this.update(cx, |this, cx| match result {
+                Ok(status) => {
+                    this.mfa_status = Some(status);
+                    this.mfa_text = String::new();
+                    cx.notify();
+                }
+                Err(e) => {
+                    this.mfa_text = format!("Failed to load MFA status: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_enroll_totp(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.mfa_text = "Starting TOTP enrollment...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = api.mfa_totp_issue(&token).await;
+            this.update(cx, |this, cx| match result {
+                Ok(issued) => {
+                    this.mfa_enrolled = Some(issued);
+                    this.mfa_text = String::new();
+                    cx.notify();
+                }
+                Err(e) => {
+                    this.mfa_text = format!("Enrollment failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_verify_totp(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let enrollment_id = self
+            .mfa_enrolled
+            .as_ref()
+            .map(|e| e.enrollment_id.clone());
+        let code = self.mfa_code_input.read(cx).value().to_string();
+        if code.trim().len() < 6 {
+            self.mfa_text = "Enter a valid 6-digit code.".into();
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.mfa_text = "Verifying...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = api
+                .mfa_totp_verify(&token, enrollment_id.as_deref(), code.trim())
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(verified) => {
+                    this.mfa_text = format!("TOTP verified: {}", verified.status);
+                    this.mfa_enrolled = None;
+                    cx.notify();
+                    let api = this.api();
+                    let token = this.token.clone();
+                    if let Some(token) = token {
+                        let api = api;
+                        cx.spawn(async move |this, cx| {
+                            if let Ok(status) = api.mfa_status(&token).await {
+                                this.update(cx, |this, cx| {
+                                    this.mfa_status = Some(status);
+                                    cx.notify();
+                                })
+                                .ok();
+                            }
+                        })
+                        .detach();
+                    }
+                }
+                Err(e) => {
+                    this.mfa_text = format!("Verification failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Settings (canonical screen: machine accounts + tokens) ──────────
+
+    fn do_refresh_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let machines = api.list_machine_accounts(&token).await;
+            let tokens = api.list_tokens(&token).await;
+            this.update(cx, |this, cx| {
+                if let Ok(m) = machines {
+                    this.machines = m;
+                }
+                if let Ok(t) = tokens {
+                    this.tokens = t;
+                }
+                this.settings_text = String::new();
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_create_machine(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let name = self.settings_name_input.read(cx).value().to_string();
+        if name.trim().is_empty() {
+            self.settings_text = "Machine account name is required.".into();
+            cx.notify();
+            return;
+        }
+        let scopes: Vec<String> = self.settings_scopes.iter().cloned().collect();
+        let api = self.api();
+        self.settings_text = "Creating machine account...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
+            let result = api
+                .create_machine_account(&token, name.trim(), None, None, &scope_refs)
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(created) => {
+                    this.settings_text = format!("Created machine account '{}'.", created.name);
+                    cx.notify();
+                    this.do_refresh_settings_to(cx);
+                }
+                Err(e) => {
+                    this.settings_text = format!("Create failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_refresh_settings_to(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let machines = api.list_machine_accounts(&token).await;
+            let tokens = api.list_tokens(&token).await;
+            this.update(cx, |this, cx| {
+                if let Ok(m) = machines {
+                    this.machines = m;
+                }
+                if let Ok(t) = tokens {
+                    this.tokens = t;
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
 
 impl Render for DesktopView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1126,6 +1350,39 @@ impl DesktopView {
                                             this.do_refresh_projects(window, cx);
                                         },
                                     )),
+                            )
+                            .child(
+                                Button::new("nav-generator")
+                                    .when(section == Section::Generator, |b| b.primary())
+                                    .label("Generator")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.section = Section::Generator;
+                                            cx.notify();
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("nav-mfa")
+                                    .when(section == Section::Mfa, |b| b.primary())
+                                    .label("MFA")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.section = Section::Mfa;
+                                            this.do_refresh_mfa(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("nav-settings")
+                                    .when(section == Section::Settings, |b| b.primary())
+                                    .label("Settings")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.section = Section::Settings;
+                                            this.do_refresh_settings(window, cx);
+                                        },
+                                    )),
                             ),
                     )
                     .child(
@@ -1143,6 +1400,9 @@ impl DesktopView {
                 match section {
                     Section::Vault => self.render_vault_content(cx).into_any_element(),
                     Section::Projects => self.render_projects(cx).into_any_element(),
+                    Section::Generator => self.render_generator(cx).into_any_element(),
+                    Section::Mfa => self.render_mfa(cx).into_any_element(),
+                    Section::Settings => self.render_settings(cx).into_any_element(),
                 },
             )
     }
@@ -1838,6 +2098,258 @@ impl DesktopView {
                     }),
             )
     }
+
+    // ── Generator section ─────────────────────────────────────────────────
+
+    fn render_generator(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let password = self.generator_password.clone();
+        v_flex()
+            .px_6()
+            .py_4()
+            .gap_3()
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Password Generator"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(rgb(0xa1a1aa))
+                    .child("Generate a strong, random password for a new account."),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .p_3()
+                    .rounded_md()
+                    .bg(rgb(0x18181b))
+                    .border_1()
+                    .border_color(rgb(0x27272a))
+                    .font_family("ui-monospace")
+                    .text_color(rgb(0xfbbf24))
+                    .child(password),
+            )
+            .child(
+                h_flex().gap_2().child(
+                    Button::new("generator-btn")
+                        .primary()
+                        .label("Generate")
+                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                            this.do_regenerate_generator(cx);
+                        })),
+                ),
+            )
+    }
+
+    // ── MFA section ───────────────────────────────────────────────────────
+
+    fn render_mfa(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let status = self.mfa_status.clone();
+        let enrolled = self.mfa_enrolled.clone();
+        let text = self.mfa_text.clone();
+        let status_line = match &status {
+            Some(s) => {
+                let methods = if s.configured_methods.is_empty() {
+                    "none".to_string()
+                } else {
+                    s.configured_methods.join(", ")
+                };
+                format!("MFA: required={}  configured=[{}]", s.required, methods)
+            }
+            None => "MFA status: unknown".to_string(),
+        };
+        v_flex()
+            .px_6()
+            .py_4()
+            .gap_3()
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Two-Factor Authentication"),
+            )
+            .child(div().text_sm().text_color(rgb(0xa1a1aa)).child(status_line))
+            .child(
+                h_flex().gap_2().child(
+                    Button::new("mfa-refresh-btn")
+                        .label("Refresh")
+                        .on_click(cx.listener(
+                            |this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_refresh_mfa(window, cx);
+                            },
+                        )),
+                ),
+            )
+            .when(!text.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0xfbbf24))
+                        .child(text.clone()),
+                )
+            })
+            .when(enrolled.is_some(), |this| {
+                let issued = enrolled.clone().unwrap();
+                this.child(
+                    v_flex().gap_2().child(
+                        div()
+                            .text_sm()
+                            .text_color(rgb(0xa1a1aa))
+                            .child("Scan the QR code / enter this TOTP secret into your authenticator:"),
+                    ).child(
+                        div()
+                            .p_2()
+                            .rounded_md()
+                            .bg(rgb(0x18181b))
+                            .font_family("ui-monospace")
+                            .child(issued.secret.clone()),
+                    ).child(
+                        h_flex().gap_2().child(
+                            Input::new(&self.mfa_code_input).w_full(),
+                        ).child(
+                            Button::new("mfa-verify-btn")
+                                .primary()
+                                .label("Verify")
+                                .on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_verify_totp(window, cx);
+                                    },
+                                )),
+                        ),
+                    ),
+                )
+            })
+            .child(
+                h_flex().gap_2().child(
+                    Button::new("mfa-enroll-btn")
+                        .primary()
+                        .label("Enroll TOTP")
+                        .on_click(cx.listener(
+                            |this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_enroll_totp(window, cx);
+                            },
+                        )),
+                ),
+            )
+    }
+
+    // ── Settings section ──────────────────────────────────────────────────
+
+    fn render_settings(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let machines = self.machines.clone();
+        let tokens = self.tokens.clone();
+        let text = self.settings_text.clone();
+        let mut machine_rows = Vec::new();
+        for m in &machines {
+            machine_rows.push(
+                v_flex()
+                    .p_2()
+                    .rounded_md()
+                    .bg(rgb(0x18181b))
+                    .gap_1()
+                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(m.name.clone()))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0xa1a1aa))
+                            .child(format!("uuid: {}  scopes: {:?}", m.uuid, m.scopes)),
+                    ),
+            );
+        }
+        let mut token_rows = Vec::new();
+        for t in &tokens {
+            token_rows.push(
+                v_flex()
+                    .p_2()
+                    .rounded_md()
+                    .bg(rgb(0x18181b))
+                    .gap_1()
+                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(t.name.clone()))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0xa1a1aa))
+                            .child(format!("uuid: {}  scopes: {:?}", t.uuid, t.scopes)),
+                    ),
+            );
+        }
+        v_flex()
+            .px_6()
+            .py_4()
+            .gap_3()
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Settings"),
+            )
+            .child(
+                h_flex().gap_2().child(
+                    Button::new("settings-refresh-btn")
+                        .label("Refresh")
+                        .on_click(cx.listener(
+                            |this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_refresh_settings(window, cx);
+                            },
+                        )),
+                ),
+            )
+            .when(!text.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0xfbbf24))
+                        .child(text.clone()),
+                )
+            })
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .child("Machine accounts"),
+                    )
+                    .children(machine_rows),
+            )
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .child("API tokens"),
+                    )
+                    .children(token_rows),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(rgb(0xa1a1aa))
+                    .child("Create a machine account"),
+            )
+            .child(
+                h_flex().gap_2().child(
+                    Input::new(&self.settings_name_input).w_full(),
+                ),
+            )
+            .child(
+                h_flex().gap_2().child(
+                    Button::new("settings-create-machine-btn")
+                        .primary()
+                        .label("Create machine account")
+                        .on_click(cx.listener(
+                            |this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_create_machine(window, cx);
+                            },
+                        )),
+                ),
+            )
+    }
 }
 
 impl Focusable for DesktopView {
@@ -1845,3 +2357,19 @@ impl Focusable for DesktopView {
         self.focus_handle.clone()
     }
 }
+
+/// Generate a cryptographically random password using characters safe for
+/// most password rules. Mirrors the `@vautr/ui-logic` generator on the
+/// Rust side (the desktop client has no JS runtime).
+fn generate_password(length: usize) -> String {
+    use rand::Rng;
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    let mut rng = rand::thread_rng();
+    (0..length)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARS.len());
+            CHARS[idx] as char
+        })
+        .collect()
+}
+
