@@ -1,0 +1,22 @@
+# Vautr Caddy reverse-proxy template (used by docker compose --profile https).
+# {$VAUTR_DOMAIN} is substituted from the container environment (compose passes
+# VAUTR_DOMAIN). Caddy obtains + renews a Let's Encrypt certificate for this
+# hostname automatically. To use a different ACME account email, add:
+#   tls {$VAUTR_EMAIL:admin@example.com}
+# and pass VAUTR_EMAIL to the caddy service.
+
+{$VAUTR_DOMAIN} {
+    encode gzip
+
+    # TLS 1.3 only (server-scaling.md §3). Caddy defaults to a modern TLS
+    # profile; tighten explicitly if you need to.
+    tls {
+        protocols tls1.3
+    }
+
+    # Strip client-supplied identity headers at the proxy (no-plaintext rule).
+    header_up -X-User-Email
+    header_up -X-User-Id
+
+    reverse_proxy server:8080
+}

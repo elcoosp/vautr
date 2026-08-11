@@ -1,0 +1,17 @@
+# Keep the Docker build context small and free of secrets/local state.
+.git
+.github
+target
+node_modules
+dist
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+dump.txt
+wr.sh
+.DS_Store
+brand
+docs
+test
+vautr.db

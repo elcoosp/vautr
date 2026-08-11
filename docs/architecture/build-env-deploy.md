@@ -103,9 +103,14 @@ The Server is a first-class citizen in the monorepo.
 *   `openapi-typescript` runs on this spec to generate Zod schemas and TS types for the `vautr-client-sdk`. This guarantees the Client TS SDK and the Rust Server are always perfectly in sync.
 
 ### 4.2 Server Infrastructure
-*   **Database:** SQLite (WAL mode) for all environments. See server-scaling.md for justification and tuning.
-*   **Deployment:** Docker container deployed to AWS ECS / Google Cloud Run.
-*   **Local Dev:** `docker-compose up` spins up a local Postgres DB and the Axum server.
+*   **Database:** SQLite (WAL mode) is the **default** for all environments
+    (zero-config). **PostgreSQL is opt-in** behind the `postgres` cargo feature
+    of `vautr-server` (see §7 "Deployment Operations" and `docs/SELF-HOSTING.md`
+    §"Database"). See server-scaling.md for justification and tuning.
+*   **Deployment:** Docker container deployed to AWS ECS / Google Cloud Run, or
+    a one-command bare-metal install (`scripts/install.sh`). See §7.
+*   **Local Dev:** `docker compose up` spins up the Axum server (SQLite by
+    default; use `--profile postgres` for a local Postgres DB).
 
 ---
 
@@ -153,3 +158,106 @@ Triggered by semantic versioning tags (e.g., `v1.2.0`).
 *   **Web:** Optimize WASM (`wasm-opt -Oz`), minify React, deploy to Vercel/Cloudflare.
 *   **Extension:** Bundle Popup (Web WASM) and SW (Node WASM), zip, and publish to Chrome Web Store / Firefox Add-ons.
 *   **Server:** Build Docker image, push to ECR, deploy to ECS/Cloud Run via Helm/ArgoCD.
+
+---
+
+## 7. Deployment Operations (Wave Ops)
+
+This section describes the one-command install, container improvements, the
+opt-in PostgreSQL path, and no-downtime update procedures. It complements
+`docs/SELF-HOSTING.md`.
+
+### 7.1 One-command install (`scripts/install.sh`)
+
+`scripts/install.sh` is the ultra-simple install path (MLP scope §1):
+
+```bash
+./scripts/install.sh --domain vault.example.com --email admin@example.com
+```
+
+It is idempotent and performs, in order:
+
+1. **Build** — `cargo build --release -p vautr-server` (or `--no-build --bin <path>`
+   for a prebuilt binary).
+2. **Config** — writes `VAUTR_DB_URL` / `RUST_LOG` into `/etc/vautr/vautr.env`
+   (root) or `$HOME/.config/vautr/vautr.env` (non-root), chmod 0600.
+3. **HTTPS reverse proxy + Let's Encrypt** — installs **Caddy** (default) and
+   writes a Caddyfile for the given domain; Caddy auto-issues and auto-renews
+   certificates. `--proxy nginx` instead installs nginx + certbot with a systemd
+   renewal timer. `--proxy none` skips TLS.
+4. **Service unit** — installs a `vautr-server` systemd unit (Linux) or a
+   `org.vautr.server` launchd agent (macOS) and starts it.
+5. **Smoke test** — polls `http://127.0.0.1:<port>/account/status` (auth-gated,
+   `401` = up).
+
+SQLite is the default DB (`--db-url sqlite:vautr.db`); PostgreSQL is opt-in via
+`--db-url postgres://...` (see §7.3).
+
+### 7.2 Container improvements (Dockerfile / docker-compose.yml)
+
+- **Dockerfile** — two-stage build on the pinned nightly toolchain (rustup in
+  the builder auto-installs `nightly-2026-08-10` from `rust-toolchain.toml`),
+  a non-root `vautr` runtime user, an HTTP healthcheck on `/account/status`,
+  a persistent `/data` volume, and a `--build-arg FEATURES` passthrough for
+  optional cargo features (e.g. `postgres`). A `.dockerignore` keeps the build
+  context lean and free of secrets/local state.
+- **docker-compose.yml** — SQLite **default** (one-click, no DB service needed).
+  Opt-in profiles:
+  - `--profile https` adds a `caddy` service (using `deploy/Caddyfile`) for
+    HTTPS + Let's Encrypt behind `VAUTR_DOMAIN`.
+  - `--profile postgres` adds a `postgres:16` service.
+  Persistent named volumes (`serverdata`, `pgdata`, `caddydata`), restart
+  policies, and service healthchecks are configured.
+
+```bash
+docker compose up -d --build                                   # SQLite, no TLS
+VAUTR_DOMAIN=... docker compose --profile https up -d          # + HTTPS
+VAUTR_DB_URL=postgres://vautr:vautr@postgres:5432/vautr \
+VAUTR_FEATURES=postgres \
+docker compose --profile postgres up -d --build                # + Postgres
+```
+
+### 7.3 PostgreSQL (opt-in)
+
+PostgreSQL support is real but **opt-in**; SQLite remains the default.
+`core/vautr-server/src/db.rs` adds:
+
+- `db::postgres::connect_pg(url)` — opens a `PgPool` and runs migrations
+  (`sqlx::postgres::{PgConnectOptions, PgPoolOptions}`).
+- `db::postgres::ensure_schema_pg(pool)` — migration check helper.
+- `db::connect_any(url)` / `db::AnyPool` — a scheme-keyed dispatcher
+  (`sqlite:` → SQLite, `postgres://` → Postgres) that errors clearly when
+  Postgres is requested but not compiled in.
+
+**Required manifest changes (owned by the coordinator — this workstream must
+not edit `Cargo.toml`):**
+
+1. **Root `Cargo.toml`** — add the sqlx **`postgres`** runtime feature:
+   `sqlx = { version = "0.9", features = ["sqlite", "postgres", "runtime-tokio", "tls-rustls", "chrono", "migrate", "macros"] }`.
+2. **`core/vautr-server/Cargo.toml`** — declare and enable the **`postgres`**
+   feature: `postgres = ["sqlx/postgres"]` (add to `[features]`).
+
+**Migrations caveat:** `sqlx::migrate!` applies the same `migrations/*.sql` on
+either backend; those files are currently SQLite DDL (`STRICT`, `BLOB`, …). A
+Postgres deployment additionally requires **Postgres-compatible migrations**
+(migrations are owned by another workstream). Until those exist, run Postgres
+only against a schema created from Postgres migrations.
+
+### 7.4 Backups
+
+- **SQLite** — `sqlite3 vautr.db ".backup /backup/vautr-$(date +%F).db"` (WAL-safe
+  online backup), or checkpoint + copy the `.db`/`-wal`/`-shm` together.
+- **PostgreSQL** — `pg_dump` (logical) or `pg_basebackup`/WAL archival (physical,
+  PITR). Keep backups off-host and encrypted at rest.
+
+### 7.5 No-downtime updates (`scripts/update.sh`)
+
+```bash
+./scripts/update.sh              # bare metal: build + atomic swap + graceful restart
+./scripts/update.sh --compose    # compose: build new image, recreate server
+```
+
+Bare metal builds to a temp path and atomically `mv`s the new binary; the server's
+graceful shutdown (stop accepting, drain in-flight ≤ 30s, flush WAL, exit) makes
+`systemctl restart` a short blip. Compose recreates the container with the new
+image, starting it before stopping the old one where possible.
