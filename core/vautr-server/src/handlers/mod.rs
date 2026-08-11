@@ -30,6 +30,7 @@ pub mod audit;
 pub mod auth;
 pub mod backup;
 pub mod files;
+pub mod health;
 pub mod items;
 pub mod machine_accounts;
 pub mod mfa;
@@ -94,21 +95,17 @@ pub fn build_router(state: AppState) -> Router {
         .merge(secrets::routes())
         .merge(mfa::routes())
         .merge(backup::routes())
-        // Liveness/readiness probe (minimal; A6 owns the full health endpoint).
-        .route("/health", get(health))
-        .route("/health/ready", get(health));
+        // Liveness/readiness probe + metrics (Wave A6 owns the full health
+        // surface: /health, /health/ready, /metrics).
+        .route("/health", get(health::liveness))
+        .route("/health/ready", get(health::readiness))
+        .route("/metrics", get(health::metrics));
     // WebAuthn (FIDO2) optional second factor (VTR-052), feature-gated.
     #[cfg(feature = "webauthn")]
     {
         router = router.merge(webauthn::routes());
     }
     router.with_state(state)
-}
-
-/// Minimal liveness/readiness probe (A6 owns the full dependency-aware health
-/// endpoint in Wave A). Returns 200 OK whenever the process is serving.
-pub async fn health() -> Response {
-    (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response()
 }
 
 // ---------------------------------------------------------------------------

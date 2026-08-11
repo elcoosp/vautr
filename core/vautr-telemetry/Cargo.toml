@@ -12,6 +12,14 @@ description = "User-opt-in, anonymous client telemetry aggregator for Vautr (doc
 serde.workspace = true
 uuid.workspace = true
 tracing.workspace = true
+# Optional HTTP transport for the server-down alert webhook hook (feature
+# `webhook`). Kept optional so the core crate stays dependency-light.
+reqwest = { workspace = true, features = ["blocking"], optional = true }
+
+[features]
+default = []
+# Enables the reqwest-based `WebhookDeliverer` for server-down alert delivery.
+webhook = ["dep:reqwest"]
 
 [dev-dependencies]
 serde_json.workspace = true

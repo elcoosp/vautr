@@ -31,8 +31,15 @@
 
 pub mod aggregate;
 pub mod consent;
+pub mod monitoring;
 pub mod report;
 
 pub use aggregate::{AggregatedMetrics, DailyAggregator, Histogram};
 pub use consent::{Consent, ConsentGate};
+pub use monitoring::{
+    AlertEvent, AlertSeverity, Alerting, HealthStatus, MetricsSnapshot, ServerMetrics,
+    WebhookHook,
+};
+#[cfg(feature = "webhook")]
+pub use monitoring::WebhookDeliverer;
 pub use report::{HeartbeatReport, InstallationUuid, WindowMeta};
