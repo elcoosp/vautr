@@ -208,25 +208,37 @@ PRAGMA wal_autocheckpoint=1000;
 
 | Crate | Version Constraint | Notes |
 | :--- | :--- | :--- |
-| `gpui` | `=0.2.2` | **Exact crates.io pin** (Zed publishes `gpui` to crates.io). Reproducible fixed revision. |
-| `gpui-component` | `=0.5.1` | Cross‑platform component library, pinned to the exact revision compiled against `gpui 0.2.2`. |
+| `gpui` | `git` master (Zed) | `{ git = "https://github.com/zed-industries/zed" }` — the `gpui` crate under `crates/gpui` of Zed's monorepo. |
+| `gpui_platform` | `git` master (Zed) | `{ git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }` — the application entry (`gpui_platform::application()`). |
+| `gpui-component` | `git` master (Longbridge) | `{ git = "https://github.com/longbridge/gpui-component" }` — cross‑platform component library. Master already pulls `gpui` from `zed-industries/zed`, so it unifies with our `gpui` to one crate automatically. |
 | `kael` | `0.1` | Advanced features (webviews, tray, blur). Optional. |
 | `gpui-animation` | `0.2` | Lightweight state‑driven transitions. |
 | `gpui-transitions` | `0.1` | Interpolation‑based transitions. |
 
 **Excluded:** `fluent-gpui`, `gpui-rsx`, `adabraka-ui`.
 
-**GPUI Pinning Policy:**
-GPUI is immutable (no semver). Zed now ships `gpui` as a published crates.io artifact, and
-`gpui-component` 0.5.1 is compiled against the published `gpui 0.2.2`. The desktop manifest pins
-both **exactly** so there is no floating revision and no cross-commit type drift. This supersedes
-the historical git-hash policy — the exact crates.io pins are the fixed, reproducible revision pair:
+**GPUI Source Policy:**
+The desktop manifest depends on the **master branches** of the upstream repositories — `gpui`
+from `zed-industries/zed` and `gpui-component` from `longbridge/gpui-component` — as git
+dependencies, and compiles against those updated versions. This is a deliberate product decision:
+we track the actively developed head rather than the frozen crates.io pins. `gpui-component`
+master is versioned `0.5.x`, requires Rust `edition 2024`, and uses the current API
+(`impl Render for X { fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement }`,
+`gpui_component::init(cx)`, `gpui_component::Root::new(view, window, cx)`,
+`gpui_platform::application()`). Because `gpui-component` master already depends on `gpui` from
+`zed-industries/zed`, both resolve to the same crate — no `[patch]` is required.
+
 ```toml
-gpui = "=0.2.2"
-gpui-component = "=0.5.1"
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
 ```
-Update the pins every two weeks or after each GPUI release, and keep `gpui` and `gpui-component`
-versions in lockstep.
+
+Rebuild from these git sources on a release cadence (or whenever a breaking change lands upstream),
+and keep `gpui` / `gpui_platform` / `gpui-component` versions in lockstep. The desktop UI MUST use
+`gpui-component` widgets (Button, Input, List, Form, etc.) for its primary interface — not only raw
+`gpui` divs.
 
 ---
 
