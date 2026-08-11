@@ -8,73 +8,42 @@
 //!   counts, DB failures, uptime).
 //!
 //! ## Alerting
-//! When readiness fails, a **server-down** alert is emitted (structured
-//! `tracing::error!` log/event) after a cooldown between repeats. The full
-//! server-monitoring and webhook-hook primitives live in the `vautr-telemetry`
-//! crate (`monitoring` module). The server crate's manifest is frozen for
-//! Wave A (it cannot depend on `vautr-telemetry` yet), so this module keeps a
-//! small self-contained registry and emits the log/event half directly; the
-//! `vautr-telemetry::monitoring::Alerting` (with its optional `WebhookDeliverer`)
-//! is the library-grade equivalent for post-integration wiring.
+//! Readiness failures feed `vautr_telemetry::monitoring::Alerting`, which fires
+//! a **server-down** alert (structured `tracing::error!`) after the configured
+//! number of consecutive failures, repeating at most once per cooldown window.
+//! The same primitives (`ServerMetrics`, `Alerting`) live in the `vautr-telemetry`
+//! crate; this module is the server-side wiring into them.
 //!
 //! ## No-PII rule (telemetry spec §1)
 //! All reported fields are integer counters, durations, or fixed status strings.
 //! Nothing here can carry a title, username, URL, note, or secret.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
 
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
-use sqlx::Executor;
+
+use vautr_telemetry::monitoring::{Alerting, HealthStatus, ServerMetrics};
 
 use crate::handlers::AppState;
 use crate::repository::Repository;
 
-/// Cooldown between consecutive server-down alert emissions (5 min).
-const ALERT_COOLDOWN: Duration = Duration::from_secs(300);
-/// Consecutive readiness failures required before a server-down alert fires.
-const ALERT_THRESHOLD: u64 = 2;
-
-/// Process-wide health/metrics state (uptime clock + counters).
-///
-/// A single shared instance gives a stable "process uptime" across the whole
-/// server, matching the liveness semantics of `GET /health`.
-struct HealthState {
-    started_at: Instant,
-    total_requests: AtomicU64,
-    ok_requests: AtomicU64,
-    server_errors: AtomicU64,
-    db_failures: AtomicU64,
-    consecutive_failures: AtomicU64,
-    last_alert_at: AtomicU64,
+/// Process-wide server metrics (uptime clock + counters). A single shared
+/// instance gives a stable "process uptime" across the whole server, matching
+/// the liveness semantics of `GET /health`.
+fn server_metrics() -> &'static ServerMetrics {
+    static METRICS: OnceLock<ServerMetrics> = OnceLock::new();
+    METRICS.get_or_init(ServerMetrics::new)
 }
 
-impl HealthState {
-    fn new() -> Self {
-        Self {
-            started_at: Instant::now(),
-            total_requests: AtomicU64::new(0),
-            ok_requests: AtomicU64::new(0),
-            server_errors: AtomicU64::new(0),
-            db_failures: AtomicU64::new(0),
-            consecutive_failures: AtomicU64::new(0),
-            last_alert_at: AtomicU64::new(0),
-        }
-    }
-
-    fn uptime_secs(&self) -> u64 {
-        self.started_at.elapsed().as_secs()
-    }
-}
-
-fn state() -> &'static HealthState {
-    static STATE: OnceLock<HealthState> = OnceLock::new();
-    STATE.get_or_init(HealthState::new)
+/// Process-wide server-down alert coordinator. Defaults: fires after 2
+/// consecutive readiness failures, cooldown 5 minutes (see telemetry docs).
+fn alerting() -> &'static Mutex<Alerting> {
+    static ALERTING: OnceLock<Mutex<Alerting>> = OnceLock::new();
+    ALERTING.get_or_init(|| Mutex::new(Alerting::new()))
 }
 
 /// Real DB connectivity check: acquire a connection and run `SELECT 1`.
@@ -88,14 +57,13 @@ async fn db_healthy(repo: &Repository) -> bool {
 
 /// Liveness probe (`GET /health`): reports the process is serving.
 pub async fn liveness(State(_): State<AppState>) -> Response {
-    let hs = state();
-    hs.total_requests.fetch_add(1, Ordering::Relaxed);
-    hs.ok_requests.fetch_add(1, Ordering::Relaxed);
+    let m = server_metrics();
+    m.record_ok();
     (
         StatusCode::OK,
         Json(json!({
             "status": "ok",
-            "uptime_secs": hs.uptime_secs(),
+            "uptime_secs": m.uptime_secs(),
         })),
     )
         .into_response()
@@ -103,36 +71,36 @@ pub async fn liveness(State(_): State<AppState>) -> Response {
 
 /// Readiness probe (`GET /health/ready`): reflects real DB connectivity.
 pub async fn readiness(State(app): State<AppState>) -> Response {
-    let hs = state();
-    hs.total_requests.fetch_add(1, Ordering::Relaxed);
+    let m = server_metrics();
 
-    let healthy = db_healthy(&app.repo).await;
-    if healthy {
-        hs.ok_requests.fetch_add(1, Ordering::Relaxed);
-        hs.consecutive_failures.store(0, Ordering::Relaxed);
+    if db_healthy(&app.repo).await {
+        m.record_ok();
+        let _ = alerting().lock().unwrap().evaluate(HealthStatus::Up);
+        let snap = m.snapshot();
         (
             StatusCode::OK,
             Json(json!({
                 "status": "ready",
                 "db": "up",
-                "uptime_secs": hs.uptime_secs(),
-                "requests": hs.total_requests.load(Ordering::Relaxed),
-                "errors": hs.server_errors.load(Ordering::Relaxed),
+                "uptime_secs": snap.uptime_secs,
+                "requests": snap.total_requests,
+                "errors": snap.error_count,
             })),
         )
             .into_response()
     } else {
-        hs.db_failures.fetch_add(1, Ordering::Relaxed);
-        hs.server_errors.fetch_add(1, Ordering::Relaxed);
-        let failures = hs.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
-        fire_server_down_alert_if_due(failures, hs);
+        m.record_db_failure();
+        m.record_server_error();
+        let mut alert = alerting().lock().unwrap();
+        let _event = alert.evaluate(HealthStatus::Down);
+        let consecutive_failures = alert.consecutive_failures();
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
                 "status": "unavailable",
                 "db": "down",
-                "uptime_secs": hs.uptime_secs(),
-                "consecutive_failures": failures,
+                "uptime_secs": m.uptime_secs(),
+                "consecutive_failures": consecutive_failures,
             })),
         )
             .into_response()
@@ -142,47 +110,21 @@ pub async fn readiness(State(app): State<AppState>) -> Response {
 /// Basic in-process metrics (`GET /metrics`): requests, errors, DB failures,
 /// uptime.
 pub async fn metrics(State(_): State<AppState>) -> Response {
-    let hs = state();
+    let m = server_metrics();
+    let snap = m.snapshot();
+    let consecutive_failures = alerting().lock().unwrap().consecutive_failures();
     (
         StatusCode::OK,
         Json(json!({
-            "uptime_secs": hs.uptime_secs(),
-            "total_requests": hs.total_requests.load(Ordering::Relaxed),
-            "ok_requests": hs.ok_requests.load(Ordering::Relaxed),
-            "server_errors": hs.server_errors.load(Ordering::Relaxed),
-            "db_failures": hs.db_failures.load(Ordering::Relaxed),
-            "consecutive_failures": hs.consecutive_failures.load(Ordering::Relaxed),
+            "uptime_secs": snap.uptime_secs,
+            "total_requests": snap.total_requests,
+            "ok_requests": snap.ok_requests,
+            "server_errors": snap.error_count,
+            "db_failures": snap.db_failures,
+            "consecutive_failures": consecutive_failures,
         })),
     )
         .into_response()
-}
-
-/// Emit a server-down alert (log/event) once the failure threshold is crossed
-/// and the cooldown has elapsed since the last alert.
-fn fire_server_down_alert_if_due(consecutive_failures: u64, hs: &HealthState) {
-    if consecutive_failures < ALERT_THRESHOLD {
-        return;
-    }
-    let now = unix_secs();
-    let last = hs.last_alert_at.load(Ordering::Relaxed);
-    if now.saturating_sub(last) < ALERT_COOLDOWN.as_secs() {
-        return;
-    }
-    hs.last_alert_at.store(now, Ordering::Relaxed);
-    tracing::error!(
-        kind = "server_down",
-        consecutive_failures = consecutive_failures,
-        uptime_secs = hs.uptime_secs(),
-        timestamp_unix_secs = now,
-        "SERVER-DOWN alert: readiness check failing (database unreachable)"
-    );
-}
-
-fn unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

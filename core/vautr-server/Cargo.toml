@@ -44,6 +44,9 @@ chrono.workspace = true
 sha2.workspace = true
 # Wave A5 (backups): server endpoints consume the vautr-backup crate.
 vautr-backup.workspace = true
+# Wave A6 (monitoring): server health/readiness/metrics + server-down alerting
+# use the server-monitoring primitives in the vautr-telemetry crate.
+vautr-telemetry.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
@@ -56,3 +59,6 @@ openssl = "0.10"
 default = []
 # WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). OFF by default.
 webauthn = ["dep:webauthn-rs"]
+# Opt-in PostgreSQL backend (db.rs §postgres + docs/SELF-HOSTING.md). SQLite stays
+# the default; enabling this pulls in sqlx's postgres driver. OFF by default.
+postgres = ["sqlx/postgres"]

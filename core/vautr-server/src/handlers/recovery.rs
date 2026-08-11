@@ -17,7 +17,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};

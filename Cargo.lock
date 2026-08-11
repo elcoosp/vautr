@@ -6996,6 +6996,7 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -9961,9 +9962,16 @@ dependencies = [
 name = "vautr-backup"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "rand 0.8.7",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "sqlx 0.9.0",
  "thiserror 2.0.20",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -10168,6 +10176,8 @@ dependencies = [
  "uuid",
  "vautr-backup",
  "vautr-crypto",
+ "vautr-domain",
+ "vautr-telemetry",
  "webauthn-rs",
 ]
 
@@ -10207,6 +10217,7 @@ dependencies = [
 name = "vautr-telemetry"
 version = "0.1.0"
 dependencies = [
+ "reqwest",
  "serde",
  "serde_json",
  "tracing",

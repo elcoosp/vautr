@@ -24,6 +24,8 @@
 //! another workstream — see docs/SELF-HOSTING.md §"Database").
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
+#[cfg(feature = "postgres")]
+use sqlx::PgPool;
 use std::str::FromStr;
 
 /// Boxed error covering both `sqlx::Error` (connect) and `MigrateError` (schema).

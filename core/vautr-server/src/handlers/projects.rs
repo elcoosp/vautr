@@ -1073,9 +1073,9 @@ mod tests {
         let repo = Arc::new(Repository::new(pool));
         let now = now_ms();
         for (id, email, tok) in [
-            ("u1", "a@example.com", "tok1"),
-            ("u2", "b@example.com", "tok2"),
-            ("u3", "c@example.com", "tok3"),
+            ("11111111-1111-4111-8111-111111111111", "a@example.com", "tok1"),
+            ("22222222-2222-4222-8222-222222222222", "b@example.com", "tok2"),
+            ("33333333-3333-4333-8333-333333333333", "c@example.com", "tok3"),
         ] {
             repo.create_user(
                 id,
@@ -1159,11 +1159,11 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/members"),
             "tok1",
-            Some(json!({ "user_uuid": "u2", "permission": "can_view" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222", "permission": "can_view" })),
         )
         .await;
         assert_eq!(status, StatusCode::CREATED, "add member: {json}");
-        assert_eq!(json["user_uuid"], "u2");
+        assert_eq!(json["user_uuid"], "22222222-2222-4222-8222-222222222222");
         assert_eq!(json["permission"], "can_view");
 
         // u2 now sees the project in their list.
@@ -1178,7 +1178,7 @@ mod tests {
             "POST",
             "/offboard",
             "tok3",
-            Some(json!({ "user_uuid": "u2" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222" })),
         )
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "u3 must not offboard");
@@ -1189,7 +1189,7 @@ mod tests {
             "POST",
             "/offboard",
             "tok1",
-            Some(json!({ "user_uuid": "u2", "reason": "left the team" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222", "reason": "left the team" })),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "offboard: {json}");
@@ -1235,7 +1235,7 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/members"),
             "tok1",
-            Some(json!({ "user_uuid": "u2", "permission": "can_edit", "role": "admin" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222", "permission": "can_edit", "role": "admin" })),
         )
         .await;
         assert_eq!(status, StatusCode::CREATED);
@@ -1246,7 +1246,7 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/members"),
             "tok1",
-            Some(json!({ "user_uuid": "u3", "role": "owner" })),
+            Some(json!({ "user_uuid": "33333333-3333-4333-8333-333333333333", "role": "owner" })),
         )
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "rank escalation blocked: {json}");
@@ -1285,7 +1285,7 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/groups/{group_id}/members"),
             "tok1",
-            Some(json!({ "user_uuid": "u2" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222" })),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -1333,7 +1333,7 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/members"),
             "tok1",
-            Some(json!({ "user_uuid": "u2", "permission": "can_view" })),
+            Some(json!({ "user_uuid": "22222222-2222-4222-8222-222222222222", "permission": "can_view" })),
         )
         .await;
 
@@ -1343,7 +1343,7 @@ mod tests {
             "POST",
             &format!("/projects/{project_id}/members"),
             "tok2",
-            Some(json!({ "user_uuid": "u3", "permission": "can_view" })),
+            Some(json!({ "user_uuid": "33333333-3333-4333-8333-333333333333", "permission": "can_view" })),
         )
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "can_view member cannot manage");
