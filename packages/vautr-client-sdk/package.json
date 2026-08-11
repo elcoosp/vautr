@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./real": {
+      "types": "./dist/realClient.d.ts",
+      "default": "./dist/realClient.js"
+    },
     "./mobile": {
       "types": "./dist/mobile.d.ts",
       "default": "./dist/mobile.js"

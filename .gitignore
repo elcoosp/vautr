@@ -4,3 +4,6 @@ dist
 *.tsbuildinfo
 wr.sh
 dump.txt
+*.db
+*.db-shm
+*.db-wal

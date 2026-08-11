@@ -1,7 +1,7 @@
 import { useOverview } from '@vautr/ui-logic';
 import { ArrowLeft, Copy, Eye, EyeOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { getClient } from '../lib/client';
+import { performAction, release, reveal } from '../lib/client';
 
 interface ItemDetailProps {
   uuid: string;
@@ -24,7 +24,7 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
     let active = true;
     void (async () => {
       try {
-        const handle = await getClient().reveal(uuid, 1, new Uint8Array());
+        const handle = await reveal(uuid);
         if (active) {
           handleRef.current = handle;
         }
@@ -35,7 +35,7 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
     return () => {
       active = false;
       if (handleRef.current) {
-        void getClient().release(handleRef.current);
+        void release(handleRef.current);
         handleRef.current = null;
       }
     };
@@ -58,14 +58,14 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
       return;
     }
     try {
-      await getClient().performAction({ type: 'CopyToClipboard', handle });
+      await performAction({ type: 'CopyToClipboard', handle });
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      // no-op in demo
+      // no-op
     } finally {
       // Silent copy flow: immediately dispose the handle (ui-state-charts §3).
-      void getClient().release(handle);
+      void release(handle);
       handleRef.current = null;
     }
   };

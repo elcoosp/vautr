@@ -1,4 +1,5 @@
 import { useStore } from 'zustand/react';
+import { useShallow } from 'zustand/react/shallow';
 import type { SyncState } from './store';
 import { vaultStore } from './store';
 import type { DecryptedOverview, Draft, TaskReceipt } from './types';
@@ -10,7 +11,10 @@ import type { DecryptedOverview, Draft, TaskReceipt } from './types';
 
 /** All overviews as an array, reactive. */
 export function useOverviews(): readonly DecryptedOverview[] {
-  return useStore(vaultStore, (s) => Object.values(s.items));
+  // `useShallow` keeps the selector's snapshot referentially stable when the
+  // underlying items map is unchanged, so `Object.values(...)` (a fresh array
+  // on every call) does not trip React's `getSnapshot` caching check.
+  return useStore(vaultStore, useShallow((s) => Object.values(s.items)));
 }
 
 /** The overview for `uuid`, reactive. */
@@ -37,13 +41,17 @@ export function useDraft(receipt: TaskReceipt): Draft | undefined {
 
 /** Actions are stable references; expose them for convenience. */
 export function useVaultActions() {
-  return useStore(vaultStore, (s) => ({
-    upsertOverview: s.upsertOverview,
-    deleteOverview: s.deleteOverview,
-    setDraft: s.setDraft,
-    clearDraft: s.clearDraft,
-    applyUpdate: s.applyUpdate,
-    lock: s.lock,
-    unlock: s.unlock,
-  }));
+  // `useShallow` stabilizes the fresh object literal each render produces.
+  return useStore(
+    vaultStore,
+    useShallow((s) => ({
+      upsertOverview: s.upsertOverview,
+      deleteOverview: s.deleteOverview,
+      setDraft: s.setDraft,
+      clearDraft: s.clearDraft,
+      applyUpdate: s.applyUpdate,
+      lock: s.lock,
+      unlock: s.unlock,
+    })),
+  );
 }

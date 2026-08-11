@@ -10,6 +10,9 @@ export default defineConfig({
       '@vautr/ui-logic': fileURLToPath(
         new URL('../../packages/ui-logic/src/index.ts', import.meta.url),
       ),
+      '@vautr/client-sdk/real': fileURLToPath(
+        new URL('../../packages/vautr-client-sdk/src/realClient.ts', import.meta.url),
+      ),
       '@vautr/client-sdk': fileURLToPath(
         new URL('../../packages/vautr-client-sdk/src/index.ts', import.meta.url),
       ),

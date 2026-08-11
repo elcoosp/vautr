@@ -65,6 +65,25 @@ impl Repository {
 
         Ok(if res.rows_affected() == 1 {
             UpsertOutcome::Updated
+        } else if target_version == 0 {
+            // Fresh create (no row exists): the OCC UPDATE matched nothing and
+            // the caller expressed intent to create a new item (target_version
+            // 0). Insert it at version 1 so the sync engine can serve it. This
+            // is the initial-insert path the pure-OCC update intentionally
+            // leaves to the caller; the HTTP layer was not wiring it.
+            sqlx::query(
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
+                 VALUES (?, ?, 1, ?, ?, ?, ?)",
+            )
+            .bind(uuid)
+            .bind(user_id)
+            .bind(enc_key_gen)
+            .bind(deleted_date)
+            .bind(payload)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+            UpsertOutcome::Updated
         } else {
             UpsertOutcome::Conflict
         })

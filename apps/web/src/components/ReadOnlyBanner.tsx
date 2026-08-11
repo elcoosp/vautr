@@ -1,6 +1,6 @@
 import { useIsReadOnly, useVaultActions } from '@vautr/ui-logic';
 import { useState } from 'react';
-import { getClient, makeDemoKey, seedDemoData } from '../lib/client';
+import { login } from '../lib/client';
 
 /**
  * Persistent, non-blocking read-only gate banner (ui-state-charts §2). Viewing
@@ -22,8 +22,8 @@ export function ReadOnlyBanner() {
     if (!password) {
       return;
     }
-    await getClient().unlock(makeDemoKey(password), 1);
-    seedDemoData();
+    const username = localStorage.getItem('vautr:username') ?? '';
+    await login(username, password);
     unlock();
     setReauth(false);
     setPassword('');

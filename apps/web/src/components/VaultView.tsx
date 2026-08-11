@@ -1,6 +1,7 @@
-import { useVaultActions } from '@vautr/ui-logic';
-import { Lock, Vault } from 'lucide-react';
+import { Lock, Plus, Vault } from 'lucide-react';
 import { useState } from 'react';
+import { lock } from '../lib/client';
+import { AddItemForm } from './AddItemForm';
 import { ItemDetail } from './ItemDetail';
 import { ReadOnlyBanner } from './ReadOnlyBanner';
 import { SyncIndicator } from './SyncIndicator';
@@ -8,7 +9,11 @@ import { VaultList } from './VaultList';
 
 export function VaultView() {
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
-  const { lock } = useVaultActions();
+  const [adding, setAdding] = useState(false);
+
+  const onLock = () => {
+    void lock();
+  };
 
   return (
     <div className="flex h-screen flex-col bg-bg">
@@ -21,7 +26,19 @@ export function VaultView() {
           <SyncIndicator />
           <button
             type="button"
-            onClick={lock}
+            onClick={() => {
+              setAdding(true);
+              setSelectedUuid(null);
+            }}
+            aria-label="Add item"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            Add item
+          </button>
+          <button
+            type="button"
+            onClick={onLock}
             aria-label="Lock vault"
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
           >
@@ -38,7 +55,7 @@ export function VaultView() {
         <section
           aria-label="Vault items"
           className={`w-full md:w-80 md:shrink-0 md:border-r md:border-border ${
-            selectedUuid ? 'hidden md:block' : 'block'
+            selectedUuid || adding ? 'hidden md:block' : 'block'
           }`}
         >
           <VaultList selectedUuid={selectedUuid} onSelect={setSelectedUuid} />
@@ -47,9 +64,17 @@ export function VaultView() {
         {/* Detail pane. */}
         <section
           aria-label="Item details"
-          className={`min-w-0 flex-1 ${selectedUuid ? 'block' : 'hidden md:block'}`}
+          className={`min-w-0 flex-1 ${selectedUuid || adding ? 'block' : 'hidden md:block'}`}
         >
-          {selectedUuid ? (
+          {adding ? (
+            <AddItemForm
+              onSaved={(uuid) => {
+                setAdding(false);
+                setSelectedUuid(uuid);
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          ) : selectedUuid ? (
             <ItemDetail uuid={selectedUuid} onBack={() => setSelectedUuid(null)} />
           ) : (
             <p className="p-6 text-center text-sm text-text-muted">

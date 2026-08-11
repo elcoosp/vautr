@@ -11,12 +11,18 @@ impl Repository {
         expires_at: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?) \
+            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?) \
              ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, expires_at = excluded.expires_at",
         )
         .bind(token)
         .bind(user_id)
         .bind(expires_at)
+        .bind(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+        )
         .execute(&self.pool)
         .await?;
         Ok(())

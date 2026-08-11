@@ -22,6 +22,10 @@ interface PendingRequest {
  * passed as strings (data.md §1 rule 1). Plaintext secrets only ever travel
  * through the `clipboard` platform event consumed by the registered handler and
  * are never retained here.
+ *
+ * This worker bridge is used by the browser-extension popup and other
+ * `--target web` consumers. The web app itself drives the full client
+ * (`@vautr/client-sdk/real`) for register/login/sync against the live server.
  */
 export class VautrClient {
   private readonly worker: Worker;

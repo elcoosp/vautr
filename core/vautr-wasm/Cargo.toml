@@ -38,3 +38,9 @@ vautr-keyring.workspace = true
 # stateless extension service-worker build. CI symbol-check (prd.md) asserts it
 # is absent from the restricted web artifact.
 desktop-api = []
+
+[dev-dependencies]
+# Native-only integration test against the live server (gate 2). Not built for
+# wasm32 (dev-deps never compile into the cdylib), so ADR-005 is preserved.
+ureq = { version = "2", default-features = false, features = ["json"] }
+serde_json.workspace = true
