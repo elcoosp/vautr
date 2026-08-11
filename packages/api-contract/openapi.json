@@ -11,11 +11,19 @@
     { "name": "auth", "description": "OPAQUE PAKE registration & login" },
     { "name": "sync", "description": "Metadata-first sync engine" },
     { "name": "items", "description": "Single-item OCC mutations & tombstoning" },
-    { "name": "account", "description": "Key management & epoch rotation" }
+    { "name": "account", "description": "Key management & epoch rotation" },
+    { "name": "recovery", "description": "Emergency recovery & account lifecycle" },
+    { "name": "sharing", "description": "End-to-end encrypted sharing & PKI" },
+    { "name": "files", "description": "Streaming file storage & presigned URLs" }
   ],
   "components": {
     "securitySchemes": {
-      "BearerAuth": { "type": "http", "scheme": "bearer" }
+      "BearerAuth": { "type": "http", "scheme": "bearer" },
+      "RecoveryToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Short-lived, single-use RecoverySessionToken issued by /account/recover/verify."
+      }
     },
     "parameters": {
       "XRequestId": {
@@ -106,6 +114,189 @@
           "updated_at": { "type": "integer", "format": "int64" },
           "current_server_state": { "$ref": "#/components/schemas/ServerState" }
         }
+      },
+      "RecoveryChallenge": {
+        "type": "object",
+        "required": ["nonce"],
+        "properties": {
+          "nonce": { "type": "string", "description": "Base64 random 32-byte nonce to sign with the RK-derived Ed25519 private key." }
+        }
+      },
+      "RecoveryVerify": {
+        "type": "object",
+        "required": ["nonce", "signature"],
+        "properties": {
+          "nonce": { "type": "string", "description": "Nonce returned by GET /account/recover/challenge." },
+          "signature": { "type": "string", "description": "Base64 Ed25519 signature over the nonce using the RK-derived private key." }
+        }
+      },
+      "RecoveryVerifyResponse": {
+        "type": "object",
+        "required": ["session_token", "expires_at"],
+        "properties": {
+          "session_token": { "type": "string", "description": "Short-lived, single-use RecoverySessionToken." },
+          "expires_at": { "type": "integer", "format": "int64", "example": 1700000000000 }
+        }
+      },
+      "RecoveryComplete": {
+        "type": "object",
+        "required": ["registration_finish", "server_public_key", "wrapped_svk_mp", "wrapped_svk_rk", "rk_public_key"],
+        "properties": {
+          "registration_finish": { "type": "string", "description": "Base64 OPAQUE new registration payload." },
+          "server_public_key": { "type": "string", "description": "Base64 OPAQUE server public key." },
+          "wrapped_svk_mp": { "type": "string", "description": "Base64 AEAD KEK_MP-wrapped SVK at the new epoch." },
+          "wrapped_svk_rk": { "type": "string", "description": "Base64 AEAD KEK_RK-wrapped SVK at the new epoch." },
+          "rk_public_key": { "type": "string", "description": "Base64 new Ed25519 RK public key." }
+        }
+      },
+      "SharingPublicKey": {
+        "type": "object",
+        "required": ["uuid", "public_key", "created_at"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "public_key": { "type": "string", "description": "Base64 X25519 sharing public key." },
+          "created_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "WrappedSIK": {
+        "type": "object",
+        "required": ["wrapped_sik", "ephemeral_public_key"],
+        "properties": {
+          "wrapped_sik": { "type": "string", "description": "Base64 AEAD KEM-wrapped Symmetric Item Key." },
+          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key used in the KEM." }
+        }
+      },
+      "ShareCreateRequest": {
+        "type": "object",
+        "required": ["sender_uuid", "recipient_uuid", "item_uuid", "wrapped_sik", "ephemeral_public_key"],
+        "properties": {
+          "sender_uuid": { "type": "string", "format": "uuid" },
+          "recipient_uuid": { "type": "string", "format": "uuid" },
+          "item_uuid": { "type": "string", "format": "uuid" },
+          "wrapped_sik": { "type": "string", "description": "Base64 KEM-wrapped SIK for the recipient." },
+          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key." }
+        }
+      },
+      "ShareResult": {
+        "type": "object",
+        "required": ["share_id", "status"],
+        "properties": {
+          "share_id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "example": "created" }
+        }
+      },
+      "ShareInboxItem": {
+        "type": "object",
+        "required": ["share_id", "sender_uuid", "item_uuid", "wrapped_sik", "ephemeral_public_key", "created_at"],
+        "properties": {
+          "share_id": { "type": "string", "format": "uuid" },
+          "sender_uuid": { "type": "string", "format": "uuid" },
+          "item_uuid": { "type": "string", "format": "uuid" },
+          "wrapped_sik": { "type": "string", "description": "Base64 KEM-wrapped SIK for the recipient." },
+          "ephemeral_public_key": { "type": "string", "description": "Base64 X25519 ephemeral public key." },
+          "created_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "GroupCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "GroupMember": {
+        "type": "object",
+        "required": ["user_uuid", "role"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "role": { "type": "string", "enum": ["admin", "member"] }
+        }
+      },
+      "Group": {
+        "type": "object",
+        "required": ["group_id", "name", "members"],
+        "properties": {
+          "group_id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/GroupMember" } }
+        }
+      },
+      "GroupResult": {
+        "type": "object",
+        "required": ["group_id", "status"],
+        "properties": {
+          "group_id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "example": "created" }
+        }
+      },
+      "GroupAddMemberRequest": {
+        "type": "object",
+        "required": ["user_uuid", "wrapped_group_sik"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "wrapped_group_sik": { "type": "string", "description": "Base64 KEM-wrapped GroupSIK for the new member." }
+        }
+      },
+      "FileManifest": {
+        "type": "object",
+        "required": ["file_uuid", "total_size", "chunk_size", "total_chunks", "enc_key_gen", "content_type", "last_modified", "status"],
+        "properties": {
+          "file_uuid": { "type": "string", "format": "uuid" },
+          "total_size": { "type": "integer", "format": "uint64" },
+          "chunk_size": { "type": "integer", "format": "uint32" },
+          "total_chunks": { "type": "integer", "format": "uint32" },
+          "enc_key_gen": { "type": "integer", "format": "uint64" },
+          "content_type": { "type": "string" },
+          "last_modified": { "type": "integer", "format": "int64" },
+          "status": { "type": "string", "enum": ["pending_upload", "available"] }
+        }
+      },
+      "PresignedUrl": {
+        "type": "object",
+        "required": ["chunk_index", "url"],
+        "properties": {
+          "chunk_index": { "type": "integer", "format": "uint32" },
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "UploadInitiateResponse": {
+        "type": "object",
+        "required": ["upload_id", "presigned_urls"],
+        "properties": {
+          "upload_id": { "type": "string" },
+          "presigned_urls": { "type": "array", "items": { "$ref": "#/components/schemas/PresignedUrl" } }
+        }
+      },
+      "UploadStatus": {
+        "type": "object",
+        "required": ["upload_id", "received_chunks", "total_chunks"],
+        "properties": {
+          "upload_id": { "type": "string" },
+          "received_chunks": { "type": "array", "items": { "type": "integer", "format": "uint32" } },
+          "total_chunks": { "type": "integer", "format": "uint32" }
+        }
+      },
+      "UploadCompleteRequest": {
+        "type": "object",
+        "required": ["upload_id"],
+        "properties": {
+          "upload_id": { "type": "string" },
+          "parts": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "DownloadResponse": {
+        "type": "object",
+        "required": ["presigned_urls"],
+        "properties": {
+          "presigned_urls": { "type": "array", "items": { "$ref": "#/components/schemas/PresignedUrl" } }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string", "example": "success" } }
       }
     }
   },
@@ -573,6 +764,592 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/account/recover/challenge": {
+      "get": {
+        "tags": ["recovery"],
+        "operationId": "recoverChallenge",
+        "security": [],
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Fresh recovery nonce.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RecoveryChallenge" }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/account/recover/verify": {
+      "post": {
+        "tags": ["recovery"],
+        "operationId": "recoverVerify",
+        "security": [],
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecoveryVerify" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recovery session issued (single-use).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RecoveryVerifyResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized (bad signature).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "404": {
+            "description": "not_found (unknown account).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "429": {
+            "description": "rate_limited.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/account/recover/complete": {
+      "post": {
+        "tags": ["recovery"],
+        "operationId": "recoverComplete",
+        "security": [{ "RecoveryToken": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecoveryComplete" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recovery complete; credentials rotated.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "410": {
+            "description": "Recovery token expired (single-use).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "412": {
+            "description": "precondition_failed (stale epoch).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "422": {
+            "description": "key_generation_too_old.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/account/reclaim": {
+      "post": {
+        "tags": ["recovery"],
+        "operationId": "accountReclaim",
+        "security": [],
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Verification link sent to registered email; vault suspended for 30-day grace period.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (unknown email).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "429": {
+            "description": "rate_limited.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/account": {
+      "delete": {
+        "tags": ["recovery"],
+        "operationId": "accountDelete",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Account permanently deleted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/users/{uuid}/public-key": {
+      "get": {
+        "tags": ["sharing"],
+        "operationId": "usersPublicKey",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipient sharing public key.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SharingPublicKey" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (no public key registered).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/shares/": {
+      "post": {
+        "tags": ["sharing"],
+        "operationId": "shareCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ShareCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Share created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ShareResult" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found (unknown recipient or item).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "422": {
+            "description": "precondition_failed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/shares/{share_id}/payload": {
+      "post": {
+        "tags": ["sharing"],
+        "operationId": "shareUploadPayload",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "share_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["payload"],
+                "properties": {
+                  "payload": { "type": "string", "description": "Base64 SIK-encrypted shared payload." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payload stored.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/shares/inbox": {
+      "get": {
+        "tags": ["sharing"],
+        "operationId": "shareInbox",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Pending inbound shares.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["shares"],
+                  "properties": {
+                    "shares": { "type": "array", "items": { "$ref": "#/components/schemas/ShareInboxItem" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shares/{share_id}": {
+      "delete": {
+        "tags": ["sharing"],
+        "operationId": "shareRevoke",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "share_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share and payload removed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/groups": {
+      "post": {
+        "tags": ["sharing"],
+        "operationId": "groupCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GroupCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Group created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GroupResult" }
+              }
+            }
+          },
+          "422": {
+            "description": "precondition_failed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      },
+      "get": {
+        "tags": ["sharing"],
+        "operationId": "groupList",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "User's groups.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["groups"],
+                  "properties": {
+                    "groups": { "type": "array", "items": { "$ref": "#/components/schemas/Group" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/groups/{id}": {
+      "get": {
+        "tags": ["sharing"],
+        "operationId": "groupGet",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group detail.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Group" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["sharing"],
+        "operationId": "groupDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group deleted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/groups/{id}/members": {
+      "post": {
+        "tags": ["sharing"],
+        "operationId": "groupAddMember",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GroupAddMemberRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Member added with wrapped GroupSIK.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "422": {
+            "description": "precondition_failed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/groups/{id}/items": {
+      "post": {
+        "tags": ["sharing"],
+        "operationId": "groupAddItem",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["item_uuid", "payload"],
+                "properties": {
+                  "item_uuid": { "type": "string", "format": "uuid" },
+                  "payload": { "type": "string", "description": "Base64 GroupSIK-encrypted payload." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item shared to group.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/files/{file_uuid}/upload/initiate": {
+      "post": {
+        "tags": ["files"],
+        "operationId": "fileUploadInitiate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/FileManifest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Multipart upload session created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadInitiateResponse" }
+              }
+            }
+          },
+          "412": {
+            "description": "precondition_failed (manifest not in PendingUpload state).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "422": {
+            "description": "precondition_failed (enc_key_gen too old).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/files/{file_uuid}/upload/status": {
+      "get": {
+        "tags": ["files"],
+        "operationId": "fileUploadStatus",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Multipart upload resumption state.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadStatus" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/files/{file_uuid}/upload/complete": {
+      "post": {
+        "tags": ["files"],
+        "operationId": "fileUploadComplete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UploadCompleteRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "S3 object assembled and marked ready.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "412": {
+            "description": "precondition_failed (missing chunks).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/files/{file_uuid}/download": {
+      "get": {
+        "tags": ["files"],
+        "operationId": "fileDownload",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "file_uuid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Presigned chunk URLs for on-demand download.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DownloadResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "410": {
+            "description": "Upload incomplete; not yet available.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
           }
         }
       }
