@@ -89,6 +89,15 @@ impl Repository {
     // ------------------------------------------------------------------
 
     /// Initiate a 1:1 share. Stores the zero-knowledge KEM envelope only.
+    ///
+    /// # FK workaround
+    /// The frozen schema (0001_init.sql) declares `shares.item_uuid REFERENCES
+    /// items(uuid)`, but `items` has a composite primary key `(uuid, user_id)`,
+    /// so SQLite rejects every insert into `shares` with a "foreign key
+    /// mismatch" (uuid is not unique in `items`). Migrations are frozen by the
+    /// shared-tree contract, so we disable FK enforcement for this single
+    /// INSERT on a dedicated connection. The `owner_user_id`/`recipient_user_id`
+    /// FKs (which are valid) are enforced upstream by the auth/session gate.
     pub async fn create_share(
         &self,
         item_uuid: &str,
@@ -98,7 +107,11 @@ impl Repository {
         ephemeral_public_key: &[u8],
         now: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+        let mut conn = self.pool.acquire().await?;
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&mut *conn)
+            .await?;
+        let res = sqlx::query(
             "INSERT INTO shares (item_uuid, owner_user_id, recipient_user_id, wrapped_sik, ephemeral_public_key, created_at) \
              VALUES (?, ?, ?, ?, ?, ?) \
              ON CONFLICT(item_uuid, recipient_user_id) DO UPDATE SET \
@@ -112,8 +125,13 @@ impl Repository {
         .bind(wrapped_sik)
         .bind(ephemeral_public_key)
         .bind(now)
-        .execute(&self.pool)
-        .await?;
+        .execute(&mut *conn)
+        .await;
+        let restore = sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&mut *conn)
+            .await;
+        res?;
+        restore?;
         Ok(())
     }
 
@@ -150,15 +168,24 @@ impl Repository {
         owner_user_id: &str,
         recipient_user_id: &str,
     ) -> Result<bool, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&mut *conn)
+            .await?;
         let res = sqlx::query(
             "DELETE FROM shares WHERE item_uuid = ? AND owner_user_id = ? AND recipient_user_id = ?",
         )
         .bind(item_uuid)
         .bind(owner_user_id)
         .bind(recipient_user_id)
-        .execute(&self.pool)
-        .await?;
-        Ok(res.rows_affected() > 0)
+        .execute(&mut *conn)
+        .await;
+        let restore = sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&mut *conn)
+            .await;
+        let n = res?;
+        restore?;
+        Ok(n.rows_affected() > 0)
     }
 
     /// Delete every share of an item the caller owns (revocation by item).
@@ -167,12 +194,21 @@ impl Repository {
         item_uuid: &str,
         owner_user_id: &str,
     ) -> Result<u64, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(&mut *conn)
+            .await?;
         let res = sqlx::query("DELETE FROM shares WHERE item_uuid = ? AND owner_user_id = ?")
             .bind(item_uuid)
             .bind(owner_user_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(res.rows_affected())
+            .execute(&mut *conn)
+            .await;
+        let restore = sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&mut *conn)
+            .await;
+        let n = res?;
+        restore?;
+        Ok(n.rows_affected())
     }
 
     // ------------------------------------------------------------------

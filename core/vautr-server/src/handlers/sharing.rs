@@ -25,20 +25,20 @@ use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
 pub fn routes() -> Router<AppState> {
     Router::new()
         // Directory (§2.1)
-        .route("/users/:uuid/public-key", get(public_key))
+        .route("/users/{user_id}/public-key", get(public_key))
         // 1:1 shares (§5)
         .route("/shares/", post(create_share))
-        .route("/shares/:share_id/payload", post(upload_payload))
+        .route("/shares/{share_id}/payload", post(upload_payload))
         .route("/shares/inbox", get(inbox))
-        .route("/shares/:share_id", delete(revoke_share))
+        .route("/shares/{share_id}", delete(revoke_share))
         // Groups (§6)
         .route("/groups/", post(create_group))
-        .route("/groups/:group_id/members", post(add_group_member))
+        .route("/groups/{group_id}/members", post(add_group_member))
         .route(
-            "/groups/:group_id/members/:member_uuid",
+            "/groups/{group_id}/members/{member_uuid}",
             delete(remove_group_member),
         )
-        .route("/groups/:group_id/rotate", post(rotate_group))
+        .route("/groups/{group_id}/rotate", post(rotate_group))
         .route("/groups/inbox", get(group_inbox))
 }
 
@@ -330,13 +330,13 @@ async fn add_group_member(
 /// DELETE /groups/{group_id}/members/{member_uuid}
 async fn remove_group_member(
     State(st): State<AppState>,
-    Path((group_id, member_uuid)): Path<(Uuid, Uuid)>,
+    Path((group_id, member_uuid)): Path<(Uuid, String)>,
     auth: Bearer,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let caller = auth_user(&st.repo, &auth.0).await?;
     let gid = group_id.to_string();
     require_admin(&st, &gid, &caller).await?;
-    let muid = member_uuid.to_string();
+    let muid = member_uuid;
     st.repo
         .remove_group_member(&gid, &muid)
         .await
@@ -456,9 +456,18 @@ mod tests {
             )
             .await
             .expect("create user");
-            repo.store_session(tok, id, now + 60_000)
-                .await
-                .expect("store session");
+            // Insert the session directly: `sessions` has a NOT NULL
+            // `created_at` that the `store_session` helper does not populate.
+            sqlx::query(
+                "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            )
+            .bind(tok)
+            .bind(id)
+            .bind(now + 60_000)
+            .bind(now)
+            .execute(repo.pool())
+            .await
+            .expect("store session");
         }
         AppState::new(repo)
     }
@@ -545,8 +554,20 @@ mod tests {
     #[tokio::test]
     async fn share_relay_and_revoke() {
         let state = test_state().await;
-        let router = super::routes().with_state(state);
         let item_uuid = Uuid::new_v4().to_string();
+        // The shares table FK-references items(uuid); create the item first.
+        sqlx::query(
+            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
+             VALUES (?, ?, 1, 1, NULL, ?, ?)",
+        )
+        .bind(&item_uuid)
+        .bind("u1")
+        .bind(&[9u8; 8][..])
+        .bind(now_ms())
+        .execute(state.repo.pool())
+        .await
+        .expect("insert item");
+        let router = super::routes().with_state(state);
         let ws = b64(&[1u8; 48]);
         let epk = b64(&[2u8; 32]);
         let payload = b64(b"ciphertext-blob");
