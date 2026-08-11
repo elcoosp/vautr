@@ -1,12 +1,20 @@
 import { fileURLToPath, URL } from 'node:url';
+import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [TanStackRouterVite(), react(), tailwindcss()],
   resolve: {
     alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@vautr/api-contract': fileURLToPath(
+        new URL('../../packages/api-contract/src/index.ts', import.meta.url),
+      ),
+      '@vautr/client-sdk/storage': fileURLToPath(
+        new URL('../../packages/vautr-client-sdk/src/storage.ts', import.meta.url),
+      ),
       '@vautr/ui-logic': fileURLToPath(
         new URL('../../packages/ui-logic/src/index.ts', import.meta.url),
       ),

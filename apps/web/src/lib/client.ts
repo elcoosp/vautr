@@ -54,6 +54,13 @@ export async function lock(): Promise<void> {
   vaultStore.getState().lock();
 }
 
+/** Log out: forget the session token and lock the vault. */
+export async function logout(): Promise<void> {
+  await getClient().forget();
+  vaultStore.getState().lock();
+  localStorage.removeItem('vautr:username');
+}
+
 /** Trigger a metadata-first sync. */
 export async function sync(): Promise<void> {
   await getClient().sync();
