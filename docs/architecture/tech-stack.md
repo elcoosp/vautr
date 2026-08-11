@@ -240,6 +240,13 @@ and keep `gpui` / `gpui_platform` / `gpui-component` versions in lockstep. The d
 `gpui-component` widgets (Button, Input, List, Form, etc.) for its primary interface — not only raw
 `gpui` divs.
 
+**Toolchain:** Zed's master `gpui` uses unstable `std` features such as `std::hint::cold_path`
+(rust-lang/rust#136873), so the Desktop crate builds on a **nightly** Rust toolchain. The repo root
+`rust-toolchain.toml` is pinned to `nightly` and the workspace `rust-version` stays `"1.85"`
+(satisfied by nightly). The core, server, and wasm crates are stable-compatible and pass on the same
+nightly toolchain, so a single workspace toolchain remains coherent. Build/test the desktop from
+`apps/desktop` (it has its own `rust-toolchain.toml = nightly`), e.g. `cargo +nightly build -p vautr-desktop`.
+
 ---
 
 ## 5. Testing & Verification

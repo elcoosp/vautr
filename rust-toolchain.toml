@@ -1,7 +1,13 @@
-# Pinned toolchain. SRS §6.3 requires Rust 1.85+; 1.94.1 is the validated build.
-# CI uses the same channel. Adjust only after re-running the full test matrix.
+# Pinned toolchain. SRS §6.3 requires Rust 1.85+ (workspace rust-version = "1.85").
+#
+# Nightly is required because the Desktop client builds against the git-master
+# branch of `gpui` (zed-industries/zed), which uses unstable std features such as
+# `std::hint::cold_path` (rust-lang/rust#136873). See tech-stack.md §4 and
+# apps/desktop/rust-toolchain.toml. All other crates (core, server, wasm) are
+# stable-compatible and pass on this same nightly toolchain, so the workspace
+# stays coherent with a single toolchain.
 [toolchain]
-channel = "1.94.1"
+channel = "nightly"
 components = ["rustfmt", "clippy"]
 targets = ["x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
 profile = "default"

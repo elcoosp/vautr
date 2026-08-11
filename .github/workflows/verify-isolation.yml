@@ -91,7 +91,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        # Nightly, matching rust-toolchain.toml. Required by the Desktop
+        # client's git-master `gpui` (zed) dependency (uses unstable std
+        # features such as std::hint::cold_path). See tech-stack.md §4.
+        uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt, clippy
 
