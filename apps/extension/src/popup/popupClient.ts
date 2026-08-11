@@ -1,39 +1,45 @@
-import { createClipboardHandler, VautrClient } from '@vautr/client-sdk';
-import { attachClientToEventBus, vaultEventBus } from '@vautr/ui-logic';
+import {
+  VautrWebClient,
+  type VautrWebClientOptions,
+} from '@vautr/client-sdk/real';
+import { IndexedDbStore } from '../../../../packages/vautr-client-sdk/src/storage';
+import { getApiUrl } from '../lib/apiUrl';
 
 /**
  * Popup-scoped client lifecycle (build-env-deploy §3.3).
  *
- * The popup instantiates a full `VautrClient` in a popup-scoped Web Worker
- * (`--target web`), exactly like the web app. When the popup closes the client
- * shuts down gracefully (worker terminate + pending rejections), preventing
- * state leakage and resource leaks.
+ * The popup instantiates a full `VautrWebClient` backed by IndexedDB and the
+ * real `vautr-wasm` module. When the popup closes the client locks gracefully.
+ *
+ * A shared `IndexedDbStore` is exposed so the popup can read the SVK after
+ * login (to cache in `chrome.storage.session` for the stateless SW).
  */
-let client: VautrClient | null = null;
+let client: VautrWebClient | null = null;
+let sharedStore: IndexedDbStore | null = null;
 
-/** Lazily create the popup-scoped WASM worker client. */
-export function getPopupClient(): VautrClient {
+/** Resolve the server URL and create the popup client lazily. */
+export async function getPopupClient(): Promise<VautrWebClient> {
   if (!client) {
-    // Instantiate the WASM bridge worker from a static URL so Vite emits it as a
-    // real chunk file (instead of inlining it as a `data:` URL). The MV3
-    // extension_pages CSP (`script-src 'self'`) forbids `data:` workers, so the
-    // worker must be served from `'self'`. Reuses the SDK's `worker.ts` bridge.
-    const worker = new Worker(
-      new URL('../../../../packages/vautr-client-sdk/src/worker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    const instance = new VautrClient({ worker });
-    instance.setClipboardHandler(createClipboardHandler());
-    attachClientToEventBus((listener) => instance.subscribe(listener), vaultEventBus);
-    client = instance;
+    const baseUrl = await getApiUrl();
+    sharedStore = new IndexedDbStore();
+    const options: VautrWebClientOptions = { baseUrl, store: sharedStore };
+    client = new VautrWebClient(options);
   }
   return client;
 }
 
-/** Gracefully shut down the popup worker (called on popup close). */
-export function disposePopupClient(): void {
+/** Read the SVK from the shared IndexedDB store (set during login). */
+export async function getCachedSvk(): Promise<Uint8Array | null> {
+  if (!sharedStore) return null;
+  const state = await sharedStore.getState();
+  return state.svk;
+}
+
+/** Graceful shutdown: lock the vault and drop the client. */
+export async function disposePopupClient(): Promise<void> {
   if (client) {
-    client.close();
+    await client.lock();
     client = null;
+    sharedStore = null;
   }
 }

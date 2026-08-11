@@ -9285,6 +9285,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vautr-crypto-wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "getrandom 0.4.3",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+ "uuid",
+ "vautr-crypto",
+ "wasm-bindgen",
+ "zeroize",
+]
+
+[[package]]
 name = "vautr-db"
 version = "0.1.0"
 dependencies = [
@@ -9306,8 +9323,10 @@ dependencies = [
 name = "vautr-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "gpui",
  "gpui-component",
+ "reqwest",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9315,8 +9334,11 @@ dependencies = [
  "tokio",
  "uuid",
  "vautr-app-state",
+ "vautr-auth",
+ "vautr-crypto",
  "vautr-db",
  "vautr-domain",
+ "vautr-keyring",
  "zeroize",
 ]
 

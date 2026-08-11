@@ -1,0 +1,28 @@
+[package]
+name = "vautr-crypto-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "wasm-bindgen crypto-only bindings for the stateless extension Service Worker. build-env-deploy §3.3."
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+wasm-bindgen.workspace = true
+js-sys = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+zeroize.workspace = true
+uuid = { version = "1", features = ["v4", "serde", "js"] }
+serde.workspace = true
+serde_json.workspace = true
+vautr-crypto.workspace = true

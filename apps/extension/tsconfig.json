@@ -10,8 +10,9 @@
       "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
       "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
       "@vautr/client-sdk/extension": ["../../packages/vautr-client-sdk/src/extension.ts"],
-      "vautr-wasm": ["./src/lib/mockWasmWeb.ts"],
-      "vautr-wasm-nodejs": ["./src/lib/mockWasmNodejs.ts"]
+      "@vautr/client-sdk/real": ["../../packages/vautr-client-sdk/src/realClient.ts"],
+      "vautr-wasm": ["./src/lib/wasmWeb.ts"],
+      "vautr-wasm-nodejs": ["./src/lib/wasmNodejs.ts"]
     }
   },
   "include": [

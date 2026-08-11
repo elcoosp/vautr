@@ -22,7 +22,8 @@ description = "Vautr — the password manager that belongs to you."
 
 [workspace.dependencies]
 # --- internal crates (path) ---
-vautr-crypto    = { path = "core/vautr-crypto" }
+vautr-crypto        = { path = "core/vautr-crypto" }
+vautr-crypto-wasm   = { path = "core/vautr-crypto-wasm" }
 vautr-domain    = { path = "core/vautr-domain" }
 vautr-db        = { path = "core/vautr-db" }
 vautr-sync      = { path = "core/vautr-sync" }

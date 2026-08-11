@@ -14,7 +14,7 @@ export default defineConfig({
         new URL('../../packages/vautr-client-sdk/src/extension.ts', import.meta.url),
       ),
       'vautr-wasm-nodejs': fileURLToPath(
-        new URL('./src/lib/mockWasmNodejs.ts', import.meta.url),
+        new URL('./src/lib/wasmNodejs.ts', import.meta.url),
       ),
     },
   },
