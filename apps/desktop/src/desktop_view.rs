@@ -12,7 +12,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputState},
-    h_flex, v_flex,
+    h_flex, v_flex, Icon, IconName,
 };
 use rand::RngCore;
 use std::sync::Arc;
@@ -38,6 +38,13 @@ enum Section {
     Settings,
 }
 
+/// Which login form mode is active (mirrors the web UnlockScreen).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoginMode {
+    Login,
+    Register,
+}
+
 /// The root desktop view.
 pub struct DesktopView {
     focus_handle: FocusHandle,
@@ -50,6 +57,7 @@ pub struct DesktopView {
 
     // ── Login form extra ─────────────────────────────────────────────────
     login_status: String,
+    login_mode: LoginMode,
     server_url: String,
 
     // ── Vault state ─────────────────────────────────────────────────────
@@ -104,11 +112,11 @@ impl DesktopView {
 
         let username_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Username")
+                .placeholder("you@example.com")
         });
         let password_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Password")
+                .placeholder("••••••••")
         });
 
         // Pre-fill the stored username.
@@ -149,6 +157,7 @@ impl DesktopView {
             password_input,
             _subscriptions,
             login_status: String::new(),
+            login_mode: LoginMode::Login,
             server_url: base_url(),
             vault: VaultManagerState::new(),
             client: None,
@@ -1289,153 +1298,346 @@ impl Render for DesktopView {
 
 impl DesktopView {
     fn render_login(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mode = self.login_mode;
         let status = self.login_status.clone();
         let has_error = !status.is_empty()
-            && (status.contains("failed") || status.contains("required") || status.contains("No local"));
+            && (status.contains("failed")
+                || status.contains("required")
+                || status.contains("No local")
+                || status.contains("Invalid")
+                || status.contains("error"));
+        let busy = status.contains("...")
+            || status.contains("Logging")
+            || status.contains("Registering")
+            || status.contains("Unlocking")
+            || status.contains("Creating");
 
-        v_flex()
-            .gap_4()
-            .p_8()
+        let subtitle = match mode {
+            LoginMode::Login => "Unlock your vault to view saved items.",
+            LoginMode::Register => "Create a new zero-knowledge vault.",
+        };
+        let submit_label = match (mode, busy) {
+            (LoginMode::Login, true) => "Unlocking…",
+            (LoginMode::Register, true) => "Creating…",
+            (LoginMode::Login, false) => "Unlock vault",
+            (LoginMode::Register, false) => "Create vault",
+        };
+        let submit_caption = match (mode, busy) {
+            (LoginMode::Login, _) => "Register an account",
+            (LoginMode::Register, _) => "Log in",
+        };
+
+        // Mirrors the web UnlockScreen: a centered card with a segmented
+        // Log in / Register toggle, labeled fields, and a full-width accent CTA.
+        let login_tab = self.render_login_tab(cx, LoginMode::Login, "Log in");
+        let register_tab = self.render_login_tab(cx, LoginMode::Register, "Register");
+
+        let username = Input::new(&self.username_input).w_full();
+        let password = Input::new(&self.password_input).w_full();
+
+        div()
             .size_full()
             .bg(theme::BG)
+            .flex()
             .items_center()
             .justify_center()
+            .p_6()
             .child(
                 div()
-                    .text_2xl()
-                    .font_weight(FontWeight::BOLD)
-                    .child("Vautr"),
-            )
-            .child(
-                v_flex()
-                    .gap_3()
-                    .w_80()
-                    .child(Input::new(&self.username_input).w_full())
-                    .child(Input::new(&self.password_input).w_full()),
-            )
-            .child(
-                h_flex()
-                    .gap_3()
+                    .w(px(384.))
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_8()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
                     .child(
-                        Button::new("register-btn")
-                            .label("Register")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_register(window, cx);
-                            })),
+                        div()
+                            .text_2xl()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(theme::TEXT)
+                            .child("Vautr"),
                     )
                     .child(
-                        Button::new("login-btn")
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(subtitle),
+                    )
+                    // Segmented Log in / Register toggle.
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .rounded_md()
+                            .bg(theme::SURFACE_RAISED)
+                            .p_1()
+                            .child(login_tab)
+                            .child(register_tab),
+                    )
+                    // Form fields.
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::TEXT)
+                                    .child("Username"),
+                            )
+                            .child(username)
+                            .mt_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::TEXT)
+                                    .child("Master password"),
+                            )
+                            .child(password),
+                    )
+                    // Status / error.
+                    .child(
+                        div()
+                            .when(!status.is_empty(), |this| {
+                                this.text_sm()
+                                    .when(has_error, |this| {
+                                        this.text_color(theme::DANGER)
+                                    })
+                                    .when(!has_error, |this| {
+                                        this.text_color(theme::TEXT_MUTED)
+                                    })
+                                    .child(status)
+                            }),
+                    )
+                    // Full-width primary CTA.
+                    .child(
+                        Button::new("login-submit")
                             .primary()
-                            .label("Login")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_login(window, cx);
-                            })),
+                            .w_full()
+                            .label(submit_label)
+                            .on_click(cx.listener(
+                                |this, _: &gpui::ClickEvent, window, cx| {
+                                    match this.login_mode {
+                                        LoginMode::Login => this.do_login(window, cx),
+                                        LoginMode::Register => this.do_register(window, cx),
+                                    }
+                                },
+                            )),
+                    )
+                    // Toggle link at the bottom.
+                    .child(
+                        div()
+                            .mt_1()
+                            .items_center()
+                            .justify_center()
+                            .text_xs()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .items_center()
+                                    .justify_center()
+                                    .child("New here?")
+                                    .child(
+                                        div()
+                                            .id("login-toggle")
+                                            .text_color(theme::ACCENT)
+                                            .underline()
+                                            .cursor_pointer()
+                                            .child(submit_caption)
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.login_mode = match this.login_mode {
+                                                        LoginMode::Login => LoginMode::Register,
+                                                        LoginMode::Register => LoginMode::Login,
+                                                    };
+                                                    this.login_status.clear();
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    ),
+                            ),
                     ),
-            )
-            .child(
-                div()
-                    .when(!status.is_empty(), |this| {
-                        this.text_sm()
-                            .px_2()
-                            .when(has_error, |this| this.text_color(theme::DANGER))
-                            .child(status)
-                    }),
             )
     }
 
-    /// The post-login shell: nav (Vault | Projects) + active section content.
+    /// A single segment of the Log in / Register segmented toggle.
+    fn render_login_tab(
+        &mut self,
+        cx: &mut Context<Self>,
+        which: LoginMode,
+        label: &'static str,
+    ) -> AnyElement {
+        let active = self.login_mode == which;
+        let id = match which {
+            LoginMode::Login => "login-tab",
+            LoginMode::Register => "register-tab",
+        };
+        div()
+            .id(SharedString::from(id))
+            .flex_1()
+            .rounded_md()
+            .px_3()
+            .py_1_5()
+            .text_sm()
+            .font_weight(FontWeight::MEDIUM)
+            .items_center()
+            .justify_center()
+            .when(active, |d| d.bg(theme::ACCENT).text_color(theme::ACCENT_INK))
+            .when(!active, |d| d.text_color(theme::TEXT_MUTED))
+            .cursor_pointer()
+            .child(label)
+            .on_click(cx.listener(move |this, _, _window, cx| {
+                this.login_mode = which;
+                this.login_status.clear();
+                cx.notify();
+            }))
+            .into_any_element()
+    }
+
+    /// The post-login shell: a web-style left sidebar + active section content.
     fn render_app(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
-        v_flex()
+        let content = match section {
+            Section::Vault => self.render_vault_content(cx).into_any_element(),
+            Section::Projects => self.render_projects(cx).into_any_element(),
+            Section::Generator => self.render_generator(cx).into_any_element(),
+            Section::Mfa => self.render_mfa(cx).into_any_element(),
+            Section::Settings => self.render_settings(cx).into_any_element(),
+        };
+
+        h_flex()
             .size_full()
             .bg(theme::BG)
+            .child(self.render_sidebar(cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(content),
+            )
+    }
+
+    /// The left navigation sidebar, mirroring the web `_authed` layout: a
+    /// brand header, an icon + label nav list, and a Log out row at the bottom.
+    fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let section = self.section;
+
+        let items: [(Section, &'static str, IconName); 5] = [
+            (Section::Vault, "Vault", IconName::Eye),
+            (Section::Projects, "Projects", IconName::Folder),
+            (Section::Generator, "Generator", IconName::Settings2),
+            (Section::Mfa, "MFA & security", IconName::CircleCheck),
+            (Section::Settings, "Settings", IconName::Settings),
+        ];
+
+        let mut nav_rows: Vec<AnyElement> = Vec::new();
+        for (sec, label, icon) in items {
+            let active = section == sec;
+            let ink = if active { theme::TEXT } else { theme::TEXT_MUTED };
+            let row = div()
+                .id(SharedString::from(format!("nav-{label}")))
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .when(active, |d| d.bg(theme::SURFACE_RAISED))
+                .text_color(ink)
+                .cursor_pointer()
+                .child(Icon::new(icon).size_4().text_color(ink))
+                .child(div().text_sm().child(label))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.activate_section(sec, window, cx);
+                }));
+            nav_rows.push(row.into_any_element());
+        }
+
+        v_flex()
+            .w_64()
+            .flex_shrink_0()
+            .h_full()
+            .bg(theme::SURFACE)
+            .border_r_1()
+            .border_color(theme::BORDER)
+            // Brand header.
             .child(
                 h_flex()
-                    .justify_between()
-                    .items_center()
-                    .px_6()
-                    .py_2()
+                    .gap_2()
+                    .px_4()
+                    .py_4()
                     .border_b_1()
                     .border_color(theme::BORDER)
+                    .items_center()
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("nav-vault")
-                                    .when(section == Section::Vault, |b| b.primary())
-                                    .label("Vault")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, _window, cx| {
-                                            this.section = Section::Vault;
-                                            cx.notify();
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("nav-projects")
-                                    .when(section == Section::Projects, |b| b.primary())
-                                    .label("Projects")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.section = Section::Projects;
-                                            this.do_refresh_projects(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("nav-generator")
-                                    .when(section == Section::Generator, |b| b.primary())
-                                    .label("Generator")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, _window, cx| {
-                                            this.section = Section::Generator;
-                                            cx.notify();
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("nav-mfa")
-                                    .when(section == Section::Mfa, |b| b.primary())
-                                    .label("MFA")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.section = Section::Mfa;
-                                            this.do_refresh_mfa(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("nav-settings")
-                                    .when(section == Section::Settings, |b| b.primary())
-                                    .label("Settings")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.section = Section::Settings;
-                                            this.do_refresh_settings(window, cx);
-                                        },
-                                    )),
-                            ),
+                        div()
+                            .size_8()
+                            .rounded_lg()
+                            .bg(theme::ACCENT_DIM)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(Icon::new(IconName::Eye).size_4().text_color(theme::ACCENT)),
                     )
                     .child(
-                        Button::new("lock-btn")
-                            .danger()
-                            .label("Lock")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.do_lock(cx);
-                                },
-                            )),
+                        div()
+                            .text_base()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(theme::TEXT)
+                            .child("Vautr"),
                     ),
             )
+            // Nav list.
             .child(
-                match section {
-                    Section::Vault => self.render_vault_content(cx).into_any_element(),
-                    Section::Projects => self.render_projects(cx).into_any_element(),
-                    Section::Generator => self.render_generator(cx).into_any_element(),
-                    Section::Mfa => self.render_mfa(cx).into_any_element(),
-                    Section::Settings => self.render_settings(cx).into_any_element(),
-                },
+                v_flex()
+                    .id("sidebar-nav")
+                    .flex_1()
+                    .overflow_y_scroll()
+                    .px_2()
+                    .py_2()
+                    .gap_1()
+                    .children(nav_rows),
             )
+            // Log out.
+            .child(
+                v_flex()
+                    .border_t_1()
+                    .border_color(theme::BORDER)
+                    .p_2()
+                    .child(
+                        div()
+                            .id("nav-logout")
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .text_color(theme::TEXT_MUTED)
+                            .cursor_pointer()
+                            .child(div().text_sm().child("Log out"))
+                            .on_click(cx.listener(|this, _, _window, cx| {
+                                this.do_lock(cx);
+                            })),
+                    ),
+            )
+    }
+
+    /// Switch to a nav section, triggering the relevant data refresh.
+    fn activate_section(&mut self, sec: Section, window: &mut Window, cx: &mut Context<Self>) {
+        self.section = sec;
+        match sec {
+            Section::Vault | Section::Generator => cx.notify(),
+            Section::Projects => self.do_refresh_projects(window, cx),
+            Section::Mfa => self.do_refresh_mfa(window, cx),
+            Section::Settings => self.do_refresh_settings(window, cx),
+        }
     }
 
     // ── Vault section ────────────────────────────────────────────────────

@@ -22,6 +22,14 @@ const fn c(hex: u32) -> Rgba {
     }
 }
 
+/// Accent at 15% alpha, for subtle brand wells (mirrors web `bg-accent/15`).
+pub const ACCENT_DIM: Rgba = Rgba {
+    r: 0x42 as f32 / 255.0,
+    g: 0xb5 as f32 / 255.0,
+    b: 0x9a as f32 / 255.0,
+    a: 0.15,
+};
+
 /// Deep canvas. Mirrors web `--background` oklch(0.16 0.02 255) → #080e16.
 pub const BG: Rgba = c(0x080e16);
 /// Raised card / surface. Mirrors web `--card` oklch(0.195 0.018 255) → #0f151d.
