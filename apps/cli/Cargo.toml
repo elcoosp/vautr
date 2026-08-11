@@ -13,4 +13,19 @@ name = "vautr-cli"
 path = "src/main.rs"
 
 [dependencies]
+# --- workspace deps (root Cargo.toml `[workspace.dependencies]`) ---
 thiserror.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+uuid.workspace = true
+rand.workspace = true
+zeroize.workspace = true
+vautr-crypto.workspace = true
+
+# --- clap: CLI parsing. Not yet a workspace dep, so declared directly here.
+#     (Reported to coordinator as a manifest need for apps/cli; does not touch
+#     the root Cargo.toml `[workspace.dependencies]`.) ---
+clap = { version = "4", features = ["derive"] }
