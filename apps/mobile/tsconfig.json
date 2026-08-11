@@ -3,12 +3,25 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
     "baseUrl": ".",
+    "types": ["nativewind/types"],
     "paths": {
       "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
       "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
-      "@vautr/client-sdk/mobile": ["../../packages/vautr-client-sdk/src/mobile.ts"]
+      "@vautr/client-sdk/mobile": ["../../packages/vautr-client-sdk/src/mobile.ts"],
+      "@vautr/api-contract": ["../../packages/api-contract/src/index.ts"]
     }
   },
-  "include": ["App.tsx", "index.ts", "src", "env.d.ts"]
+  "include": [
+    "App.tsx",
+    "index.ts",
+    "src",
+    "lib",
+    "components",
+    "nativewind-env.d.ts",
+    "routeTree.gen.ts",
+    "env.d.ts"
+  ]
 }
