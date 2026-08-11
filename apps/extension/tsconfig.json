@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": ["node"],
+    "paths": {
+      "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
+      "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
+      "@vautr/client-sdk/extension": ["../../packages/vautr-client-sdk/src/extension.ts"],
+      "vautr-wasm": ["./src/lib/mockWasmWeb.ts"],
+      "vautr-wasm-nodejs": ["./src/lib/mockWasmNodejs.ts"]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "manifest.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "tests"
+  ]
+}
