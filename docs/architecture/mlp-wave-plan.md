@@ -131,6 +131,49 @@ integration tests.
 **Gate:** full integration test suite green; `cargo test --workspace` green;
 `pnpm typecheck` green.
 
+### §5.1 Canonical route / tab map (single source of truth)
+
+One route/tab map is shared by every client so the **same screens exist
+everywhere with equivalent UI/UX**. The canonical set below is what each client
+must present as its top-level navigation. Screens outside this set may exist on
+a client as extras, but the canonical screens must always be present and
+equally reachable.
+
+| # | Screen | Web (TanStack) | Mobile (TanStack) | Desktop (GPUI tab) |
+|---|--------|----------------|-------------------|--------------------|
+| 1 | **Projects** | `/projects` | `/` (index) | `Projects` |
+| 2 | **Secrets** | `/secrets` | `/secrets` | `Secrets` (inside Projects detail) |
+| 3 | **Generator** | `/generator` | `/generator` | `Generator` |
+| 4 | **MFA** | `/mfa` | `/mfa` | `MFA` |
+| 5 | **Settings** | `/settings` | `/settings` | `Settings` |
+
+**Additional web-only screens** (superset, not required on mobile/desktop):
+`/dashboard`, `/vault`, `/machine-accounts`, `/tokens`, `/import-export`.
+**Desktop-only:** the local **Vault** (holds the `read_secret` desktop-gated
+API; the mobile/web clients never expose it).
+
+**Rules enforced here:**
+- **Secrets** always render inside a Project context on mobile & desktop; web
+  additionally has a standalone `/secrets` aggregator. Every client can reach
+  Secrets from the Projects screen.
+- **Generator** is the pure-JS `@vautr/ui-logic`/SDK password generator +
+  weak/reused detection; no wasm is required, so all clients share it.
+- **MFA** covers TOTP issue/verify + mandatory-MFA status.
+- **Settings** covers machine accounts + access tokens + account/session.
+
+### §5.2 Wave C integration seams (final wiring)
+
+- **Projects filtering** across `orchestrator.rs` + sync: the Rust orchestrator
+  exposes a project-scoped query and the sync layer honors per-project scoping.
+- **Machine-account session** in the shared client lib / SDK: a
+  token-authenticated session for non-human identities.
+- **Mandatory-MFA enforcement** in the client handshake: login refuses to
+  complete unlock until MFA is satisfied when the server reports it required.
+- **Audit-event emission wiring**: server-side handlers emit org/secret-access
+  audit events on offboarding, machine-account, and secret operations.
+- **Cross-client E2E**: Client A push → Server → Client B pull; Machine Account
+  `get/list/run`; offboarding revoke; backup restore-test.
+
 ---
 
 ## 6. Dispatch order

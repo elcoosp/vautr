@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './src/routes/__root'
 import { Route as AppRouteImport } from './src/routes/_app'
 import { Route as AuthRouteImport } from './src/routes/_auth'
 import { Route as AppIndexRouteImport } from './src/routes/_app.index'
+import { Route as AppGeneratorRouteImport } from './src/routes/_app.generator'
 import { Route as AppMfaRouteImport } from './src/routes/_app.mfa'
+import { Route as AppSecretsRouteImport } from './src/routes/_app.secrets'
 import { Route as AppSettingsRouteImport } from './src/routes/_app.settings'
 import { Route as AuthLoginRouteImport } from './src/routes/_auth.login'
 import { Route as AppProjectsProjectIdRouteImport } from './src/routes/_app.projects.$projectId'
@@ -32,9 +34,19 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGeneratorRoute = AppGeneratorRouteImport.update({
+  id: '/generator',
+  path: '/generator',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppMfaRoute = AppMfaRouteImport.update({
   id: '/mfa',
   path: '/mfa',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSecretsRoute = AppSecretsRouteImport.update({
+  id: '/secrets',
+  path: '/secrets',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -66,7 +78,9 @@ const AppProjectsProjectIdSecretsNewRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/generator': typeof AppGeneratorRoute
   '/mfa': typeof AppMfaRoute
+  '/secrets': typeof AppSecretsRoute
   '/settings': typeof AppSettingsRoute
   '/login': typeof AuthLoginRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
@@ -75,7 +89,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
+  '/generator': typeof AppGeneratorRoute
   '/mfa': typeof AppMfaRoute
+  '/secrets': typeof AppSecretsRoute
   '/settings': typeof AppSettingsRoute
   '/login': typeof AuthLoginRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
@@ -86,7 +102,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/_app/generator': typeof AppGeneratorRoute
   '/_app/mfa': typeof AppMfaRoute
+  '/_app/secrets': typeof AppSecretsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_app/': typeof AppIndexRoute
@@ -98,7 +116,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/generator'
     | '/mfa'
+    | '/secrets'
     | '/settings'
     | '/login'
     | '/projects/$projectId'
@@ -107,7 +127,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/generator'
     | '/mfa'
+    | '/secrets'
     | '/settings'
     | '/login'
     | '/projects/$projectId'
@@ -117,7 +139,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_auth'
+    | '/_app/generator'
     | '/_app/mfa'
+    | '/_app/secrets'
     | '/_app/settings'
     | '/_auth/login'
     | '/_app/'
@@ -154,11 +178,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/generator': {
+      id: '/_app/generator'
+      path: '/generator'
+      fullPath: '/generator'
+      preLoaderRoute: typeof AppGeneratorRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/mfa': {
       id: '/_app/mfa'
       path: '/mfa'
       fullPath: '/mfa'
       preLoaderRoute: typeof AppMfaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/secrets': {
+      id: '/_app/secrets'
+      path: '/secrets'
+      fullPath: '/secrets'
+      preLoaderRoute: typeof AppSecretsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -211,7 +249,9 @@ const AppProjectsProjectIdRouteWithChildren =
   AppProjectsProjectIdRoute._addFileChildren(AppProjectsProjectIdRouteChildren)
 
 interface AppRouteChildren {
+  AppGeneratorRoute: typeof AppGeneratorRoute
   AppMfaRoute: typeof AppMfaRoute
+  AppSecretsRoute: typeof AppSecretsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren
@@ -219,7 +259,9 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppGeneratorRoute: AppGeneratorRoute,
   AppMfaRoute: AppMfaRoute,
+  AppSecretsRoute: AppSecretsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRouteWithChildren,
