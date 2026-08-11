@@ -12,6 +12,18 @@ description = "High-throughput, zero-trust import pipeline for Vautr (docs/archi
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+tokio.workspace = true
+sea-orm.workspace = true
+csv = "1.3"
+zip = "2"
+rayon = "1"
+tempfile = "3"
 vautr-domain.workspace = true
 vautr-db.workspace = true
 vautr-crypto.workspace = true
+vautr-keyring.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
