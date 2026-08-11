@@ -17,6 +17,7 @@ pub mod auth_client;
 pub mod desktop_view;
 pub mod project_state;
 pub mod state;
+pub mod theme;
 
 // Deprecated aliases kept for existing imports.
 pub use desktop_view::DesktopView;

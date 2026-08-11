@@ -7,3 +7,6 @@ dump.txt
 *.db
 *.db-shm
 *.db-wal
+
+# Local dev-database backups (not part of the product)
+.db-backups/

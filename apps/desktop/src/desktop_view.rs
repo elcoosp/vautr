@@ -24,6 +24,7 @@ use crate::app::base_url;
 use crate::auth_client::AuthClient;
 use crate::project_state::{DetailTab, ProjectsState};
 use crate::state::{self, VaultConfig, VaultManagerState};
+use crate::theme;
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, kdf, key_tree};
 
@@ -1307,7 +1308,7 @@ impl DesktopView {
                     .when(!status.is_empty(), |this| {
                         this.text_sm()
                             .px_2()
-                            .when(has_error, |this| this.text_color(gpui::red()))
+                            .when(has_error, |this| this.text_color(theme::DANGER))
                             .child(status)
                     }),
             )
@@ -1325,7 +1326,7 @@ impl DesktopView {
                     .px_6()
                     .py_2()
                     .border_b_1()
-                    .border_color(rgb(0x27272a))
+                    .border_color(theme::BORDER)
                     .child(
                         h_flex()
                             .gap_2()
@@ -1423,10 +1424,10 @@ impl DesktopView {
                 .px_3()
                 .py_2()
                 .rounded_md()
-                .when(selected, |row| row.bg(rgb(0x27272a)))
+                .when(selected, |row| row.bg(theme::BORDER))
                 .cursor_pointer()
                 .child(div().text_sm().child(title))
-                .child(div().text_xs().text_color(rgb(0x71717a)).child(subtitle))
+                .child(div().text_xs().text_color(theme::TEXT_DIM).child(subtitle))
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     if this.vault.select_item(index) {
                         this.revealed = None;
@@ -1449,12 +1450,12 @@ impl DesktopView {
                     .px_3()
                     .py_2()
                     .mt_2()
-                    .bg(rgb(0x18181b))
+                    .bg(theme::SURFACE)
                     .rounded_md()
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("Secret"))
+                    .child(div().text_xs().text_color(theme::TEXT_MUTED).child("Secret"))
                     .child(div().text_sm().child(s.to_string()))
             })
             .unwrap_or_else(|| div());
@@ -1510,8 +1511,8 @@ impl DesktopView {
                                     .px_3()
                                     .py_2()
                                     .rounded_md()
-                                    .bg(rgb(0x450a0a))
-                                    .text_color(rgb(0xfca5a5))
+                                    .bg(theme::DANGER_BG)
+                                    .text_color(theme::DANGER_TEXT)
                                     .text_sm()
                                     .child(error),
                             )
@@ -1551,10 +1552,10 @@ impl DesktopView {
                 .px_3()
                 .py_2()
                 .rounded_md()
-                .when(selected, |row| row.bg(rgb(0x27272a)))
+                .when(selected, |row| row.bg(theme::BORDER))
                 .cursor_pointer()
                 .child(div().text_sm().font_weight(FontWeight::BOLD).child(name))
-                .child(div().text_xs().text_color(rgb(0x71717a)).child(meta))
+                .child(div().text_xs().text_color(theme::TEXT_DIM).child(meta))
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.do_select_project(i, cx);
                 }));
@@ -1565,7 +1566,7 @@ impl DesktopView {
         let list_panel = v_flex()
             .w_72()
             .border_r_1()
-            .border_color(rgb(0x27272a))
+            .border_color(theme::BORDER)
             .p_3()
             .gap_2()
             .child(
@@ -1591,8 +1592,8 @@ impl DesktopView {
                     .overflow_y_scroll()
                     .children(project_rows),
             )
-            .child(div().border_t_1().border_color(rgb(0x27272a)))
-            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("New project"))
+            .child(div().border_t_1().border_color(theme::BORDER))
+            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("New project"))
             .child(Input::new(&self.project_name_input).w_full())
             .child(Input::new(&self.project_desc_input).w_full())
             .child(
@@ -1663,7 +1664,7 @@ impl DesktopView {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(0x71717a))
+                            .text_color(theme::TEXT_DIM)
                             .child(if proj_type.is_empty() {
                                 "Select a project to see its members and secrets.".into()
                             } else {
@@ -1723,8 +1724,8 @@ impl DesktopView {
                                     .px_3()
                                     .py_2()
                                     .rounded_md()
-                                    .bg(rgb(0x450a0a))
-                                    .text_color(rgb(0xfca5a5))
+                                    .bg(theme::DANGER_BG)
+                                    .text_color(theme::DANGER_TEXT)
                                     .text_sm()
                                     .child(error),
                             )
@@ -1738,7 +1739,7 @@ impl DesktopView {
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(rgb(0xa1a1aa))
+                                    .text_color(theme::TEXT_MUTED)
                                     .child(status),
                             )
                     }),
@@ -1831,7 +1832,7 @@ impl DesktopView {
                 .py_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(0x27272a))
+                .border_color(theme::BORDER)
                 .child(
                     v_flex()
                         .gap_0()
@@ -1839,7 +1840,7 @@ impl DesktopView {
                         .child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(0x71717a))
+                                .text_color(theme::TEXT_DIM)
                                 .child(format!("{role} · {permission}")),
                         ),
                 )
@@ -1855,8 +1856,8 @@ impl DesktopView {
                 div().text_sm().font_weight(FontWeight::BOLD).child("Members"),
             )
             .children(rows)
-            .child(div().border_t_1().border_color(rgb(0x27272a)).mt_1())
-            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("Add member"))
+            .child(div().border_t_1().border_color(theme::BORDER).mt_1())
+            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("Add member"))
             .child(Input::new(&self.member_user_input).w_full())
             .child(
                 h_flex()
@@ -1959,7 +1960,7 @@ impl DesktopView {
                         this.do_add_member(window, cx);
                     })),
             )
-            .child(div().text_xs().text_color(rgb(0x71717a)).child(format!(
+            .child(div().text_xs().text_color(theme::TEXT_DIM).child(format!(
                 "Current member field: {user_uuid}"
             )))
     }
@@ -1982,7 +1983,7 @@ impl DesktopView {
                 .py_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(0x27272a))
+                .border_color(theme::BORDER)
                 .child(
                     v_flex()
                         .gap_0()
@@ -1995,7 +1996,7 @@ impl DesktopView {
                         .child(
                             div()
                                 .text_xs()
-                                .text_color(rgb(0x71717a))
+                                .text_color(theme::TEXT_DIM)
                                 .child(format!("v{version} · updated {updated_at}")),
                         ),
                 )
@@ -2033,7 +2034,7 @@ impl DesktopView {
                     .px_3()
                     .py_2()
                     .mt_1()
-                    .bg(rgb(0x18181b))
+                    .bg(theme::SURFACE)
                     .rounded_md()
                     .flex()
                     .flex_col()
@@ -2041,7 +2042,7 @@ impl DesktopView {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(0xa1a1aa))
+                            .text_color(theme::TEXT_MUTED)
                             .child(format!("Revealed {key}")),
                     )
                     .child(div().text_sm().child(value))
@@ -2052,8 +2053,8 @@ impl DesktopView {
             .gap_2()
             .child(div().text_sm().font_weight(FontWeight::BOLD).child("Secrets"))
             .children(rows)
-            .child(div().border_t_1().border_color(rgb(0x27272a)).mt_1())
-            .child(div().text_xs().text_color(rgb(0xa1a1aa)).child("New secret"))
+            .child(div().border_t_1().border_color(theme::BORDER).mt_1())
+            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("New secret"))
             .child(Input::new(&self.secret_key_input).w_full())
             .child(Input::new(&self.secret_value_input).w_full())
             .child(
@@ -2073,12 +2074,12 @@ impl DesktopView {
             .mt_1()
             .pt_2()
             .border_t_1()
-            .border_color(rgb(0x27272a))
+            .border_color(theme::BORDER)
             .gap_1()
             .child(
                 div()
                     .text_xs()
-                    .text_color(rgb(0xfca5a5))
+                    .text_color(theme::DANGER_TEXT)
                     .child("Offboard (revoke all access)"),
             )
             .child(h_flex().gap_2().child(Input::new(&self.offboard_input).w_full()).child(
@@ -2093,7 +2094,7 @@ impl DesktopView {
                 div()
                     .when(result.is_some(), |this| {
                         this.text_xs()
-                            .text_color(rgb(0x4ade80))
+                            .text_color(theme::SUCCESS)
                             .child(result.clone().unwrap_or_default())
                     }),
             )
@@ -2116,7 +2117,7 @@ impl DesktopView {
             .child(
                 div()
                     .text_sm()
-                    .text_color(rgb(0xa1a1aa))
+                    .text_color(theme::TEXT_MUTED)
                     .child("Generate a strong, random password for a new account."),
             )
             .child(
@@ -2124,11 +2125,11 @@ impl DesktopView {
                     .w_full()
                     .p_3()
                     .rounded_md()
-                    .bg(rgb(0x18181b))
+                    .bg(theme::SURFACE)
                     .border_1()
-                    .border_color(rgb(0x27272a))
+                    .border_color(theme::BORDER)
                     .font_family("ui-monospace")
-                    .text_color(rgb(0xfbbf24))
+                    .text_color(theme::WARN)
                     .child(password),
             )
             .child(
@@ -2170,7 +2171,7 @@ impl DesktopView {
                     .font_weight(FontWeight::BOLD)
                     .child("Two-Factor Authentication"),
             )
-            .child(div().text_sm().text_color(rgb(0xa1a1aa)).child(status_line))
+            .child(div().text_sm().text_color(theme::TEXT_MUTED).child(status_line))
             .child(
                 h_flex().gap_2().child(
                     Button::new("mfa-refresh-btn")
@@ -2186,7 +2187,7 @@ impl DesktopView {
                 this.child(
                     div()
                         .text_sm()
-                        .text_color(rgb(0xfbbf24))
+                        .text_color(theme::WARN)
                         .child(text.clone()),
                 )
             })
@@ -2196,13 +2197,13 @@ impl DesktopView {
                     v_flex().gap_2().child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0xa1a1aa))
+                            .text_color(theme::TEXT_MUTED)
                             .child("Scan the QR code / enter this TOTP secret into your authenticator:"),
                     ).child(
                         div()
                             .p_2()
                             .rounded_md()
-                            .bg(rgb(0x18181b))
+                            .bg(theme::SURFACE)
                             .font_family("ui-monospace")
                             .child(issued.secret.clone()),
                     ).child(
@@ -2247,13 +2248,13 @@ impl DesktopView {
                 v_flex()
                     .p_2()
                     .rounded_md()
-                    .bg(rgb(0x18181b))
+                    .bg(theme::SURFACE)
                     .gap_1()
                     .child(div().text_sm().font_weight(FontWeight::BOLD).child(m.name.clone()))
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(0xa1a1aa))
+                            .text_color(theme::TEXT_MUTED)
                             .child(format!("uuid: {}  scopes: {:?}", m.uuid, m.scopes)),
                     ),
             );
@@ -2264,13 +2265,13 @@ impl DesktopView {
                 v_flex()
                     .p_2()
                     .rounded_md()
-                    .bg(rgb(0x18181b))
+                    .bg(theme::SURFACE)
                     .gap_1()
                     .child(div().text_sm().font_weight(FontWeight::BOLD).child(t.name.clone()))
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(0xa1a1aa))
+                            .text_color(theme::TEXT_MUTED)
                             .child(format!("uuid: {}  scopes: {:?}", t.uuid, t.scopes)),
                     ),
             );
@@ -2300,7 +2301,7 @@ impl DesktopView {
                 this.child(
                     div()
                         .text_sm()
-                        .text_color(rgb(0xfbbf24))
+                        .text_color(theme::WARN)
                         .child(text.clone()),
                 )
             })
@@ -2329,7 +2330,7 @@ impl DesktopView {
             .child(
                 div()
                     .text_sm()
-                    .text_color(rgb(0xa1a1aa))
+                    .text_color(theme::TEXT_MUTED)
                     .child("Create a machine account"),
             )
             .child(

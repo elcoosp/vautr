@@ -46,7 +46,7 @@ function ProjectsListScreen() {
   }
 
   if (projects === null) {
-    return <ActivityIndicator className="mt-8" color="#2f6fed" />;
+    return <ActivityIndicator className="mt-8" color="#2bba99" />;
   }
 
   return (
