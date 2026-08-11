@@ -1,17 +1,19 @@
 /**
  * Thin wrapper over the real `vautr-crypto-wasm` `--target web` build for
  * the stateless Service Worker (build-env-deploy §3.3).
+ *
+ * The wasm-pack `--target web` output exposes `init()` as a named export
+ * that must be called once before any other function.
  */
 
-// @ts-expect-error - wasm-pkg has no ts resolution in this project
-import * as raw from '../sw-wasm-pkg/vautr_crypto_wasm';
+import * as raw from '../../sw-wasm-pkg/vautr_crypto_wasm.js';
 
 /**
  * One-time async initialization of the WASM instance.
  * The web-target glue uses `init()` to load + instantiate the WASM bytes.
  */
 export async function init(): Promise<void> {
-  await (raw as any).default();
+  await raw.init();
 }
 
 /**

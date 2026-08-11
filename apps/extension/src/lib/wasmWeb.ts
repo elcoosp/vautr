@@ -1,13 +1,22 @@
 /**
- * Thin wrapper over the real `vautr-wasm` `--target web` build.
+ * Real `vautr-wasm` `--target web` build, wired for the live server.
  *
- * The generated wasm-bindgen types use `bigint` for `u64` fields. Vautr
- * epochs (`enc_key_gen`) are small values within safe-integer range, so this
- * wrapper accepts `number` and casts to `bigint` at the boundary.
+ * wasm-bindgen's `--target web` output requires `await init()` before any of
+ * the crypto functions are callable. We await it at module scope (top-level
+ * await) so the dynamic `import('vautr-wasm')` performed by the
+ * `@vautr/client-sdk` crypto adapter resolves only AFTER the wasm is ready.
+ *
+ * The generated wasm-bindgen types use `bigint` for `u64` fields. Vautr epochs
+ * (`enc_key_gen`) are small values within safe-integer range, so the boundary
+ * functions accept `number` and cast to `bigint`.
+ *
+ * This is the production module. The Vite alias `vautr-wasm` must point here
+ * (not at a mock shim) to exercise real crypto against the live server.
  */
+import init, * as raw from '../../wasm-pkg/vautr_wasm.js';
 
-// @ts-expect-error - wasm-pkg has no ts resolution in this project
-import * as raw from '../wasm-pkg/vautr_wasm';
+// Instantiate the wasm before anything is exported.
+await init();
 
 export const {
   generate_kdf_salt_js,
