@@ -1,0 +1,44 @@
+[package]
+name = "vautr-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Vautr native desktop client (GPUI). Sole holder of read_secret (desktop-api)."
+
+[[bin]]
+name = "vautr-desktop"
+path = "src/main.rs"
+
+[dependencies]
+# ---------------------------------------------------------------------------
+# GPUI pinning (tech-stack.md §4).
+#
+# GPUI is an immutable, no-semver framework. gpui-component 0.5.1 (longbridge)
+# is compiled against the published `gpui` 0.2.2 artifact (Zed). Both are pinned
+# EXACTLY so there is no floating revision and no cross-commit type drift
+# (see longbridge/gpui-component#2532). This supersedes the historical git-hash
+# policy because Zed now publishes `gpui` to crates.io; the exact pins below are
+# the fixed, reproducible revision pair that tech-stack.md §4 mandates.
+# ---------------------------------------------------------------------------
+gpui = "=0.2.2"
+gpui-component = "=0.5.1"
+
+# --- core (workspace-pinned) ---
+zeroize.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Sole consumer of the restricted `read_secret` API (data.md §4, build §2.5).
+# The desktop-api feature gate must never be enabled by web/extension/mobile.
+vautr-app-state = { workspace = true, features = ["desktop-api"] }
+vautr-domain.workspace = true
+vautr-db.workspace = true
+sea-orm.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

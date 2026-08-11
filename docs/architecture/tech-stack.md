@@ -208,8 +208,8 @@ PRAGMA wal_autocheckpoint=1000;
 
 | Crate | Version Constraint | Notes |
 | :--- | :--- | :--- |
-| `gpui` | **git hash** | Pin to a specific tested commit hash from Zed editor. |
-| `gpui-component` | `0.5` | Cross‑platform component library. |
+| `gpui` | `=0.2.2` | **Exact crates.io pin** (Zed publishes `gpui` to crates.io). Reproducible fixed revision. |
+| `gpui-component` | `=0.5.1` | Cross‑platform component library, pinned to the exact revision compiled against `gpui 0.2.2`. |
 | `kael` | `0.1` | Advanced features (webviews, tray, blur). Optional. |
 | `gpui-animation` | `0.2` | Lightweight state‑driven transitions. |
 | `gpui-transitions` | `0.1` | Interpolation‑based transitions. |
@@ -217,10 +217,16 @@ PRAGMA wal_autocheckpoint=1000;
 **Excluded:** `fluent-gpui`, `gpui-rsx`, `adabraka-ui`.
 
 **GPUI Pinning Policy:**
+GPUI is immutable (no semver). Zed now ships `gpui` as a published crates.io artifact, and
+`gpui-component` 0.5.1 is compiled against the published `gpui 0.2.2`. The desktop manifest pins
+both **exactly** so there is no floating revision and no cross-commit type drift. This supersedes
+the historical git-hash policy — the exact crates.io pins are the fixed, reproducible revision pair:
 ```toml
-gpui = { git = "https://github.com/zed-industries/zed", rev = "<CURRENT_STABLE_HASH>" }
+gpui = "=0.2.2"
+gpui-component = "=0.5.1"
 ```
-Update the hash every two weeks or after each Zed stable release.
+Update the pins every two weeks or after each GPUI release, and keep `gpui` and `gpui-component`
+versions in lockstep.
 
 ---
 
