@@ -201,6 +201,53 @@ pub struct AccessTokenCreateDto {
     pub expires_at: Option<i64>,
 }
 
+/// `GET /backup` — backup configuration and last-run state.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BackupStatusDto {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub schedule: String,
+    #[serde(default)]
+    pub last_backup_at: Option<i64>,
+    #[serde(default)]
+    pub last_backup_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub last_restore_test_at: Option<i64>,
+    #[serde(default)]
+    pub last_restore_test_status: Option<String>,
+}
+
+/// `POST /backup/export` — an on-demand encrypted backup archive.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BackupExportDto {
+    #[serde(default)]
+    pub backup_id: String,
+    #[serde(default)]
+    pub download_url: Option<String>,
+    #[serde(default)]
+    pub size_bytes: u64,
+    #[serde(default)]
+    pub checksum: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+/// `POST /backup/restore` — restore from a base64 archive or backup id.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BackupRestoreDto {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub test_id: String,
+    #[serde(default)]
+    pub restored_records: u64,
+    #[serde(default)]
+    pub restored_at: i64,
+}
+
 #[derive(Deserialize)]
 struct MachineAccountListEnvelope {
     machine_accounts: Vec<MachineAccountDto>,
@@ -606,6 +653,76 @@ impl ApiClient {
             Method::POST,
             token,
             "/tokens",
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    /// Revoke an access token (`DELETE /tokens/{uuid}`).
+    pub async fn revoke_token(&self, token: &str, uuid: &str) -> Result<serde_json::Value, String> {
+        self.send(Method::DELETE, token, &format!("/tokens/{uuid}"), None)
+            .await
+    }
+
+    // ── Machine account mutations ───────────────────────────────────────
+
+    /// Enable/disable a machine account (`PATCH /machine-accounts/{uuid}`).
+    pub async fn update_machine_account_status(
+        &self,
+        token: &str,
+        uuid: &str,
+        status: &str,
+    ) -> Result<MachineAccountDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("status".into(), serde_json::json!(status));
+        self.send(
+            Method::PATCH,
+            token,
+            &format!("/machine-accounts/{uuid}"),
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    /// Delete a machine account (`DELETE /machine-accounts/{uuid}`).
+    pub async fn delete_machine_account(&self, token: &str, uuid: &str) -> Result<serde_json::Value, String> {
+        self.send(
+            Method::DELETE,
+            token,
+            &format!("/machine-accounts/{uuid}"),
+            None,
+        )
+        .await
+    }
+
+    // ── Backup (import/export) ──────────────────────────────────────────
+
+    /// `GET /backup` — backup configuration and last-run state.
+    pub async fn backup_status(&self, token: &str) -> Result<BackupStatusDto, String> {
+        self.send(Method::GET, token, "/backup", None).await
+    }
+
+    /// `POST /backup/export` — create an encrypted backup archive.
+    pub async fn backup_export(&self, token: &str, include_secrets: bool) -> Result<BackupExportDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("include_secrets".into(), serde_json::json!(include_secrets));
+        self.send(
+            Method::POST,
+            token,
+            "/backup/export",
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    /// `POST /backup/restore` — restore from a base64 archive.
+    pub async fn backup_restore(&self, token: &str, archive_base64: &str) -> Result<BackupRestoreDto, String> {
+        let mut body = serde_json::Map::new();
+        body.insert("archive_base64".into(), serde_json::json!(archive_base64));
+        self.send(
+            Method::POST,
+            token,
+            "/backup/restore",
             Some(serde_json::Value::Object(body)),
         )
         .await

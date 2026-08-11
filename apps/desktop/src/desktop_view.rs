@@ -30,12 +30,17 @@ use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 
 /// Which post-login section is active.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Section {
-    Vault,
+    Dashboard,
     Projects,
+    Vault,
     Generator,
+    Secrets,
+    MachineAccounts,
+    Tokens,
     Mfa,
+    ImportExport,
     Settings,
 }
 
@@ -45,6 +50,18 @@ enum LoginMode {
     Login,
     Register,
 }
+
+/// Available access scopes for machine accounts and API tokens, mirroring
+/// the web's `AccessScope` list.
+const SCOPES: [&str; 7] = [
+    "secrets:read",
+    "secrets:write",
+    "secrets:reveal",
+    "projects:read",
+    "projects:write",
+    "tokens:manage",
+    "machine_accounts:manage",
+];
 
 /// The root desktop view.
 pub struct DesktopView {
@@ -103,6 +120,28 @@ pub struct DesktopView {
     settings_name_input: Entity<InputState>,
     settings_scopes: Vec<String>,
     settings_text: String,
+
+    // ── Dashboard section ───────────────────────────────────────────────
+    backup: Option<api_client::BackupStatusDto>,
+    dashboard_loading: bool,
+
+    // ── Secrets overview section ────────────────────────────────────────
+    secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
+    secrets_loading: bool,
+    secrets_error: Option<String>,
+    secrets_revealed: std::collections::HashMap<String, String>,
+    /// The secret currently being revealed (uuid).
+    secrets_reveal_target: Option<String>,
+
+    // ── Tokens section ──────────────────────────────────────────────────
+    /// The one-time raw token value returned on creation.
+    issued_token: Option<String>,
+
+    // ── Import / export section ─────────────────────────────────────────
+    include_secrets: bool,
+    import_text: String,
+    import_busy: bool,
+    import_archive_input: Entity<InputState>,
 }
 
 impl DesktopView {
@@ -151,6 +190,9 @@ impl DesktopView {
         let settings_name_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Machine account name, e.g. ci-deploy")
         });
+        let import_archive_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Paste base64 archive here…")
+        });
 
         let _subscriptions = vec![];
 
@@ -188,6 +230,18 @@ impl DesktopView {
             settings_name_input,
             settings_scopes: vec!["secrets:read".into()],
             settings_text: String::new(),
+            backup: None,
+            dashboard_loading: false,
+            secrets_rows: Vec::new(),
+            secrets_loading: false,
+            secrets_error: None,
+            secrets_revealed: std::collections::HashMap::new(),
+            secrets_reveal_target: None,
+            issued_token: None,
+            include_secrets: true,
+            import_text: String::new(),
+            import_busy: false,
+            import_archive_input,
         }
     }
 
@@ -1392,6 +1446,400 @@ impl DesktopView {
         })
         .detach();
     }
+
+    // ── Dashboard ───────────────────────────────────────────────────────
+
+    fn do_refresh_dashboard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.dashboard_loading = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let projects = api.list_projects(&token).await;
+            let machines = api.list_machine_accounts(&token).await;
+            let tokens = api.list_tokens(&token).await;
+            let mfa = api.mfa_status(&token).await;
+            let backup = api.backup_status(&token).await;
+            this.update(cx, |this, cx| {
+                if let Ok(p) = projects {
+                    this.projects.set_projects(p);
+                }
+                if let Ok(m) = machines {
+                    this.machines = m;
+                }
+                if let Ok(t) = tokens {
+                    this.tokens = t;
+                }
+                if let Ok(m) = mfa {
+                    this.mfa_status = Some(m);
+                }
+                if let Ok(b) = backup {
+                    this.backup = Some(b);
+                }
+                this.dashboard_loading = false;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Secrets overview ────────────────────────────────────────────────
+
+    fn do_refresh_secrets(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.secrets_loading = true;
+        self.secrets_error = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let projects = api.list_projects(&token).await;
+            let projects = match projects {
+                Ok(p) => p,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.secrets_loading = false;
+                        this.secrets_error = Some(format!("Failed to load projects: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+            let mut rows: Vec<(api_client::ProjectDto, api_client::SecretDto)> = Vec::new();
+            let mut err: Option<String> = None;
+            for p in &projects {
+                match api.list_secrets(&token, &p.uuid).await {
+                    Ok(secrets) => {
+                        for s in secrets {
+                            rows.push((p.clone(), s));
+                        }
+                    }
+                    Err(e) => {
+                        err = Some(format!("Failed to load secrets for '{}': {e}", p.name));
+                    }
+                }
+            }
+            this.update(cx, |this, cx| {
+                this.secrets_rows = rows;
+                this.secrets_loading = false;
+                this.secrets_error = err;
+                this.secrets_revealed.clear();
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_reveal_overview_secret(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+        uuid: String,
+    ) {
+        // Toggle: hide an already-revealed value.
+        if self.secrets_revealed.contains_key(&uuid) {
+            self.secrets_revealed.remove(&uuid);
+            cx.notify();
+            return;
+        }
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let Some(dek) = self.dek.clone() else {
+            self.secrets_error = Some("vault is locked; cannot decrypt secret".into());
+            cx.notify();
+            return;
+        };
+        let Some((project, _)) = self
+            .secrets_rows
+            .iter()
+            .find(|(_, s)| s.uuid == uuid)
+            .cloned()
+        else {
+            return;
+        };
+        let api = self.api();
+        self.secrets_reveal_target = Some(uuid.clone());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.get_secret_value(&token, &uuid).await;
+            this.update(cx, |this, cx| {
+                this.secrets_reveal_target = None;
+                match result {
+                    Ok(value) => {
+                        let ad = api_client::secret_ad(&project.uuid, &value.key);
+                        let plain = api_client::b64_decode(&value.value_ciphertext)
+                            .and_then(|ct| {
+                                aead::decrypt_with_ad(&dek, &ad, &ct)
+                                    .map_err(|e| e.to_string())
+                            });
+                        match plain {
+                            Ok(plain) => match String::from_utf8(plain) {
+                                Ok(s) => {
+                                    this.secrets_revealed.insert(uuid.clone(), s);
+                                    this.secrets_error = None;
+                                }
+                                Err(e) => {
+                                    this.secrets_error =
+                                        Some(format!("Secret is not UTF-8: {e}"));
+                                }
+                            },
+                            Err(e) => {
+                                this.secrets_error = Some(format!("Decryption failed: {e}"));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        this.secrets_error = Some(format!("Reveal failed: {e}"));
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Machine account mutations (dedicated section) ───────────────────
+
+    fn do_toggle_scope(&mut self, scope: String, cx: &mut Context<Self>) {
+        if let Some(i) = self.settings_scopes.iter().position(|s| *s == scope) {
+            self.settings_scopes.remove(i);
+        } else {
+            self.settings_scopes.push(scope);
+        }
+        cx.notify();
+    }
+
+    fn do_toggle_machine(&mut self, _window: &mut Window, cx: &mut Context<Self>, uuid: String) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let status = self
+            .machines
+            .iter()
+            .find(|m| m.uuid == uuid)
+            .map(|m| {
+                if m.status == "active" {
+                    "disabled".to_string()
+                } else {
+                    "active".to_string()
+                }
+            })
+            .unwrap_or_else(|| "active".into());
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.update_machine_account_status(&token, &uuid, &status).await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => {
+                    this.settings_text = format!("Machine account {status}.");
+                    this.do_refresh_settings_to(cx);
+                }
+                Err(e) => {
+                    this.settings_text = format!("Update failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_delete_machine(&mut self, _window: &mut Window, cx: &mut Context<Self>, uuid: String) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.delete_machine_account(&token, &uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => {
+                    this.settings_text = "Machine account deleted.".into();
+                    this.do_refresh_settings_to(cx);
+                }
+                Err(e) => {
+                    this.settings_text = format!("Delete failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Access token mutations (dedicated section) ──────────────────────
+
+    fn do_create_token(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let name = self.settings_name_input.read(cx).value().to_string();
+        if name.trim().is_empty() || self.settings_scopes.is_empty() {
+            self.settings_text = "Token name and at least one scope are required.".into();
+            cx.notify();
+            return;
+        }
+        let scopes: Vec<String> = self.settings_scopes.iter().cloned().collect();
+        let api = self.api();
+        self.settings_name_input.update(cx, |st, cx| {
+            st.set_value("", window, cx);
+        });
+        self.settings_text = "Creating token...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
+            let result = api.create_token(&token, name.trim(), &scope_refs).await;
+            this.update(cx, |this, cx| match result {
+                Ok(created) => {
+                    this.issued_token = Some(created.token);
+                    this.settings_text =
+                        format!("Created token '{}'. Save the raw value now.", created.token_id);
+                    this.do_refresh_settings_to(cx);
+                }
+                Err(e) => {
+                    this.settings_text = format!("Create failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_revoke_token(&mut self, _window: &mut Window, cx: &mut Context<Self>, uuid: String) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.revoke_token(&token, &uuid).await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => {
+                    this.settings_text = "Token revoked.".into();
+                    this.do_refresh_settings_to(cx);
+                }
+                Err(e) => {
+                    this.settings_text = format!("Revoke failed: {e}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Import / export (backup) ────────────────────────────────────────
+
+    fn do_refresh_backup(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.backup_status(&token).await;
+            this.update(cx, |this, cx| {
+                if let Ok(b) = result {
+                    this.backup = Some(b);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_export_backup(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let include = self.include_secrets;
+        let api = self.api();
+        self.import_busy = true;
+        self.import_text = "Exporting backup...".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.backup_export(&token, include).await;
+            this.update(cx, |this, cx| {
+                this.import_busy = false;
+                match result {
+                    Ok(exp) => {
+                        this.import_text = format!(
+                            "Backup created (id {}, {} bytes).",
+                            exp.backup_id, exp.size_bytes
+                        );
+                        this.do_refresh_backup(cx);
+                    }
+                    Err(e) => {
+                        this.import_text = format!("Export failed: {e}");
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_restore_backup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let archive = self.import_archive_input.read(cx).value().to_string();
+        if archive.trim().is_empty() {
+            self.import_text = "Paste a base64 backup archive to restore.".into();
+            cx.notify();
+            return;
+        }
+        let api = self.api();
+        self.import_busy = true;
+        self.import_text = "Restoring...".into();
+        self.import_archive_input.update(cx, |st, cx| {
+            st.set_value("", window, cx);
+        });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let result = api.backup_restore(&token, archive.trim()).await;
+            this.update(cx, |this, cx| {
+                this.import_busy = false;
+                match result {
+                    Ok(res) => {
+                        this.import_text = format!(
+                            "Restore {}: {} records.",
+                            res.status, res.restored_records
+                        );
+                        cx.notify();
+                    }
+                    Err(e) => {
+                        this.import_text = format!("Restore failed: {e}");
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_toggle_include_secrets(&mut self, cx: &mut Context<Self>) {
+        self.include_secrets = !self.include_secrets;
+        cx.notify();
+    }
 }
 
 impl Render for DesktopView {
@@ -1611,10 +2059,15 @@ impl DesktopView {
     fn render_app(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
         let content = match section {
-            Section::Vault => self.render_vault_content(cx).into_any_element(),
+            Section::Dashboard => self.render_dashboard(cx).into_any_element(),
             Section::Projects => self.render_projects(cx).into_any_element(),
+            Section::Vault => self.render_vault_content(cx).into_any_element(),
             Section::Generator => self.render_generator(cx).into_any_element(),
+            Section::Secrets => self.render_secrets_overview(cx).into_any_element(),
+            Section::MachineAccounts => self.render_machine_accounts(cx).into_any_element(),
+            Section::Tokens => self.render_tokens(cx).into_any_element(),
             Section::Mfa => self.render_mfa(cx).into_any_element(),
+            Section::ImportExport => self.render_import_export(cx).into_any_element(),
             Section::Settings => self.render_settings(cx).into_any_element(),
         };
 
@@ -1636,11 +2089,16 @@ impl DesktopView {
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
 
-        let items: [(Section, &'static str, IconName); 5] = [
-            (Section::Vault, "Vault", IconName::Eye),
+        let items: [(Section, &'static str, IconName); 10] = [
+            (Section::Dashboard, "Dashboard", IconName::LayoutDashboard),
             (Section::Projects, "Projects", IconName::Folder),
+            (Section::Vault, "Vault", IconName::Eye),
             (Section::Generator, "Generator", IconName::Settings2),
+            (Section::Secrets, "Secrets", IconName::HardDrive),
+            (Section::MachineAccounts, "Machine accounts", IconName::Bot),
+            (Section::Tokens, "Tokens", IconName::Globe),
             (Section::Mfa, "MFA & security", IconName::CircleCheck),
+            (Section::ImportExport, "Import / export", IconName::Replace),
             (Section::Settings, "Settings", IconName::Settings),
         ];
 
@@ -1742,8 +2200,12 @@ impl DesktopView {
         self.section = sec;
         match sec {
             Section::Vault | Section::Generator => cx.notify(),
+            Section::Dashboard => self.do_refresh_dashboard(window, cx),
             Section::Projects => self.do_refresh_projects(window, cx),
+            Section::Secrets => self.do_refresh_secrets(window, cx),
+            Section::MachineAccounts | Section::Tokens => self.do_refresh_settings(window, cx),
             Section::Mfa => self.do_refresh_mfa(window, cx),
+            Section::ImportExport => self.do_refresh_backup(cx),
             Section::Settings => self.do_refresh_settings(window, cx),
         }
     }
@@ -2715,7 +3177,863 @@ impl DesktopView {
         body
     }
 
-    // ── Settings section ──────────────────────────────────────────────────
+    // ── Dashboard section ────────────────────────────────────────────────
+
+    fn render_dashboard(&mut self, _cx: &mut Context<Self>) -> impl IntoElement {
+        let projects = self.projects.projects.clone();
+        let machines = self.machines.clone();
+        let tokens = self.tokens.clone();
+        let mfa_methods = self
+            .mfa_status
+            .as_ref()
+            .map(|m| m.configured_methods.len())
+            .unwrap_or(0);
+        let backup = self.backup.clone();
+        let loading = self.dashboard_loading;
+
+        let stat = |label: &str, value: usize, icon: IconName| {
+            v_flex()
+                .flex_1()
+                .border_1()
+                .border_color(theme::BORDER)
+                .rounded_lg()
+                .bg(theme::SURFACE)
+                .p_4()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child(label.to_string()),
+                        )
+                        .child(Icon::new(icon).size_4().text_color(theme::ACCENT)),
+                )
+                .child(
+                    div()
+                        .text_3xl()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme::TEXT)
+                        .child(value.to_string()),
+                )
+        };
+
+        let mut recent_rows: Vec<AnyElement> = Vec::new();
+        for p in projects.iter().take(5) {
+            let name = p.name.clone();
+            let kind = p.kind.clone();
+            let perm = p.permission.clone().unwrap_or_else(|| "—".into());
+            let meta = format!("{kind} · {perm}");
+            recent_rows.push(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .px_4()
+                    .py_3()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE_RAISED)
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Icon::new(IconName::Folder).size_4().text_color(theme::ACCENT))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::TEXT)
+                                    .child(name),
+                            ),
+                    )
+                    .child(div().text_xs().text_color(theme::TEXT_MUTED).child(meta))
+                    .into_any_element(),
+            );
+        }
+
+        let backup_text = match &backup {
+            Some(b) if b.enabled => format!(
+                "Enabled · last backup {}",
+                b.last_backup_at.map(fmt_time).unwrap_or_else(|| "n/a".into())
+            ),
+            Some(_) => "Not configured".to_string(),
+            None => "Backup API unavailable".to_string(),
+        };
+        let projects_desc = if projects.is_empty() {
+            "No projects yet. Create one to get started.".to_string()
+        } else {
+            format!("You can access {} project(s).", projects.len())
+        };
+
+        self.page()
+            .child(self.page_header(
+                "Dashboard",
+                "Overview of your organization's vaults and secrets.",
+            ))
+            .when(loading, |this| {
+                this.child(div().text_sm().text_color(theme::TEXT_MUTED).child("Loading…"))
+            })
+            .child(
+                h_flex()
+                    .gap_4()
+                    .w_full()
+                    .child(stat("Projects", projects.len(), IconName::Folder))
+                    .child(stat("Machine accounts", machines.len(), IconName::Bot))
+                    .child(stat("Access tokens", tokens.len(), IconName::Globe))
+                    .child(stat("MFA", mfa_methods, IconName::CircleCheck)),
+            )
+            .child(
+                self.card("Recent projects", &projects_desc).children(recent_rows),
+            )
+            .child(
+                self.card("Backup status", "Automated and on-demand backups.").child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(Icon::new(IconName::HardDrive).size_4().text_color(theme::TEXT_MUTED))
+                        .child(div().text_sm().text_color(theme::TEXT).child(backup_text)),
+                ),
+            )
+    }
+
+    // ── Secrets overview section ────────────────────────────────────────
+
+    fn render_secrets_overview(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let rows = self.secrets_rows.clone();
+        let revealed = self.secrets_revealed.clone();
+        let loading = self.secrets_loading;
+        let error = self.secrets_error.clone().unwrap_or_default();
+
+        let header = h_flex()
+            .px_3()
+            .py_2()
+            .gap_3()
+            .border_b_1()
+            .border_color(theme::BORDER)
+            .child(
+                div()
+                    .w_11()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Project"),
+            )
+            .child(div().flex_1().text_xs().text_color(theme::TEXT_MUTED).child("Key"))
+            .child(
+                div()
+                    .w_16()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Version"),
+            )
+            .child(
+                div()
+                    .w_7()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Value"),
+            );
+
+        let mut body: Vec<AnyElement> = Vec::new();
+        for (i, (project, secret)) in rows.iter().enumerate() {
+            let uuid = secret.uuid.clone();
+            let reveal_uuid = uuid.clone();
+            let pname = project.name.clone();
+            let ptype = project.kind.clone();
+            let key = secret.key.clone();
+            let version = secret.version;
+            let is_revealed = revealed.contains_key(&uuid);
+            body.push(
+                h_flex()
+                    .id(SharedString::from(format!("secret-row-{i}")))
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .border_b_1()
+                    .border_color(theme::BORDER)
+                    .child(
+                        v_flex()
+                            .w_11()
+                            .gap_0p5()
+                            .child(div().text_sm().text_color(theme::TEXT).child(pname))
+                            .child(div().text_xs().text_color(theme::TEXT_MUTED).child(ptype)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_sm()
+                            .font_family("ui-monospace")
+                            .text_color(theme::TEXT)
+                            .child(key),
+                    )
+                    .child(
+                        div()
+                            .w_16()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(version.to_string()),
+                    )
+                    .child(
+                        h_flex().w_7().child(
+                            Button::new(format!("sreveal-{i}"))
+                                .compact()
+                                .label(if is_revealed { "Hide" } else { "Reveal" })
+                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_reveal_overview_secret(window, cx, reveal_uuid.clone());
+                                })),
+                        ),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        self.page()
+            .child(self.page_header(
+                "Secrets",
+                "Secrets are project-scoped. Revealing a value requires the secrets:reveal scope.",
+            ))
+            .when(!error.is_empty(), |this| {
+                this.child(div().text_sm().text_color(theme::DANGER).child(error.clone()))
+            })
+            .when(loading, |this| {
+                this.child(div().text_sm().text_color(theme::TEXT_MUTED).child("Loading…"))
+            })
+            .child(
+                self.card("All secrets", "Every secret across your projects.")
+                    .when(!loading && rows.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .py_6()
+                                .w_full()
+                                .text_center()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No secrets found across your projects. Open a project to add one."),
+                        )
+                    })
+                    .when(!rows.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme::BORDER)
+                                .child(header)
+                                .children(body),
+                        )
+                    })
+                    .when(!revealed.is_empty(), |this| {
+                        let mut c = this;
+                        for (_, secret) in &rows {
+                            if let Some(plain) = revealed.get(&secret.uuid) {
+                                let key = secret.key.clone();
+                                let val = plain.clone();
+                                c = c.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .px_3()
+                                        .py_2()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(theme::ACCENT_DIM)
+                                        .bg(theme::ACCENT_DIM)
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme::TEXT_MUTED)
+                                                .child(format!("{key}:")),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_family("ui-monospace")
+                                                .text_color(theme::TEXT)
+                                                .child(val),
+                                        ),
+                                );
+                            }
+                        }
+                        c
+                    }),
+            )
+    }
+
+    /// Checkbox-style rows for the scope selector (used by the Machine
+    /// accounts and Tokens create forms).
+    fn render_scope_toggles(&mut self, cx: &mut Context<Self>, id_prefix: &str) -> Vec<AnyElement> {
+        let scopes = self.settings_scopes.clone();
+        SCOPES
+            .iter()
+            .map(|s| {
+                let active = scopes.iter().any(|x| x == s);
+                let label = s.to_string();
+                let sval = s.to_string();
+                div()
+                    .id(SharedString::from(format!("{id_prefix}-scope-{sval}")))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .cursor_pointer()
+                    .px_1()
+                    .py_0p5()
+                    .rounded_md()
+                    .when(active, |d| d.bg(theme::ACCENT_DIM))
+                    .child(
+                        div()
+                            .size_4()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(if active {
+                                theme::ACCENT
+                            } else {
+                                theme::BORDER
+                            })
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(if active {
+                                Icon::new(IconName::Check)
+                                    .size_3()
+                                    .text_color(theme::ACCENT)
+                                    .into_any_element()
+                            } else {
+                                div().into_any_element()
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_family("ui-monospace")
+                            .text_color(theme::TEXT)
+                            .child(label),
+                    )
+                    .on_click(cx.listener(move |this, _: &gpui::ClickEvent, _window, cx| {
+                        this.do_toggle_scope(sval.clone(), cx);
+                    }))
+                    .into_any_element()
+            })
+            .collect()
+    }
+
+    // ── Machine accounts section ────────────────────────────────────────
+
+    fn render_machine_accounts(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let machines = self.machines.clone();
+        let text = self.settings_text.clone();
+        let scope_toggles = self.render_scope_toggles(cx, "ma");
+
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for (i, m) in machines.iter().enumerate() {
+            let uuid = m.uuid.clone();
+            let name = m.name.clone();
+            let status = m.status.clone();
+            let created = m.created_at;
+            let is_active = status == "active";
+            let toggle_uuid = uuid.clone();
+            let delete_uuid = uuid.clone();
+            let scopes = m.scopes.clone();
+            rows.push(
+                h_flex()
+                    .id(SharedString::from(format!("ma-row-{i}")))
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .border_b_1()
+                    .border_color(theme::BORDER)
+                    .items_center()
+                    .child(
+                        v_flex()
+                            .w_56()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(theme::TEXT)
+                                    .child(name),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_family("ui-monospace")
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(uuid),
+                            ),
+                    )
+                    .child(status_badge(&status))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_1()
+                            .children(scopes.iter().map(|s| scope_pill(s))),
+                    )
+                    .child(
+                        div()
+                            .w_7()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(fmt_time(created)),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new(format!("ma-toggle-{i}"))
+                                    .compact()
+                                    .label(if is_active { "Disable" } else { "Enable" })
+                                    .on_click(cx.listener(
+                                        move |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_toggle_machine(window, cx, toggle_uuid.clone());
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new(format!("ma-del-{i}"))
+                                    .compact()
+                                    .label("Delete")
+                                    .on_click(cx.listener(
+                                        move |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_delete_machine(window, cx, delete_uuid.clone());
+                                        },
+                                    )),
+                            ),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        self.page()
+            .child(self.page_header(
+                "Machine accounts",
+                "Non-human identities for CI/CD, apps, and agents.",
+            ))
+            .when(!text.is_empty(), |this| {
+                this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
+            })
+            .child(
+                self.card("Machine accounts", "Service identities with scoped API access.")
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("{} account(s)", machines.len())),
+                            )
+                            .child(
+                                Button::new("ma-refresh")
+                                    .compact()
+                                    .label("Refresh")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_refresh_settings(window, cx);
+                                        },
+                                    )),
+                            ),
+                    )
+                    .when(rows.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .py_6()
+                                .w_full()
+                                .text_center()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No machine accounts yet."),
+                        )
+                    })
+                    .when(!rows.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme::BORDER)
+                                .children(rows),
+                        )
+                    }),
+            )
+            .child(
+                self.card("New machine account", "Register a new service identity.")
+                    .child(Input::new(&self.settings_name_input).w_full())
+                    .child(v_flex().gap_1().children(scope_toggles))
+                    .child(
+                        h_flex().child(
+                            Button::new("ma-create")
+                                .primary()
+                                .label("Create machine account")
+                                .on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_create_machine(window, cx);
+                                    },
+                                )),
+                        ),
+                    ),
+            )
+    }
+
+    // ── Tokens section ──────────────────────────────────────────────────
+
+    fn render_tokens(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let tokens = self.tokens.clone();
+        let text = self.settings_text.clone();
+        let issued = self.issued_token.clone();
+        let scope_toggles = self.render_scope_toggles(cx, "tok");
+
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for (i, t) in tokens.iter().enumerate() {
+            let uuid = t.uuid.clone();
+            let name = t.name.clone();
+            let prefix = t.prefix.clone().unwrap_or_default();
+            let revoke_uuid = uuid.clone();
+            let scopes = t.scopes.clone();
+            let expires = t.expires_at.map(fmt_time).unwrap_or_else(|| "never".into());
+            rows.push(
+                h_flex()
+                    .id(SharedString::from(format!("tok-row-{i}")))
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .border_b_1()
+                    .border_color(theme::BORDER)
+                    .items_center()
+                    .child(
+                        v_flex()
+                            .w_56()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(theme::TEXT)
+                                    .child(name),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_family("ui-monospace")
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(uuid),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_32()
+                            .text_sm()
+                            .font_family("ui-monospace")
+                            .text_color(theme::TEXT_MUTED)
+                            .child(format!("{prefix}…")),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_1()
+                            .children(scopes.iter().map(|s| scope_pill(s))),
+                    )
+                    .child(
+                        div()
+                            .w_24()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(expires),
+                    )
+                    .child(
+                        Button::new(format!("tok-revoke-{i}"))
+                            .compact()
+                            .label("Revoke")
+                            .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_revoke_token(window, cx, revoke_uuid.clone());
+                            })),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        self.page()
+            .child(self.page_header(
+                "Access tokens",
+                "Issue scoped tokens with expiration and revocation.",
+            ))
+            .when(!text.is_empty(), |this| {
+                this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
+            })
+            .when(issued.is_some(), |this| {
+                let tok = issued.clone().unwrap_or_default();
+                this.child(
+                    self.card("Save this token now", "The full token is shown only once. Store it somewhere safe.")
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .px_3()
+                                        .py_2()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(theme::BORDER)
+                                        .bg(theme::SURFACE_RAISED)
+                                        .font_family("ui-monospace")
+                                        .text_sm()
+                                        .text_color(theme::TEXT)
+                                        .child(tok),
+                                )
+                                .child(
+                                    Button::new("issued-dismiss")
+                                        .compact()
+                                        .label("Dismiss")
+                                        .on_click(cx.listener(
+                                            |this, _: &gpui::ClickEvent, _window, cx| {
+                                                this.issued_token = None;
+                                                cx.notify();
+                                            },
+                                        )),
+                                ),
+                        ),
+                )
+            })
+            .child(
+                self.card("Tokens", "Long-lived scoped access tokens.")
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("{} token(s)", tokens.len())),
+                            )
+                            .child(
+                                Button::new("tok-refresh")
+                                    .compact()
+                                    .label("Refresh")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_refresh_settings(window, cx);
+                                        },
+                                    )),
+                            ),
+                    )
+                    .when(rows.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .py_6()
+                                .w_full()
+                                .text_center()
+                                .text_sm()
+                                .text_color(theme::TEXT_MUTED)
+                                .child("No access tokens yet."),
+                        )
+                    })
+                    .when(!rows.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme::BORDER)
+                                .children(rows),
+                        )
+                    }),
+            )
+            .child(
+                self.card("New token", "Issue a token with fine-grained scopes.")
+                    .child(Input::new(&self.settings_name_input).w_full())
+                    .child(v_flex().gap_1().children(scope_toggles))
+                    .child(
+                        h_flex().child(
+                            Button::new("tok-create")
+                                .primary()
+                                .label("Create token")
+                                .on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_create_token(window, cx);
+                                    },
+                                )),
+                        ),
+                    ),
+            )
+    }
+
+    // ── Import / export section ─────────────────────────────────────────
+
+    fn render_import_export(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let backup = self.backup.clone();
+        let include = self.include_secrets;
+        let text = self.import_text.clone();
+        let busy = self.import_busy;
+
+        self.page()
+            .child(self.page_header(
+                "Import / export",
+                "Backup and restore your organization data against the live server.",
+            ))
+            .when(!text.is_empty(), |this| {
+                this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
+            })
+            .when(backup.is_some(), |this| {
+                let b = backup.clone().unwrap();
+                let status = if b.enabled { "enabled" } else { "disabled" };
+                let card = self
+                    .card("Backup status", "Automated and on-demand backups.")
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .items_center()
+                            .child(status_badge(status))
+                            .when(b.last_backup_at.is_some(), |c| {
+                                c.child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme::TEXT_MUTED)
+                                        .child(format!(
+                                            "Last backup {}",
+                                            fmt_time(b.last_backup_at.unwrap())
+                                        )),
+                                )
+                            })
+                            .when(b.last_restore_test_status.is_some(), |c| {
+                                c.child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme::TEXT_MUTED)
+                                        .child(format!(
+                                            "Last restore test: {}",
+                                            b.last_restore_test_status.clone().unwrap()
+                                        )),
+                                )
+                            }),
+                    );
+                this.child(card)
+            })
+            .child(
+                h_flex()
+                    .gap_4()
+                    .w_full()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .border_1()
+                            .border_color(theme::BORDER)
+                            .rounded_lg()
+                            .bg(theme::SURFACE)
+                            .p_5()
+                            .gap_4()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(theme::TEXT)
+                                            .child("Export backup"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme::TEXT_MUTED)
+                                            .child("Create an encrypted backup archive of the current state."),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("inc-secrets")
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .cursor_pointer()
+                                    .px_1()
+                                    .py_0p5()
+                                    .rounded_md()
+                                    .when(include, |d| d.bg(theme::ACCENT_DIM))
+                                    .child(
+                                        div()
+                                            .size_4()
+                                            .rounded_sm()
+                                            .border_1()
+                                            .border_color(if include {
+                                                theme::ACCENT
+                                            } else {
+                                                theme::BORDER
+                                            })
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(if include {
+                                                Icon::new(IconName::Check)
+                                                    .size_3()
+                                                    .text_color(theme::ACCENT)
+                                                    .into_any_element()
+                                            } else {
+                                                div().into_any_element()
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme::TEXT)
+                                            .child("Include secret values"),
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.do_toggle_include_secrets(cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("export-backup")
+                                    .primary()
+                                    .label(if busy { "Exporting…" } else { "Export backup" })
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_export_backup(window, cx);
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .border_1()
+                            .border_color(theme::BORDER)
+                            .rounded_lg()
+                            .bg(theme::SURFACE)
+                            .p_5()
+                            .gap_4()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(theme::TEXT)
+                                            .child("Restore backup"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme::TEXT_MUTED)
+                                            .child("Restore from a base64 archive or a backup ID."),
+                                    ),
+                            )
+                            .child(Input::new(&self.import_archive_input).w_full())
+                            .child(
+                                Button::new("restore-backup")
+                                    .label("Restore")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_restore_backup(window, cx);
+                                        },
+                                    )),
+                            ),
+                    ),
+            )
+    }
 
     fn render_settings(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let machines = self.machines.clone();
@@ -2856,5 +4174,47 @@ fn generate_password(length: usize) -> String {
             CHARS[idx] as char
         })
         .collect()
+}
+
+/// Format a Unix-timestamp (seconds) as a compact local date/time string.
+fn fmt_time(secs: i64) -> String {
+    if secs <= 0 {
+        return "n/a".into();
+    }
+    chrono::DateTime::from_timestamp(secs, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "n/a".into())
+}
+
+/// A small status pill ("active" uses the accent; everything else is muted).
+fn status_badge(status: &str) -> Div {
+    let (bg, ink) = if status == "active" {
+        (theme::ACCENT_DIM, theme::ACCENT)
+    } else {
+        (theme::SURFACE_RAISED, theme::TEXT_MUTED)
+    };
+    div()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
+        .bg(bg)
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(ink)
+        .child(status.to_string())
+}
+
+/// A mono pill rendering a single access scope (e.g. `secrets:read`).
+fn scope_pill(scope: &str) -> Div {
+    div()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
+        .border_1()
+        .border_color(theme::BORDER)
+        .text_xs()
+        .font_family("ui-monospace")
+        .text_color(theme::TEXT_MUTED)
+        .child(scope.to_string())
 }
 
