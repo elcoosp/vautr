@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS org_members (
 CREATE TABLE IF NOT EXISTS projects (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
+    description   TEXT,
     kind          TEXT NOT NULL CHECK (kind IN ('personal', 'shared')),
     org_id        TEXT,
     team_id       TEXT,
@@ -51,8 +52,10 @@ CREATE TABLE IF NOT EXISTS project_items (
 CREATE TABLE IF NOT EXISTS user_groups (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
+    description TEXT,
     org_id     TEXT,
     created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
     FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 ) STRICT;
 

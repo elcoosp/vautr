@@ -26,6 +26,7 @@ serde_json.workspace = true
 base64 = "0.22"
 uuid.workspace = true
 sqlx.workspace = true
+vautr-domain.workspace = true
 vautr-crypto.workspace = true
 ed25519-dalek.workspace = true
 # WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). Feature-gated.

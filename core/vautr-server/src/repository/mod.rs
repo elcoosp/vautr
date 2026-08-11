@@ -19,11 +19,15 @@
 use sqlx::sqlite::SqlitePool;
 
 pub mod audit;
+pub mod backup;
 pub mod config;
 pub mod files;
 pub mod items;
 pub mod mfa;
+pub mod machine_accounts;
+pub mod projects;
 pub mod recovery;
+pub mod secrets;
 pub mod sessions;
 pub mod sharing;
 pub mod users;
