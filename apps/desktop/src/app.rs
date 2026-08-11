@@ -5,7 +5,7 @@
 
 use crate::desktop_view::DesktopView;
 use gpui::*;
-use gpui_component::Root;
+use gpui_component::{Root, Theme, ThemeMode, ThemeRegistry};
 use gpui_platform::application;
 
 /// Server base URL. Read from `VAUTR_API_URL` env var, defaulting to localhost.
@@ -18,6 +18,21 @@ pub fn run() {
     application().run(move |cx: &mut App| {
         // Must be called before any gpui-component widgets are used.
         gpui_component::init(cx);
+
+        // Load the Vautr Ledger theme and make dark the operating default,
+        // regardless of the host OS appearance. Widgets (buttons, inputs,
+        // tabs) then draw the same emerald-teal + graphite world as web/mobile.
+        ThemeRegistry::global_mut(cx)
+            .load_themes_from_str(include_str!("vautr-theme.json"))
+            .expect("invalid Vautr theme json");
+        if let Some(theme) = ThemeRegistry::global(cx)
+            .themes()
+            .get("Vautr Dark")
+            .cloned()
+        {
+            Theme::global_mut(cx).dark_theme = theme;
+        }
+        Theme::change(ThemeMode::Dark, None, cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

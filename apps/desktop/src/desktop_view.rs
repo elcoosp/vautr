@@ -211,6 +211,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let auth = AuthClient::new(&server_url);
             let result = auth.register(&username, &password).await;
 
@@ -263,6 +264,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let auth = AuthClient::new(&server_url);
             let login = match auth.login(&username, &password, &kdf_salt).await {
                 Ok(l) => l,
@@ -401,6 +403,7 @@ impl DesktopView {
         self.revealed = None;
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let outcome = match client.reveal_secret(uuid).await {
                 Ok(handle) => match client.read_secret(handle) {
                     Ok(secret) => Ok((handle, secret)),
@@ -445,6 +448,7 @@ impl DesktopView {
         };
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let outcome = client.delete_item(uuid).await;
             this.update(cx, |this, cx| match outcome {
                 vautr_app_state::worker::TaskOutcome::Committed(_) => {
@@ -452,6 +456,7 @@ impl DesktopView {
                     cx.notify();
                     let c = this.client.clone();
                     cx.spawn(async move |this, cx| {
+                        let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
                         if let Some(c) = c {
                             if let Ok(items) = c.search("").await {
                                 this.update(cx, |this, cx| {
@@ -482,12 +487,14 @@ impl DesktopView {
         };
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = client.sync().await;
             this.update(cx, |this, cx| {
                 match result {
                     Ok(()) => {
                         let c = this.client.clone();
                         cx.spawn(async move |this, cx| {
+                            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
                             if let Some(c) = c {
                                 if let Ok(items) = c.search("").await {
                                     this.update(cx, |this, cx| {
@@ -539,6 +546,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.list_projects(&token).await;
             this.update(cx, |this, cx| match result {
                 Ok(projects) => {
@@ -574,6 +582,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let members = api.list_members(&token, &uuid).await;
             let secrets = api.list_secrets(&token, &uuid).await;
             this.update(cx, |this, cx| {
@@ -618,6 +627,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let desc_opt = if desc.trim().is_empty() {
                 None
             } else {
@@ -655,6 +665,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.list_projects(&token).await;
             this.update(cx, |this, cx| match result {
                 Ok(projects) => {
@@ -695,6 +706,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.delete_project(&token, &uuid).await;
             this.update(cx, |this, cx| match result {
                 Ok(()) => {
@@ -735,6 +747,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api
                 .add_member(&token, &project_uuid, user_uuid.trim(), &role, &permission)
                 .await;
@@ -766,6 +779,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.list_members(&token, &uuid).await;
             this.update(cx, |this, cx| {
                 if let Ok(members) = result {
@@ -793,6 +807,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api
                 .update_member(&token, &project_uuid, &user_uuid, None, Some(&permission))
                 .await;
@@ -828,6 +843,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.remove_member(&token, &project_uuid, &user_uuid).await;
             this.update(cx, |this, cx| match result {
                 Ok(()) => {
@@ -872,6 +888,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             // Encrypt the value client-side (zero-knowledge): the server only
             // ever sees the AEAD ciphertext, bound to (project, key).
             let ad = api_client::secret_ad(&project_uuid, key.trim());
@@ -921,6 +938,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.list_secrets(&token, &uuid).await;
             this.update(cx, |this, cx| {
                 if let Ok(secrets) = result {
@@ -955,6 +973,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.get_secret_value(&token, &uuid).await;
             this.update(cx, |this, cx| match result {
                 Ok(value) => {
@@ -1003,6 +1022,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.delete_secret(&token, &uuid).await;
             this.update(cx, |this, cx| match result {
                 Ok(()) => {
@@ -1036,6 +1056,7 @@ impl DesktopView {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.offboard(&token, user_uuid.trim(), Some("desktop offboard")).await;
             this.update(cx, |this, cx| match result {
                 Ok(o) => {
@@ -1072,6 +1093,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.mfa_status(&token).await;
             this.update(cx, |this, cx| match result {
                 Ok(status) => {
@@ -1097,6 +1119,7 @@ impl DesktopView {
         self.mfa_text = "Starting TOTP enrollment...".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api.mfa_totp_issue(&token).await;
             this.update(cx, |this, cx| match result {
                 Ok(issued) => {
@@ -1132,6 +1155,7 @@ impl DesktopView {
         self.mfa_text = "Verifying...".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let result = api
                 .mfa_totp_verify(&token, enrollment_id.as_deref(), code.trim())
                 .await;
@@ -1145,6 +1169,7 @@ impl DesktopView {
                     if let Some(token) = token {
                         let api = api;
                         cx.spawn(async move |this, cx| {
+                            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
                             if let Ok(status) = api.mfa_status(&token).await {
                                 this.update(cx, |this, cx| {
                                     this.mfa_status = Some(status);
@@ -1174,6 +1199,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let machines = api.list_machine_accounts(&token).await;
             let tokens = api.list_tokens(&token).await;
             this.update(cx, |this, cx| {
@@ -1206,6 +1232,7 @@ impl DesktopView {
         self.settings_text = "Creating machine account...".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
             let result = api
                 .create_machine_account(&token, name.trim(), None, None, &scope_refs)
@@ -1232,6 +1259,7 @@ impl DesktopView {
         };
         let api = self.api();
         cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
             let machines = api.list_machine_accounts(&token).await;
             let tokens = api.list_tokens(&token).await;
             this.update(cx, |this, cx| {
@@ -1269,6 +1297,7 @@ impl DesktopView {
             .gap_4()
             .p_8()
             .size_full()
+            .bg(theme::BG)
             .items_center()
             .justify_center()
             .child(
@@ -1319,6 +1348,7 @@ impl DesktopView {
         let section = self.section;
         v_flex()
             .size_full()
+            .bg(theme::BG)
             .child(
                 h_flex()
                     .justify_between()
