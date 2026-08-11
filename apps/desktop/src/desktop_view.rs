@@ -20,7 +20,6 @@ use crate::auth_client::AuthClient;
 use crate::state::{self, VaultConfig, VaultManagerState};
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, kdf, key_tree};
-use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 
 /// The root desktop view.
 pub struct DesktopView {
@@ -332,109 +331,6 @@ impl DesktopView {
         .detach();
     }
 
-    fn do_add_item(
-        &mut self,
-        title: String,
-        subtitle: String,
-        password_str: String,
-        url: String,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(client) = self.client.clone() else {
-            self.vault.show_error("vault is locked");
-            cx.notify();
-            return;
-        };
-        let Some(dek) = self.dek.clone() else {
-            self.vault.show_error("vault is locked (no DEK)");
-            cx.notify();
-            return;
-        };
-
-        if title.is_empty() {
-            self.vault.show_error("Title is required.");
-            cx.notify();
-            return;
-        }
-
-        cx.spawn(async move |this, cx| {
-            let item_uuid = Uuid::new_v4();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-
-            let overview = DecryptedOverview {
-                uuid: item_uuid,
-                title: title.clone(),
-                subtitle: subtitle.clone(),
-                icon_key: "key".into(),
-                urls: if url.is_empty() { vec![] } else { vec![url] },
-                updated_at: now,
-            };
-
-            let secret = DecryptedSecret {
-                password: Zeroizing::new(password_str),
-                totp: None,
-                notes: Zeroizing::new(String::new()),
-                fields: vec![],
-            };
-
-            let enc_key_gen = client.current_key_gen();
-            let secret_json = serde_json::to_vec(&secret).unwrap_or_default();
-            let payload = match aead::encrypt(&dek, &item_uuid, enc_key_gen, &secret_json) {
-                Ok(p) => p,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.vault.show_error(format!("Encrypt failed: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
-
-            let model = DomainModel {
-                uuid: item_uuid,
-                enc_key_gen,
-                overview,
-                secret,
-                metadata: ItemMetadata {
-                    created_at: now,
-                    updated_at: now,
-                    trashed: false,
-                },
-            };
-
-            let outcome = client.save_item(model, payload).await;
-            this.update(cx, |this, cx| match outcome {
-                vautr_app_state::worker::TaskOutcome::Committed(_) => {
-                    this.vault.dismiss_error();
-                    cx.notify();
-                    let c = this.client.clone();
-                    cx.spawn(async move |this, cx| {
-                        if let Some(c) = c {
-                            if let Ok(items) = c.search("").await {
-                                this.update(cx, |this, cx| {
-                                    this.vault.set_items(items);
-                                    cx.notify();
-                                })
-                                .ok();
-                            }
-                        }
-                    })
-                    .detach();
-                }
-                _ => {
-                    this.vault.show_error("Save failed");
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-    }
 
     fn do_delete(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let uuid = match self.vault.selected_overview().map(|o| o.uuid) {
