@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
+      "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
+      "vautr-wasm": ["./src/lib/mockWasm.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}
