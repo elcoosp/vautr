@@ -28,6 +28,17 @@ uuid.workspace = true
 sqlx.workspace = true
 vautr-crypto.workspace = true
 ed25519-dalek.workspace = true
+# WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). Feature-gated.
+webauthn-rs = { version = "0.5", optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
+# Used by the WebAuthn round-trip tests (VTR-052) to generate an EC key and
+# build raw registration/assertion payloads that the handler must parse.
+sha2.workspace = true
+openssl = "0.10"
+
+[features]
+default = []
+# WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). OFF by default.
+webauthn = ["dep:webauthn-rs"]

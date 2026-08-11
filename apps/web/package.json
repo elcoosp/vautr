@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"web: no tests yet\""
+    "test": "echo \"web: no tests yet\"",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.9",
@@ -21,6 +22,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

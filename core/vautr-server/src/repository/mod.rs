@@ -26,8 +26,13 @@ pub mod recovery;
 pub mod sessions;
 pub mod sharing;
 pub mod users;
+/// WebAuthn (FIDO2) optional second factor (VTR-052). Feature-gated, off by default.
+#[cfg(feature = "webauthn")]
+pub mod webauthn;
 
 pub use items::{ItemRow, UpsertOutcome};
+#[cfg(feature = "webauthn")]
+pub use webauthn::WebauthnCredentialRow;
 pub use users::UserRow;
 
 /// The server repository: a thin, tenant-scoped wrapper over the SQLite pool.
@@ -68,7 +73,14 @@ mod tests {
         .await
         .unwrap();
         let names: Vec<&str> = tables.iter().map(|t| t.0.as_str()).collect();
-        for expected in ["users", "items", "sessions", "shares", "server_config"] {
+        for expected in [
+            "users",
+            "items",
+            "sessions",
+            "shares",
+            "server_config",
+            "webauthn_credentials",
+        ] {
             assert!(names.contains(&expected), "missing table: {expected} (got {names:?})");
         }
     }

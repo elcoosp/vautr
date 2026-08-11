@@ -19,6 +19,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use vautr_auth::error::AuthError;
 use vautr_crypto::{aead, key_tree};
 use vautr_crypto::sharing::{SharingKeyPair, SharingPublicKey};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
@@ -93,6 +94,14 @@ pub struct VautrClient {
     recovery_creds: Arc<tokio::sync::Mutex<Option<crate::recovery::RecoveryCredentials>>>,
     /// Offline mutation queue (VTR-047).
     offline: OfflineQueue,
+    // --- Wave: WebAuthn second factor (VTR-052) ---
+    /// Whether the account requires a WebAuthn second factor before MP unlock
+    /// completes. Set from the `/account/status` response; the server withholds
+    /// the wrapped SVK until the assertion is verified.
+    second_factor_required: Arc<AtomicBool>,
+    /// Whether the current login has satisfied the second factor (a successful
+    /// `/webauthn/assert/verify` round-trip).
+    second_factor_verified: Arc<AtomicBool>,
 }
 
 impl VautrClient {
@@ -125,6 +134,8 @@ impl VautrClient {
             recovery_pending: Arc::new(AtomicBool::new(false)),
             recovery_creds: Arc::new(tokio::sync::Mutex::new(None)),
             offline: OfflineQueue::new(),
+            second_factor_required: Arc::new(AtomicBool::new(false)),
+            second_factor_verified: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -193,6 +204,15 @@ impl VautrClient {
         server_user_id: Uuid,
         local_gen: u64,
     ) -> Result<(), String> {
+        // VTR-052: when the account requires a WebAuthn second factor, refuse to
+        // complete MP unlock until the client has verified an assertion. This
+        // surfaces `AuthError::SecondFactorRequired` to the caller; the server
+        // independently withholds the wrapped SVK via `/account/status`.
+        if self.second_factor_required.load(Ordering::SeqCst)
+            && !self.second_factor_verified.load(Ordering::SeqCst)
+        {
+            return Err(AuthError::SecondFactorRequired.to_string());
+        }
         let mk = vautr_crypto::kdf::derive_master_key(&mp, kdf_salt)
             .map_err(|e| format!("mk derive: {e}"))?;
         let kek = key_tree::derive_kek(&mk).map_err(|e| format!("kek derive: {e}"))?;
@@ -229,11 +249,47 @@ impl VautrClient {
         self.locked.store(false, Ordering::SeqCst);
     }
 
+    // --- WebAuthn second factor (VTR-052) ----------------------------------
+
+    /// Record whether the account requires a WebAuthn second factor before MP
+    /// unlock completes. Set from the server's `/account/status` response
+    /// (`second_factor_required`).
+    pub fn set_second_factor_required(&self, required: bool) {
+        self.second_factor_required.store(required, Ordering::SeqCst);
+        if !required {
+            // A cleared requirement also resets any stale "verified" marker.
+            self.second_factor_verified.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// Whether the account requires a WebAuthn second factor this login.
+    pub fn second_factor_required(&self) -> bool {
+        self.second_factor_required.load(Ordering::SeqCst)
+    }
+
+    /// Whether the current login has already satisfied the second factor.
+    pub fn second_factor_verified(&self) -> bool {
+        self.second_factor_verified.load(Ordering::SeqCst)
+    }
+
+    /// Mark the second factor as verified after a successful
+    /// `/webauthn/assert/verify` round-trip. This un-gates `unlock_with_password`.
+    pub fn verify_second_factor(&self) {
+        self.second_factor_verified.store(true, Ordering::SeqCst);
+    }
+
+    /// Reset the second-factor state (e.g. on lock or a fresh login).
+    pub fn reset_second_factor(&self) {
+        self.second_factor_required.store(false, Ordering::SeqCst);
+        self.second_factor_verified.store(false, Ordering::SeqCst);
+    }
+
     /// Lock the vault, wipe in-memory keys, and release all secret handles.
     pub async fn lock(&self) {
         *self.svk.lock().await = None;
         *self.dek.lock().await = None;
         self.locked.store(true, Ordering::SeqCst);
+        self.reset_second_factor();
         self.bus.publish(VaultStateUpdate::VaultLocked);
     }
 

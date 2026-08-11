@@ -13,4 +13,9 @@ pub enum AuthError {
     BiometricUnavailable,
     #[error("keystore error: {0}")]
     KeystoreError(String),
+    /// MP verification succeeded but the account has a registered WebAuthn
+    /// (FIDO2) second factor that must be satisfied before unlock completes
+    /// (VTR-052). Emitted after MP unlock when `webauthn` is enabled.
+    #[error("second factor required")]
+    SecondFactorRequired,
 }

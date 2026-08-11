@@ -9,7 +9,18 @@ use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
 #[derive(Serialize)]
 pub(crate) struct AccountStatusResp {
     min_enc_key_gen: i64,
+    /// Base64 MP-wrapped SVK. Empty when `second_factor_required` is true
+    /// (the client must complete a WebAuthn assertion first).
     svk_ciphertext_blob: String, // base64
+    /// True when the account has a registered WebAuthn second factor that this
+    /// session has not yet satisfied (VTR-052). Present only when the `webauthn`
+    /// feature is compiled in; otherwise always `false`.
+    #[serde(skip_serializing_if = "is_false")]
+    second_factor_required: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 #[derive(Deserialize)]
 pub(crate) struct RotateKeyReq {
@@ -35,9 +46,28 @@ pub(crate) async fn account_status(
     else {
         return Err(ApiError::bad_request("not_found", "unknown user"));
     };
+    // VTR-052: if the account has a registered WebAuthn second factor and the
+    // current session has not yet satisfied it, withhold the wrapped SVK until
+    // the client completes a `/webauthn/assert` round-trip.
+    #[cfg(feature = "webauthn")]
+    {
+        let has_creds = st
+            .repo
+            .webauthn_has_credentials(&user_id)
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
+        if has_creds && !st.webauthn.is_second_factor_satisfied(&auth.0) {
+            return Ok(Json(AccountStatusResp {
+                min_enc_key_gen: user.min_enc_key_gen,
+                svk_ciphertext_blob: String::new(),
+                second_factor_required: true,
+            }));
+        }
+    }
     Ok(Json(AccountStatusResp {
         min_enc_key_gen: user.min_enc_key_gen,
         svk_ciphertext_blob: b64(&user.svk_ciphertext_blob),
+        second_factor_required: false,
     }))
 }
 

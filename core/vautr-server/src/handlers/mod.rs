@@ -33,22 +33,34 @@ pub mod items;
 pub mod recovery;
 pub mod sharing;
 pub mod sync;
+/// WebAuthn (FIDO2) optional second factor (VTR-052). Feature-gated, off by default.
+#[cfg(feature = "webauthn")]
+pub mod webauthn;
 
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
     pub repo: Arc<Repository>,
+    /// WebAuthn (FIDO2) second-factor service (VTR-052). Present only when the
+    /// `webauthn` feature is compiled in.
+    #[cfg(feature = "webauthn")]
+    pub webauthn: Arc<webauthn::WebauthnService>,
 }
 
 impl AppState {
     pub fn new(repo: Arc<Repository>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            #[cfg(feature = "webauthn")]
+            webauthn: Arc::new(webauthn::WebauthnService::new()),
+        }
     }
 }
 
 /// Build the full router with state + middleware hooks.
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
+    #[allow(unused_mut)]
+    let mut router = Router::new()
         // Auth (OPAQUE over HTTP, api.md §3)
         .route("/auth/register/start", post(auth::register_start))
         .route("/auth/register/finish", post(auth::register_finish))
@@ -59,8 +71,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sync/pull-payloads", post(sync::sync_pull_payloads))
         .route("/sync/push-batch", post(sync::sync_push_batch))
         // Items (api.md §4)
-        .route("/items/:uuid", put(items::item_put))
-        .route("/items/:uuid", delete(items::item_delete))
+        .route("/items/{uuid}", put(items::item_put))
+        .route("/items/{uuid}", delete(items::item_delete))
         // Account & key management (api.md §5)
         .route("/account/status", get(account::account_status))
         .route("/account/rotate-key", post(account::account_rotate_key))
@@ -68,8 +80,13 @@ pub fn build_router(state: AppState) -> Router {
         .merge(sharing::routes())
         .merge(files::routes())
         .merge(recovery::routes())
-        .merge(audit::routes())
-        .with_state(state)
+        .merge(audit::routes());
+    // WebAuthn (FIDO2) optional second factor (VTR-052), feature-gated.
+    #[cfg(feature = "webauthn")]
+    {
+        router = router.merge(webauthn::routes());
+    }
+    router.with_state(state)
 }
 
 // ---------------------------------------------------------------------------
