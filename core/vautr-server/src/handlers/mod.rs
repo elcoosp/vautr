@@ -26,8 +26,12 @@ use vautr_crypto::opaque;
 use crate::repository::Repository;
 
 pub mod account;
+pub mod audit;
 pub mod auth;
+pub mod files;
 pub mod items;
+pub mod recovery;
+pub mod sharing;
 pub mod sync;
 
 /// Shared application state.
@@ -60,6 +64,11 @@ pub fn build_router(state: AppState) -> Router {
         // Account & key management (api.md §5)
         .route("/account/status", get(account::account_status))
         .route("/account/rotate-key", post(account::account_rotate_key))
+        // Feature routers (Wave B): each is implemented in its own module.
+        .merge(sharing::routes())
+        .merge(files::routes())
+        .merge(recovery::routes())
+        .merge(audit::routes())
         .with_state(state)
 }
 

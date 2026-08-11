@@ -18,9 +18,13 @@
 
 use sqlx::sqlite::SqlitePool;
 
+pub mod audit;
 pub mod config;
+pub mod files;
 pub mod items;
+pub mod recovery;
 pub mod sessions;
+pub mod sharing;
 pub mod users;
 
 pub use items::{ItemRow, UpsertOutcome};
