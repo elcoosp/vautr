@@ -31,6 +31,17 @@ ed25519-dalek.workspace = true
 # WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). Feature-gated.
 webauthn-rs = { version = "0.5", optional = true }
 
+# --- Wave A MLP pre-seeded deps (single-owner pre-seed so parallel server
+# agents never edit this manifest; new deps are requested via the coordinator).
+# MFA/TOTP (A4) + machine-account tokens (A2) + password/token generation.
+totp-rs = "5"
+otpauth = "0.5"
+qrcode = "0.14"
+base32 = "0.5"
+rand.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+
 [dev-dependencies]
 tokio.workspace = true
 # Used by the WebAuthn round-trip tests (VTR-052) to generate an EC key and
