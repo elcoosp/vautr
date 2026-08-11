@@ -1,0 +1,29 @@
+{
+  "name": "@vautr/api-contract",
+  "version": "0.1.0",
+  "description": "Canonical Vautr server API contract: OpenAPI 3.0 document plus generated TypeScript types for clients (web, extension, CLI, desktop).",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./openapi.json": "./openapi.json"
+  },
+  "files": [
+    "dist",
+    "openapi.json"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "build": "pnpm generate && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/verify-contract.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

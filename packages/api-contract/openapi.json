@@ -14,7 +14,13 @@
     { "name": "account", "description": "Key management & epoch rotation" },
     { "name": "recovery", "description": "Emergency recovery & account lifecycle" },
     { "name": "sharing", "description": "End-to-end encrypted sharing & PKI" },
-    { "name": "files", "description": "Streaming file storage & presigned URLs" }
+    { "name": "files", "description": "Streaming file storage & presigned URLs" },
+    { "name": "projects", "description": "Projects, org roles, per-project permissions, user groups & offboarding" },
+    { "name": "machine-accounts", "description": "Non-human identities with fine-grained scopes" },
+    { "name": "tokens", "description": "Access token issuance, expiry & revocation" },
+    { "name": "secrets", "description": "Same-Project secrets manager" },
+    { "name": "mfa", "description": "Multi-factor authentication, WebAuthn & master-password policy" },
+    { "name": "backup", "description": "Automatic backups & one-click restore test" }
   ],
   "components": {
     "securitySchemes": {
@@ -387,6 +393,450 @@
         "type": "object",
         "required": ["status"],
         "properties": { "status": { "type": "string", "example": "success" } }
+      },
+      "OrgRole": {
+        "type": "string",
+        "enum": ["owner", "admin", "manager", "member"]
+      },
+      "ProjectPermission": {
+        "type": "string",
+        "enum": ["can_view", "can_edit", "can_manage"]
+      },
+      "ProjectType": {
+        "type": "string",
+        "enum": ["personal", "shared"]
+      },
+      "ProjectCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 },
+          "type": { "$ref": "#/components/schemas/ProjectType" }
+        }
+      },
+      "ProjectUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": ["uuid", "name", "type", "role", "created_at", "updated_at"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "type": { "$ref": "#/components/schemas/ProjectType" },
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "permission": { "$ref": "#/components/schemas/ProjectPermission" },
+          "created_at": { "type": "integer", "format": "int64" },
+          "updated_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": ["projects"],
+        "properties": {
+          "projects": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+        }
+      },
+      "ProjectMember": {
+        "type": "object",
+        "required": ["user_uuid", "role", "permission", "added_at"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "display_name": { "type": "string", "nullable": true },
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "permission": { "$ref": "#/components/schemas/ProjectPermission" },
+          "added_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "ProjectMemberListResponse": {
+        "type": "object",
+        "required": ["members"],
+        "properties": {
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/ProjectMember" } }
+        }
+      },
+      "ProjectAddMemberRequest": {
+        "type": "object",
+        "required": ["user_uuid"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "permission": { "$ref": "#/components/schemas/ProjectPermission" }
+        }
+      },
+      "ProjectUpdateMemberRequest": {
+        "type": "object",
+        "properties": {
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "permission": { "$ref": "#/components/schemas/ProjectPermission" }
+        }
+      },
+      "UserGroupRole": {
+        "type": "string",
+        "enum": ["admin", "member"]
+      },
+      "UserGroup": {
+        "type": "object",
+        "required": ["id", "name", "members", "created_at", "updated_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/UserGroupMember" } },
+          "created_at": { "type": "integer", "format": "int64" },
+          "updated_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "UserGroupMember": {
+        "type": "object",
+        "required": ["user_uuid", "role"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "role": { "$ref": "#/components/schemas/UserGroupRole" }
+        }
+      },
+      "UserGroupCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "UserGroupUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "UserGroupListResponse": {
+        "type": "object",
+        "required": ["groups"],
+        "properties": {
+          "groups": { "type": "array", "items": { "$ref": "#/components/schemas/UserGroup" } }
+        }
+      },
+      "UserGroupAddMemberRequest": {
+        "type": "object",
+        "required": ["user_uuid"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "role": { "$ref": "#/components/schemas/UserGroupRole" }
+        }
+      },
+      "OffboardRequest": {
+        "type": "object",
+        "required": ["user_uuid"],
+        "properties": {
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "reason": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "OffboardResponse": {
+        "type": "object",
+        "required": ["status", "user_uuid", "revoked_projects", "revoked_memberships", "revoked_tokens", "revoked_at"],
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "user_uuid": { "type": "string", "format": "uuid" },
+          "revoked_projects": { "type": "integer", "format": "uint32" },
+          "revoked_memberships": { "type": "integer", "format": "uint32" },
+          "revoked_tokens": { "type": "integer", "format": "uint32" },
+          "revoked_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "AccessScope": {
+        "type": "string",
+        "enum": [
+          "secrets:read",
+          "secrets:write",
+          "secrets:reveal",
+          "projects:read",
+          "projects:write",
+          "tokens:manage",
+          "machine_accounts:manage"
+        ]
+      },
+      "MachineAccountStatus": {
+        "type": "string",
+        "enum": ["active", "disabled", "revoked"]
+      },
+      "MachineAccount": {
+        "type": "object",
+        "required": ["uuid", "name", "status", "scopes", "created_at"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "project_uuid": { "type": "string", "format": "uuid", "nullable": true },
+          "status": { "$ref": "#/components/schemas/MachineAccountStatus" },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "expires_at": { "type": "integer", "format": "int64", "nullable": true },
+          "last_used_at": { "type": "integer", "format": "int64", "nullable": true },
+          "created_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "MachineAccountCreateRequest": {
+        "type": "object",
+        "required": ["name", "scopes"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 },
+          "project_uuid": { "type": "string", "format": "uuid" },
+          "scopes": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "expires_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "MachineAccountUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "maxLength": 512 },
+          "status": { "$ref": "#/components/schemas/MachineAccountStatus" },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "expires_at": { "type": "integer", "format": "int64", "nullable": true }
+        }
+      },
+      "MachineAccountListResponse": {
+        "type": "object",
+        "required": ["machine_accounts"],
+        "properties": {
+          "machine_accounts": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MachineAccount" }
+          }
+        }
+      },
+      "AccessToken": {
+        "type": "object",
+        "required": ["uuid", "name", "scopes", "created_at"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "machine_account_uuid": { "type": "string", "format": "uuid", "nullable": true },
+          "project_uuid": { "type": "string", "format": "uuid", "nullable": true },
+          "scopes": { "type": "array", "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "prefix": { "type": "string", "description": "First 8 chars of the token for display." },
+          "expires_at": { "type": "integer", "format": "int64", "nullable": true },
+          "revoked_at": { "type": "integer", "format": "int64", "nullable": true },
+          "last_used_at": { "type": "integer", "format": "int64", "nullable": true },
+          "created_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "AccessTokenCreateRequest": {
+        "type": "object",
+        "required": ["name", "scopes"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "machine_account_uuid": { "type": "string", "format": "uuid" },
+          "project_uuid": { "type": "string", "format": "uuid" },
+          "scopes": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "expires_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "AccessTokenCreateResponse": {
+        "type": "object",
+        "required": ["token", "token_id"],
+        "properties": {
+          "token": { "type": "string", "description": "Full token secret, shown only once." },
+          "token_id": { "type": "string", "format": "uuid" },
+          "expires_at": { "type": "integer", "format": "int64", "nullable": true }
+        }
+      },
+      "AccessTokenListResponse": {
+        "type": "object",
+        "required": ["tokens"],
+        "properties": {
+          "tokens": { "type": "array", "items": { "$ref": "#/components/schemas/AccessToken" } }
+        }
+      },
+      "Secret": {
+        "type": "object",
+        "required": ["uuid", "project_uuid", "key", "version", "created_at", "updated_at", "created_by"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "project_uuid": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "version": { "type": "integer", "format": "uint64" },
+          "created_by": { "type": "string", "format": "uuid" },
+          "last_accessed_at": { "type": "integer", "format": "int64", "nullable": true },
+          "created_at": { "type": "integer", "format": "int64" },
+          "updated_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "SecretListResponse": {
+        "type": "object",
+        "required": ["secrets"],
+        "properties": {
+          "secrets": { "type": "array", "items": { "$ref": "#/components/schemas/Secret" } }
+        }
+      },
+      "SecretCreateRequest": {
+        "type": "object",
+        "required": ["project_uuid", "key", "value_ciphertext"],
+        "properties": {
+          "project_uuid": { "type": "string", "format": "uuid" },
+          "key": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "value_ciphertext": { "type": "string", "description": "Base64 AEAD ciphertext of the secret value." }
+        }
+      },
+      "SecretUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "value_ciphertext": { "type": "string", "description": "Base64 AEAD ciphertext of the secret value." }
+        }
+      },
+      "SecretValue": {
+        "type": "object",
+        "required": ["uuid", "key", "value_ciphertext"],
+        "properties": {
+          "uuid": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "value_ciphertext": { "type": "string", "description": "Base64 AEAD ciphertext." }
+        }
+      },
+      "MfaMethod": {
+        "type": "string",
+        "enum": ["totp", "webauthn", "email"]
+      },
+      "MfaStatus": {
+        "type": "object",
+        "required": ["required", "configured_methods"],
+        "properties": {
+          "required": { "type": "boolean" },
+          "configured_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } }
+        }
+      },
+      "TotpIssueResponse": {
+        "type": "object",
+        "required": ["enrollment_id", "otpauth_url", "secret"],
+        "properties": {
+          "enrollment_id": { "type": "string", "format": "uuid" },
+          "otpauth_url": { "type": "string", "format": "uri" },
+          "secret": { "type": "string", "description": "Base32 TOTP shared secret." },
+          "qr_code_data_url": { "type": "string" }
+        }
+      },
+      "TotpVerifyRequest": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "enrollment_id": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "minLength": 6, "maxLength": 8 }
+        }
+      },
+      "TotpVerifyResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "recovery_codes": { "type": "array", "items": { "type": "string" }, "description": "Issued once on first enrollment." }
+        }
+      },
+      "WebAuthnEnrollStartRequest": {
+        "type": "object",
+        "required": ["display_name"],
+        "properties": {
+          "display_name": { "type": "string", "maxLength": 128 }
+        }
+      },
+      "WebAuthnEnrollStartResponse": {
+        "type": "object",
+        "required": ["enrollment_id", "options"],
+        "properties": {
+          "enrollment_id": { "type": "string", "format": "uuid" },
+          "options": { "type": "object", "description": "PublicKeyCredentialCreationOptions JSON." }
+        }
+      },
+      "WebAuthnEnrollFinishRequest": {
+        "type": "object",
+        "required": ["enrollment_id", "attestation"],
+        "properties": {
+          "enrollment_id": { "type": "string", "format": "uuid" },
+          "attestation": { "type": "object", "description": "PublicKeyCredential JSON returned by the authenticator." }
+        }
+      },
+      "MasterPasswordPolicy": {
+        "type": "object",
+        "properties": {
+          "min_length": { "type": "integer", "format": "uint32", "default": 12 },
+          "require_upper": { "type": "boolean", "default": true },
+          "require_lower": { "type": "boolean", "default": true },
+          "require_digit": { "type": "boolean", "default": true },
+          "require_special": { "type": "boolean", "default": true },
+          "min_entropy_bits": { "type": "integer", "format": "uint32", "default": 60 }
+        }
+      },
+      "MfaPolicy": {
+        "type": "object",
+        "required": ["required"],
+        "properties": {
+          "required": { "type": "boolean" },
+          "allowed_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } },
+          "master_password_policy": { "$ref": "#/components/schemas/MasterPasswordPolicy" }
+        }
+      },
+      "MfaPolicyUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "required": { "type": "boolean" },
+          "allowed_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } },
+          "master_password_policy": { "$ref": "#/components/schemas/MasterPasswordPolicy" }
+        }
+      },
+      "BackupStatus": {
+        "type": "object",
+        "required": ["enabled"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "location": { "type": "string" },
+          "schedule": { "type": "string" },
+          "last_backup_at": { "type": "integer", "format": "int64", "nullable": true },
+          "last_backup_size_bytes": { "type": "integer", "format": "uint64", "nullable": true },
+          "last_restore_test_at": { "type": "integer", "format": "int64", "nullable": true },
+          "last_restore_test_status": { "type": "string", "enum": ["passed", "failed", "pending", "none"], "nullable": true }
+        }
+      },
+      "BackupExportRequest": {
+        "type": "object",
+        "properties": {
+          "include_secrets": { "type": "boolean", "default": true }
+        }
+      },
+      "BackupExportResponse": {
+        "type": "object",
+        "required": ["backup_id", "created_at"],
+        "properties": {
+          "backup_id": { "type": "string", "format": "uuid" },
+          "download_url": { "type": "string", "format": "uri", "nullable": true },
+          "size_bytes": { "type": "integer", "format": "uint64" },
+          "checksum": { "type": "string" },
+          "created_at": { "type": "integer", "format": "int64" }
+        }
+      },
+      "BackupRestoreRequest": {
+        "type": "object",
+        "properties": {
+          "backup_id": { "type": "string", "format": "uuid" },
+          "archive_base64": { "type": "string", "description": "Raw backup archive for direct restore." }
+        }
+      },
+      "BackupRestoreResponse": {
+        "type": "object",
+        "required": ["status", "test_id", "restored_at"],
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "test_id": { "type": "string", "format": "uuid" },
+          "restored_records": { "type": "integer", "format": "uint64" },
+          "restored_at": { "type": "integer", "format": "int64" }
+        }
       }
     }
   },
@@ -1633,6 +2083,1339 @@
           },
           "410": {
             "description": "Upload incomplete; not yet available.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "projectList",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Projects visible to the caller.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["projects"],
+        "operationId": "projectCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectCreateRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Project" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "422": {
+            "description": "precondition_failed (validation).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "projectGet",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project detail.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Project" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["projects"],
+        "operationId": "projectUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Project" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["projects"],
+        "operationId": "projectDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project deleted.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/members": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "projectMemberList",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project members.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMemberListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["projects"],
+        "operationId": "projectMemberAdd",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectAddMemberRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Member added.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMember" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/members/{user_uuid}": {
+      "patch": {
+        "tags": ["projects"],
+        "operationId": "projectMemberUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "user_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectUpdateMemberRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Member role/permission updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMember" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["projects"],
+        "operationId": "projectMemberRemove",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "user_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member removed from project.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/groups": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "projectGroupList",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User groups for the project.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["projects"],
+        "operationId": "projectGroupCreate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupCreateRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Group created.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserGroup" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/groups/{group_id}": {
+      "patch": {
+        "tags": ["projects"],
+        "operationId": "projectGroupUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Group updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserGroup" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["projects"],
+        "operationId": "projectGroupDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group deleted.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/groups/{group_id}/members": {
+      "post": {
+        "tags": ["projects"],
+        "operationId": "projectGroupAddMember",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupAddMemberRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Member added to group.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/groups/{group_id}/members/{user_uuid}": {
+      "delete": {
+        "tags": ["projects"],
+        "operationId": "projectGroupRemoveMember",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "user_uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Member removed from group.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/offboard": {
+      "post": {
+        "tags": ["projects"],
+        "operationId": "offboardUser",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/OffboardRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All of the user's access revoked.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OffboardResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found (unknown user).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/machine-accounts": {
+      "get": {
+        "tags": ["machine-accounts"],
+        "operationId": "machineAccountList",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Machine accounts owned by the caller.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["machine-accounts"],
+        "operationId": "machineAccountCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountCreateRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Machine account created.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccount" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "422": {
+            "description": "precondition_failed (invalid scopes).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/machine-accounts/{uuid}": {
+      "get": {
+        "tags": ["machine-accounts"],
+        "operationId": "machineAccountGet",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Machine account detail.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccount" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["machine-accounts"],
+        "operationId": "machineAccountUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Machine account updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccount" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["machine-accounts"],
+        "operationId": "machineAccountDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Machine account deleted; its tokens revoked.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/tokens": {
+      "get": {
+        "tags": ["tokens"],
+        "operationId": "tokenList",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Access tokens issued to the caller.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["tokens"],
+        "operationId": "tokenCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenCreateRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token issued (full secret shown once).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenCreateResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "422": {
+            "description": "precondition_failed (invalid scopes or expiry).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/tokens/{uuid}": {
+      "get": {
+        "tags": ["tokens"],
+        "operationId": "tokenGet",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token metadata.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccessToken" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["tokens"],
+        "operationId": "tokenRevoke",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token revoked.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{uuid}/secrets": {
+      "get": {
+        "tags": ["secrets"],
+        "operationId": "secretList",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secrets within the project (metadata only).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SecretListResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/secrets": {
+      "post": {
+        "tags": ["secrets"],
+        "operationId": "secretCreate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SecretCreateRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Secret created.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Secret" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "422": {
+            "description": "precondition_failed (validation).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/secrets/{uuid}": {
+      "get": {
+        "tags": ["secrets"],
+        "operationId": "secretGet",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret metadata.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Secret" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["secrets"],
+        "operationId": "secretUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SecretUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Secret updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Secret" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["secrets"],
+        "operationId": "secretDelete",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret deleted.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/secrets/{uuid}/value": {
+      "get": {
+        "tags": ["secrets"],
+        "operationId": "secretGetValue",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          {
+            "name": "uuid",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret value ciphertext (secrets:reveal scope required).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SecretValue" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "404": {
+            "description": "not_found.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/status": {
+      "get": {
+        "tags": ["mfa"],
+        "operationId": "mfaStatus",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Caller's MFA configuration.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MfaStatus" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/totp/issue": {
+      "post": {
+        "tags": ["mfa"],
+        "operationId": "mfaTotpIssue",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "TOTP enrollment challenge.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TotpIssueResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/totp/verify": {
+      "post": {
+        "tags": ["mfa"],
+        "operationId": "mfaTotpVerify",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TotpVerifyRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "TOTP verified; enrollment completed.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TotpVerifyResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized (bad code).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/webauthn/enroll/start": {
+      "post": {
+        "tags": ["mfa"],
+        "operationId": "mfaWebAuthnEnrollStart",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "WebAuthn creation options.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/webauthn/enroll/finish": {
+      "post": {
+        "tags": ["mfa"],
+        "operationId": "mfaWebAuthnEnrollFinish",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollFinishRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Passkey enrolled.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatusResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized (bad attestation).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/mfa/policy": {
+      "get": {
+        "tags": ["mfa"],
+        "operationId": "mfaPolicyGet",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Organization MFA & password policy.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MfaPolicy" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["mfa"],
+        "operationId": "mfaPolicyUpdate",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/MfaPolicyUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Policy updated.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/MfaPolicy" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/backup": {
+      "get": {
+        "tags": ["backup"],
+        "operationId": "backupStatus",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "responses": {
+          "200": {
+            "description": "Backup configuration and last run state.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BackupStatus" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/backup/export": {
+      "post": {
+        "tags": ["backup"],
+        "operationId": "backupExport",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/BackupExportRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backup archive exported.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BackupExportResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/backup/restore": {
+      "post": {
+        "tags": ["backup"],
+        "operationId": "backupRestore",
+        "parameters": [{ "$ref": "#/components/parameters/XRequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/BackupRestoreRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restore test completed.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/BackupRestoreResponse" } }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          },
+          "422": {
+            "description": "precondition_failed (bad archive).",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
             }
