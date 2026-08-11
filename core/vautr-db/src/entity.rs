@@ -1,9 +1,16 @@
-//! SeaORM 1.1 entity definitions for the Vautr client local DB.
+//! SeaORM 2.0 entity definitions for the Vautr client local DB.
 //! Spec: docs/architecture/db-contract.md §3. Entities: item_overview,
 //! item_payload, sync_meta, local_blacklist, quarantine.
 //!
-//! `DashMapState` (ToxicIgnored / ValidIgnored) is stored as a plain `String`
-//! column (`CHECK(state IN (...))` applied via raw SQL in [`crate::migrate`]).
+//! SeaORM 2.0 entity form: `#[derive(DeriveEntityModel)]` + `#[sea_orm(table_name
+//! = ..)]` (the 2.0 derive macro) with the 1.0-compat `Relation` enum
+//! (`sea-orm-2` migration-guide: "old entity format still works (deprecated but
+//! not removed)"). NOTE: the documented `#[sea_orm::model]` macro and inline
+//! `has_one`/`belongs_to` relation *fields* are not yet implemented in
+//! `sea-orm = 2.0.0-rc.38` (their expansion references `ActiveBelongsTo`/
+//! `ActiveHasOne` types that do not exist in this rc), so relations are expressed
+//! via the transaction layer (db-contract §5) instead. `DashMapState` is stored
+//! as a plain `String` column matching the `CHECK` constraint in db-contract §3.
 
 use serde::{Deserialize, Serialize};
 
@@ -104,9 +111,8 @@ pub mod sync_meta {
 /// `LocalBlacklist` entity (the batch-persisted DashMap). db-contract §3.
 pub mod local_blacklist {
     use sea_orm::entity::prelude::*;
-    use serde::{Deserialize, Serialize};
 
-    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
     #[sea_orm(table_name = "local_blacklist")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
@@ -124,9 +130,8 @@ pub mod local_blacklist {
 /// `Quarantine` entity (the Reaper's domain). db-contract §3.
 pub mod quarantine {
     use sea_orm::entity::prelude::*;
-    use serde::{Deserialize, Serialize};
 
-    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
     #[sea_orm(table_name = "quarantine")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]

@@ -9,10 +9,13 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
 use zeroize::Zeroizing;
 
-/// Argon2id baseline parameters (crypto.md §2.2).
-pub const ARGON2_M_COST: u32 = 64 * 1024; // 64 MiB in KiB
+/// Argon2id memory cost (KiB): 64 MiB (crypto.md §2.2).
+pub const ARGON2_M_COST: u32 = 64 * 1024;
+/// Argon2id time cost (iterations): 3 (crypto.md §2.2).
 pub const ARGON2_T_COST: u32 = 3;
+/// Argon2id parallelism: 4 (crypto.md §2.2).
 pub const ARGON2_P_COST: u32 = 4;
+/// Master Key length in bytes (32 = 256-bit).
 pub const MK_LEN: usize = 32;
 
 /// A freshly generated KDF salt (32 bytes).

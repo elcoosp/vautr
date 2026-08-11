@@ -32,6 +32,7 @@ vautr-app-state = { path = "core/vautr-app-state" }
 vautr-ffi       = { path = "core/vautr-ffi" }
 vautr-wasm      = { path = "core/vautr-wasm" }
 vautr-server    = { path = "core/vautr-server" }
+vautr-files     = { path = "core/vautr-files" }
 
 # --- common third-party ---
 tokio        = { version = "1", features = ["full"] }
@@ -47,6 +48,7 @@ base64       = "0.22"
 chrono       = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dashmap      = "6"
 async-trait = "0.1"
+futures-util = { version = "0.3", default-features = false, features = ["io"] }
 
 # --- crypto (CON-2: pure Rust, no external crypto libs beyond these) ---
 # Pre-release exact pins (tech-stack.md §1.1).
@@ -78,3 +80,6 @@ tower-http  = { version = "0.6", features = ["cors", "trace", "auth"] }
 # --- FFI / WASM bindings ---
 uniffi      = "0.28"
 wasm-bindgen = "0.2"
+
+# --- client HTTP transport (api.md §4 sync endpoints) ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

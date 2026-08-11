@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "wasm-bindgen bindings for web/extension clients. Spec: arch-design §5.3, ADR-005"
+description = "wasm-bindgen crypto-only bindings for the web/extension client (ADR-005). Spec: arch-design §5.3"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -15,13 +15,26 @@ crate-type = ["cdylib", "rlib"]
 thiserror.workspace = true
 tracing.workspace = true
 wasm-bindgen.workspace = true
+js-sys = "0.3"
+# wasm32-unknown-unknown needs a JS-backed RNG. getrandom 0.2 wants the `js`
+# feature; getrandom 0.4 wants the `wasm_js` feature (the cfg flag alone is not
+# enough for 0.4). These are the only two getrandom versions in the crypto graph.
+getrandom = { version = "0.2", features = ["js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 serde.workspace = true
 serde-wasm-bindgen = "0.6"
+base64.workspace = true
+uuid = { version = "1", features = ["v4", "serde", "js"] }
+zeroize.workspace = true
+# Crypto-only web client (ADR-005): no SQLite (sea-orm), no HTTP transport
+# (reqwest/ring/mio). The browser service worker decrypts vault items locally
+# and exposes only opaque handles + perform_action (data.md §1 rule 4).
 vautr-domain.workspace = true
-vautr-app-state.workspace = true
 vautr-crypto.workspace = true
+vautr-keyring.workspace = true
 
 [features]
 # `read_secret` enabled only for the desktop/web full client, NOT the
-# stateless extension service-worker build (ADR-005 uses crypto-only WASM).
+# stateless extension service-worker build. CI symbol-check (prd.md) asserts it
+# is absent from the restricted web artifact.
 desktop-api = []

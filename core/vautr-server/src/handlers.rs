@@ -316,7 +316,7 @@ async fn register_finish(
     State(st): State<AppState>,
     Json(req): Json<RegisterFinishReq>,
 ) -> Result<Json<StatusResp>, ApiError> {
-    let setup = server_setup(&st.repo).await?;
+    let _setup = server_setup(&st.repo).await?;
     let _pk = decode_b64(&req.server_public_key)?;
     let cupload = decode_b64(&req.registration_finish)?;
     let record = opaque::server_register_finish(&cupload)

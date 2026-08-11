@@ -182,7 +182,21 @@ pub async fn reaper_reset_ttl_txn(
     Ok(())
 }
 
-/// Helper: build a `local_blacklist` active model for [`persist_dashmap_txn`].
+/// Persist the (re)wrapped SVK blob into `sync_meta` (rotation / recovery).
+pub async fn store_svk_blob(
+    db: &DatabaseConnection,
+    blob: &[u8],
+) -> Result<(), DbErr> {
+    sync_meta::Entity::update_many()
+        .col_expr(
+            sync_meta::Column::SvkCiphertextBlob,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::Bytes(Some(blob.to_vec()))),
+        )
+        .filter(sync_meta::Column::Id.eq(1))
+        .exec(db)
+        .await?;
+    Ok(())
+}
 pub fn blacklist_entry(
     uuid: String,
     ignored_version: i64,
@@ -200,7 +214,6 @@ mod tests {
     use super::*;
     use crate::entity::{item_overview, item_payload};
     use sea_orm::{ActiveValue::Set, Database, DatabaseConnection, TransactionTrait};
-    use uuid::Uuid;
 
     async fn connect() -> DatabaseConnection {
         let path = std::env::temp_dir().join(format!("vautr_db_test_{}.sqlite", uuid::Uuid::new_v4()));

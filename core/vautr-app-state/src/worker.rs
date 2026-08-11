@@ -4,7 +4,7 @@
 //! and applies Context-Aware Resolution (core.md §1.3 / §2).
 
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set, TransactionTrait};
+use sea_orm::{DatabaseConnection, Set, TransactionTrait};
 use uuid::Uuid;
 use vautr_db::entity::{item_overview, item_payload};
 use vautr_db::txn::save_item_txn;
@@ -246,6 +246,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 impl PersistenceWorker {
     /// Exposed for tests (avoids constructing a DB). Mirrors [`verify_epoch`].
     fn verify_epoch_static(task_epoch: u64, local_gen: u64) -> Result<(), String> {

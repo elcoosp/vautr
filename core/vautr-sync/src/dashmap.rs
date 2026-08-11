@@ -29,6 +29,14 @@ impl DashMapEntryState {
             _ => None,
         }
     }
+
+    /// Map to the persisted DB enum form (db-contract §3 `local_blacklist.state`).
+    pub fn into_db_state(&self) -> vautr_db::entity::DashMapState {
+        match self {
+            DashMapEntryState::ToxicIgnored => vautr_db::entity::DashMapState::ToxicIgnored,
+            DashMapEntryState::ValidIgnored => vautr_db::entity::DashMapState::ValidIgnored,
+        }
+    }
 }
 
 /// In-memory blacklist. O(1) lookups, lock-free sharding.

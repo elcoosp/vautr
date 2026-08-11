@@ -14,12 +14,20 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
-uniffi.workspace = true
+uniffi = { version = "0.28", features = ["tokio"] }
+base64.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+sea-orm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 vautr-domain.workspace = true
 vautr-app-state.workspace = true
 vautr-crypto.workspace = true
 
 [features]
 # `read_secret` is enabled ONLY for the desktop (GPUI) build — never mobile/web.
-# CI symbol-check (prd.md) asserts `read_secret` is absent from UniFFI artifacts.
-desktop-api = []
+# Enables the restricted core API and the FFI `read_secret` binding. CI
+# symbol-check (prd.md) asserts `read_secret` is absent from mobile/web artifacts.
+desktop-api = ["vautr-app-state/desktop-api"]

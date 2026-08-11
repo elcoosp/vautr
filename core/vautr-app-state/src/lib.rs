@@ -12,5 +12,9 @@
 
 pub mod epoch;
 pub mod event_bus;
+pub mod handles;
 pub mod orchestrator;
+pub mod sync_transport;
 pub mod worker;
+
+pub use orchestrator::VautrClient;

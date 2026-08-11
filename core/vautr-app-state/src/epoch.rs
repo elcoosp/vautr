@@ -59,6 +59,11 @@ impl EpochState {
         self.min_enc_key_gen.store(gen, Ordering::SeqCst);
     }
 
+    /// Server's minimum required `enc_key_gen` (epoch gate source).
+    pub fn current_min_gen(&self) -> u64 {
+        self.min_enc_key_gen.load(Ordering::SeqCst)
+    }
+
     /// Local `enc_key_gen` is the client's active vault key generation.
     /// Read-Only when the local generation lags the server's minimum.
     pub fn is_read_only(&self, local_gen: u64) -> bool {
