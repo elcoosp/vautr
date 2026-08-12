@@ -13,17 +13,35 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,7 +122,12 @@ function ProjectDetailPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link to="/projects" search={{ create: false }} aria-label="Back to projects" className="text-text-muted hover:text-text">
+          <Link
+            to="/projects"
+            search={{ create: false }}
+            aria-label="Back to projects"
+            className="text-text-muted hover:text-text"
+          >
             <ArrowLeft className="size-5" aria-hidden="true" />
           </Link>
           <div>
@@ -116,7 +139,9 @@ function ProjectDetailPage() {
             </div>
           </div>
         </div>
-        {project.permission === 'can_manage' || project.role === 'owner' || project.role === 'admin' ? (
+        {project.permission === 'can_manage' ||
+        project.role === 'owner' ||
+        project.role === 'admin' ? (
           <DeleteProjectButton uuid={uuid} />
         ) : null}
       </div>
@@ -132,7 +157,16 @@ function ProjectDetailPage() {
           <SecretsTab projectUuid={uuid} secrets={secrets} onChanged={load} />
         </TabsContent>
         <TabsContent value="members" className="space-y-4">
-          <MembersTab projectUuid={uuid} members={members} onChanged={load} canManage={project.permission === 'can_manage' || project.role === 'owner' || project.role === 'admin'} />
+          <MembersTab
+            projectUuid={uuid}
+            members={members}
+            onChanged={load}
+            canManage={
+              project.permission === 'can_manage' ||
+              project.role === 'owner' ||
+              project.role === 'admin'
+            }
+          />
         </TabsContent>
         <TabsContent value="groups" className="space-y-4">
           <GroupsTab projectUuid={uuid} groups={groups} onChanged={load} />
@@ -180,7 +214,15 @@ function DeleteProjectButton({ uuid }: { uuid: string }) {
 // Secrets tab
 // ---------------------------------------------------------------------------
 
-function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; secrets: Secret[]; onChanged: () => void }) {
+function SecretsTab({
+  projectUuid,
+  secrets,
+  onChanged,
+}: {
+  projectUuid: string;
+  secrets: Secret[];
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -193,7 +235,11 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
     if (!key.trim()) return;
     setBusy(true);
     try {
-      await mlp.createSecret({ project_uuid: projectUuid, key: key.trim(), value_ciphertext: b64encode(value) });
+      await mlp.createSecret({
+        project_uuid: projectUuid,
+        key: key.trim(),
+        value_ciphertext: b64encode(value),
+      });
       toast.success('Secret created');
       setOpen(false);
       setKey('');
@@ -255,10 +301,16 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
                 <TableRow key={s.uuid}>
                   <TableCell className="font-mono text-text">{s.key}</TableCell>
                   <TableCell>{s.version}</TableCell>
-                  <TableCell className="text-text-muted">{new Date(s.updated_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-text-muted">
+                    {new Date(s.updated_at).toLocaleString()}
+                  </TableCell>
                   <TableCell>
                     <Button size="sm" variant="outline" onClick={() => void onReveal(s.uuid)}>
-                      {revealed[s.uuid] ? <EyeOff className="mr-1 size-4" aria-hidden="true" /> : <Eye className="mr-1 size-4" aria-hidden="true" />}
+                      {revealed[s.uuid] ? (
+                        <EyeOff className="mr-1 size-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="mr-1 size-4" aria-hidden="true" />
+                      )}
                       {revealed[s.uuid] ? 'Hide' : 'Reveal'}
                     </Button>
                   </TableCell>
@@ -295,7 +347,10 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
           <div className="mt-4 space-y-2">
             {secrets.map((s) =>
               revealed[s.uuid] ? (
-                <div key={s.uuid} className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 font-mono text-sm text-text">
+                <div
+                  key={s.uuid}
+                  className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 font-mono text-sm text-text"
+                >
                   <span className="text-text-muted">{s.key}: </span>
                   {revealed[s.uuid]}
                 </div>
@@ -308,7 +363,11 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
           <div className="mt-4 space-y-2">
             {secrets.map((s) =>
               revealError[s.uuid] ? (
-                <p key={s.uuid} role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+                <p
+                  key={s.uuid}
+                  role="alert"
+                  className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                >
                   Reveal denied for {s.key}: {revealError[s.uuid]}
                 </p>
               ) : null,
@@ -327,11 +386,24 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
             <div className="grid gap-4 py-4">
               <div className="space-y-1.5">
                 <Label htmlFor="secret-key">Key</Label>
-                <Input id="secret-key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="DATABASE_URL" className="font-mono" />
+                <Input
+                  id="secret-key"
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="DATABASE_URL"
+                  className="font-mono"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="secret-value">Value</Label>
-                <Input id="secret-value" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="super-secret" className="font-mono" />
+                <Input
+                  id="secret-value"
+                  type="password"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="super-secret"
+                  className="font-mono"
+                />
               </div>
             </div>
             <DialogFooter>
@@ -353,7 +425,17 @@ function SecretsTab({ projectUuid, secrets, onChanged }: { projectUuid: string; 
 // Members tab
 // ---------------------------------------------------------------------------
 
-function MembersTab({ projectUuid, members, onChanged, canManage }: { projectUuid: string; members: ProjectMember[]; onChanged: () => void; canManage: boolean }) {
+function MembersTab({
+  projectUuid,
+  members,
+  onChanged,
+  canManage,
+}: {
+  projectUuid: string;
+  members: ProjectMember[];
+  onChanged: () => void;
+  canManage: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [userUuid, setUserUuid] = useState('');
   const [permission, setPermission] = useState('can_view');
@@ -419,7 +501,10 @@ function MembersTab({ projectUuid, members, onChanged, canManage }: { projectUui
                   </TableCell>
                   <TableCell>
                     {canManage ? (
-                      <Select value={m.permission} onValueChange={(v) => changePermission(m.user_uuid, v)}>
+                      <Select
+                        value={m.permission}
+                        onValueChange={(v) => changePermission(m.user_uuid, v)}
+                      >
                         <SelectTrigger className="w-36">
                           <SelectValue />
                         </SelectTrigger>
@@ -477,7 +562,13 @@ function MembersTab({ projectUuid, members, onChanged, canManage }: { projectUui
             <div className="grid gap-4 py-4">
               <div className="space-y-1.5">
                 <Label htmlFor="member-uuid">User UUID</Label>
-                <Input id="member-uuid" value={userUuid} onChange={(e) => setUserUuid(e.target.value)} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono" />
+                <Input
+                  id="member-uuid"
+                  value={userUuid}
+                  onChange={(e) => setUserUuid(e.target.value)}
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                  className="font-mono"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Permission</Label>
@@ -514,7 +605,15 @@ function MembersTab({ projectUuid, members, onChanged, canManage }: { projectUui
 // Groups tab
 // ---------------------------------------------------------------------------
 
-function GroupsTab({ projectUuid, groups, onChanged }: { projectUuid: string; groups: UserGroup[]; onChanged: () => void }) {
+function GroupsTab({
+  projectUuid,
+  groups,
+  onChanged,
+}: {
+  projectUuid: string;
+  groups: UserGroup[];
+  onChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -550,7 +649,10 @@ function GroupsTab({ projectUuid, groups, onChanged }: { projectUuid: string; gr
           <p className="py-8 text-center text-sm text-text-muted">No groups yet.</p>
         ) : (
           groups.map((g) => (
-            <div key={g.id} className="flex items-center justify-between rounded-md border border-border bg-surface-raised px-4 py-3">
+            <div
+              key={g.id}
+              className="flex items-center justify-between rounded-md border border-border bg-surface-raised px-4 py-3"
+            >
               <div>
                 <p className="font-medium text-text">{g.name}</p>
                 {g.description ? <p className="text-sm text-text-muted">{g.description}</p> : null}
@@ -584,7 +686,12 @@ function GroupsTab({ projectUuid, groups, onChanged }: { projectUuid: string; gr
             </DialogHeader>
             <div className="space-y-1.5 py-4">
               <Label htmlFor="group-name">Name</Label>
-              <Input id="group-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Engineering" />
+              <Input
+                id="group-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Engineering"
+              />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>

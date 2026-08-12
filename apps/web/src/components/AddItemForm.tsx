@@ -56,7 +56,10 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
 
       <div className="flex-1 space-y-4 overflow-auto p-4">
         <div>
-          <label htmlFor="new-title" className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted">
+          <label
+            htmlFor="new-title"
+            className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted"
+          >
             Title
           </label>
           <input
@@ -71,7 +74,10 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
         </div>
 
         <div>
-          <label htmlFor="new-username" className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted">
+          <label
+            htmlFor="new-username"
+            className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted"
+          >
             Username
           </label>
           <input
@@ -85,7 +91,10 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
         </div>
 
         <div>
-          <label htmlFor="new-password" className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted">
+          <label
+            htmlFor="new-password"
+            className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted"
+          >
             Password
           </label>
           <input
@@ -100,7 +109,10 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
         </div>
 
         <div>
-          <label htmlFor="new-url" className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted">
+          <label
+            htmlFor="new-url"
+            className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted"
+          >
             Website
           </label>
           <input

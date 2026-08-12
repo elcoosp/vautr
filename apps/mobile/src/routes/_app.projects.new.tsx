@@ -8,7 +8,13 @@ import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
 
 export const Route = createFileRoute('/_app/projects/new')({
@@ -56,7 +62,12 @@ function NewProjectScreen() {
         </View>
         <View className="gap-1.5">
           <Label htmlFor="project-desc">Description</Label>
-          <Input id="project-desc" value={description} onChangeText={setDescription} placeholder="Optional" />
+          <Input
+            id="project-desc"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Optional"
+          />
         </View>
         <View className="gap-1.5">
           <Label>Type</Label>

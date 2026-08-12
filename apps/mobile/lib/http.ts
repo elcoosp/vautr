@@ -108,10 +108,9 @@ export class HttpClient {
   }
 
   private toApiError(status: number, data: unknown): ApiError {
-    const record = (data && typeof data === 'object' ? (data as Record<string, unknown>) : {}) as Record<
-      string,
-      unknown
-    >;
+    const record = (
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+    ) as Record<string, unknown>;
     const code = typeof record.error === 'string' ? record.error : 'http_error';
     const message = typeof record.message === 'string' ? record.message : `HTTP ${status}`;
     return new ApiError(status, code, message, record.context);

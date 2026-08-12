@@ -41,9 +41,7 @@ export default defineConfig({
         new URL('../../packages/api-contract/src/index.ts', import.meta.url),
       ),
       'vautr-wasm': fileURLToPath(new URL('./src/lib/wasmWeb.ts', import.meta.url)),
-      'vautr-wasm-nodejs': fileURLToPath(
-        new URL('./src/lib/wasmNodejs.ts', import.meta.url),
-      ),
+      'vautr-wasm-nodejs': fileURLToPath(new URL('./src/lib/wasmNodejs.ts', import.meta.url)),
     },
   },
   build: {

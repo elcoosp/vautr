@@ -14,7 +14,9 @@ const SelectValue = SelectPrimitive.Value;
 
 const SelectTrigger = forwardRef<
   ComponentRef<typeof SelectPrimitive.Trigger>,
-  Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>, 'children'> & { children?: ReactNode }
+  Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>, 'children'> & {
+    children?: ReactNode;
+  }
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
@@ -72,7 +74,10 @@ const SelectLabel = forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn('native:pb-2 py-1.5 pl-8 pr-2 text-sm font-semibold text-popover-foreground', className)}
+    className={cn(
+      'native:pb-2 py-1.5 pl-8 pr-2 text-sm font-semibold text-popover-foreground',
+      className,
+    )}
     {...props}
   />
 ));

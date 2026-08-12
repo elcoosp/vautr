@@ -42,14 +42,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
 
-  const show = useCallback(
-    (toast: Omit<ToastItem, 'id'> & { id?: number }) => {
-      const id = toast.id ?? nextId.current++;
-      setToasts((current) => [...current.filter((t) => t.id !== id), { ...toast, id }]);
-      return id;
-    },
-    [],
-  );
+  const show = useCallback((toast: Omit<ToastItem, 'id'> & { id?: number }) => {
+    const id = toast.id ?? nextId.current++;
+    setToasts((current) => [...current.filter((t) => t.id !== id), { ...toast, id }]);
+    return id;
+  }, []);
 
   const value = useMemo(() => ({ show, dismiss }), [show, dismiss]);
 
@@ -93,13 +90,7 @@ function ToastViewport({
   );
 }
 
-function Toast({
-  toast,
-  onDismiss,
-}: {
-  toast: ToastItem;
-  onDismiss: (id: number) => void;
-}) {
+function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number) => void }) {
   const [open, setOpen] = useState(true);
 
   useEffect(() => {
@@ -148,13 +139,21 @@ const ToastTitle = forwardRef<
   ComponentRef<typeof ToastPrimitive.Title>,
   ComponentPropsWithoutRef<typeof ToastPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitive.Title ref={ref} className={cn('text-sm font-semibold text-foreground', className)} {...props} />
+  <ToastPrimitive.Title
+    ref={ref}
+    className={cn('text-sm font-semibold text-foreground', className)}
+    {...props}
+  />
 ));
 const ToastDescription = forwardRef<
   ComponentRef<typeof ToastPrimitive.Description>,
   ComponentPropsWithoutRef<typeof ToastPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <ToastPrimitive.Description ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+  <ToastPrimitive.Description
+    ref={ref}
+    className={cn('text-sm text-muted-foreground', className)}
+    {...props}
+  />
 ));
 
 export { ToastDescription, ToastTitle };

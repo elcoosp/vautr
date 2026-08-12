@@ -30,18 +30,22 @@ const CardTitle = forwardRef<ComponentRef<typeof Text>, ComponentPropsWithoutRef
     <Text
       role="heading"
       ref={ref}
-      className={cn('text-2xl text-card-foreground font-semibold leading-none tracking-tight', className)}
+      className={cn(
+        'text-2xl text-card-foreground font-semibold leading-none tracking-tight',
+        className,
+      )}
       {...props}
     />
   ),
 );
 CardTitle.displayName = 'CardTitle';
 
-const CardDescription = forwardRef<ComponentRef<typeof Text>, ComponentPropsWithoutRef<typeof Text>>(
-  ({ className, ...props }, ref) => (
-    <Text ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
-  ),
-);
+const CardDescription = forwardRef<
+  ComponentRef<typeof Text>,
+  ComponentPropsWithoutRef<typeof Text>
+>(({ className, ...props }, ref) => (
+  <Text ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+));
 CardDescription.displayName = 'CardDescription';
 
 const CardContent = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(

@@ -32,7 +32,6 @@ export async function requireBiometric(promptMessage = 'Vautr unlock'): Promise<
 /** Whether the device supports biometric authentication. */
 export async function canUseBiometrics(): Promise<boolean> {
   return (
-    (await LocalAuthentication.hasHardwareAsync()) &&
-    (await LocalAuthentication.isEnrolledAsync())
+    (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync())
   );
 }

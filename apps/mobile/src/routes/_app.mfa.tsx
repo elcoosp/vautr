@@ -17,8 +17,15 @@ export const Route = createFileRoute('/_app/mfa')({
 
 function MfaScreen() {
   const toast = useToast();
-  const [status, setStatus] = useState<{ required: boolean; configured_methods: MfaMethod[] } | null>(null);
-  const [enrolled, setEnrolled] = useState<{ enrollment_id: string; otpauth_url: string; secret: string } | null>(null);
+  const [status, setStatus] = useState<{
+    required: boolean;
+    configured_methods: MfaMethod[];
+  } | null>(null);
+  const [enrolled, setEnrolled] = useState<{
+    enrollment_id: string;
+    otpauth_url: string;
+    secret: string;
+  } | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -38,9 +45,17 @@ function MfaScreen() {
     setBusy(true);
     try {
       const issue = await services.api.mfaTotpIssue();
-      setEnrolled({ enrollment_id: issue.enrollment_id, otpauth_url: issue.otpauth_url, secret: issue.secret });
+      setEnrolled({
+        enrollment_id: issue.enrollment_id,
+        otpauth_url: issue.otpauth_url,
+        secret: issue.secret,
+      });
     } catch (err) {
-      toast.show({ title: 'Enroll failed', description: err instanceof Error ? err.message : 'Could not start TOTP enrollment.', variant: 'destructive' });
+      toast.show({
+        title: 'Enroll failed',
+        description: err instanceof Error ? err.message : 'Could not start TOTP enrollment.',
+        variant: 'destructive',
+      });
     } finally {
       setBusy(false);
     }
@@ -53,13 +68,20 @@ function MfaScreen() {
     }
     setBusy(true);
     try {
-      const result = await services.api.mfaTotpVerify({ enrollment_id: enrolled.enrollment_id, code: code.trim() });
+      const result = await services.api.mfaTotpVerify({
+        enrollment_id: enrolled.enrollment_id,
+        code: code.trim(),
+      });
       toast.show({ title: 'TOTP verified', description: `Status: ${result.status}` });
       setEnrolled(null);
       setCode('');
       await load();
     } catch (err) {
-      toast.show({ title: 'Verification failed', description: err instanceof Error ? err.message : 'Invalid code.', variant: 'destructive' });
+      toast.show({
+        title: 'Verification failed',
+        description: err instanceof Error ? err.message : 'Invalid code.',
+        variant: 'destructive',
+      });
     } finally {
       setBusy(false);
     }
@@ -88,7 +110,9 @@ function MfaScreen() {
 
       {enrolled ? (
         <Card className="p-4 gap-3">
-          <Text className="text-sm font-medium text-foreground">Scan with your authenticator app</Text>
+          <Text className="text-sm font-medium text-foreground">
+            Scan with your authenticator app
+          </Text>
           <Text className="text-xs text-muted-foreground" selectable>
             otpauth: {enrolled.otpauth_url}
           </Text>
@@ -100,7 +124,14 @@ function MfaScreen() {
           </View>
           <View className="gap-1.5">
             <Label htmlFor="mfa-code">Verification code</Label>
-            <Input id="mfa-code" value={code} onChangeText={setCode} placeholder="000000" keyboardType="number-pad" maxLength={6} />
+            <Input
+              id="mfa-code"
+              value={code}
+              onChangeText={setCode}
+              placeholder="000000"
+              keyboardType="number-pad"
+              maxLength={6}
+            />
           </View>
           <Button disabled={busy} onPress={() => void verify()}>
             <ButtonText>{busy ? 'Verifying…' : 'Verify & enable'}</ButtonText>

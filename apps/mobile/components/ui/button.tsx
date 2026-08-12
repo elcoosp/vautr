@@ -84,11 +84,7 @@ type ButtonTextProps = ComponentPropsWithoutRef<typeof Text> &
 const ButtonText = forwardRef<ComponentRef<typeof Text>, ButtonTextProps>(
   ({ className, variant, size, ...props }, ref) => {
     return (
-      <Text
-        className={cn(buttonTextVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
+      <Text className={cn(buttonTextVariants({ variant, size, className }))} ref={ref} {...props} />
     );
   },
 );

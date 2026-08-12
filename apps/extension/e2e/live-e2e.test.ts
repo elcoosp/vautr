@@ -105,9 +105,7 @@ async function main(): Promise<void> {
 
   // 9. Verify
   if (decryptedPassword !== itemPass) {
-    throw new Error(
-      `PASSWORD MISMATCH: expected "${itemPass}", got "${decryptedPassword}"`,
-    );
+    throw new Error(`PASSWORD MISMATCH: expected "${itemPass}", got "${decryptedPassword}"`);
   }
   log('✅ PASS: Stateless SW decrypt matches original password.');
 

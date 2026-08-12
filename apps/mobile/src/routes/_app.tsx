@@ -2,7 +2,15 @@ import { createFileRoute, Outlet, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Fingerprint, KeyRound, Lock, LogOut, Settings2, ShieldCheck, Wrench } from 'lucide-react-native';
+import {
+  Fingerprint,
+  KeyRound,
+  Lock,
+  LogOut,
+  Settings2,
+  ShieldCheck,
+  Wrench,
+} from 'lucide-react-native';
 
 import { requireBiometric } from '../../lib/biometrics';
 import { services } from '../../lib/client';
@@ -65,9 +73,7 @@ function AppShell() {
             </Button>
           </View>
         </View>
-        {username ? (
-          <Text className="mt-0.5 text-xs text-muted-foreground">{username}</Text>
-        ) : null}
+        {username ? <Text className="mt-0.5 text-xs text-muted-foreground">{username}</Text> : null}
         {locked ? (
           <Text accessibilityRole="alert" className="mt-1 text-xs text-destructive">
             Vault locked. Use biometrics to unlock.

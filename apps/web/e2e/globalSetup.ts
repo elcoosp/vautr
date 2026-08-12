@@ -74,8 +74,14 @@ export default async function globalSetup(): Promise<void> {
        svk_ciphertext_blob_rk, min_enc_key_gen, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).run(
-    USER_ID, 'e2e@vautr.test', new Uint8Array(32), new Uint8Array(16),
-    new Uint8Array(48), new Uint8Array(48), now, now,
+    USER_ID,
+    'e2e@vautr.test',
+    new Uint8Array(32),
+    new Uint8Array(16),
+    new Uint8Array(48),
+    new Uint8Array(48),
+    now,
+    now,
   );
   db.prepare(
     `INSERT INTO sessions (token, user_id, expires_at, created_at)

@@ -22,9 +22,7 @@ export async function cacheSvkForSw(svk: Uint8Array): Promise<void> {
  */
 export async function cacheAllCiphertexts(): Promise<void> {
   try {
-    const { IndexedDbStore } = await import(
-      '../../../../packages/vautr-client-sdk/src/storage'
-    );
+    const { IndexedDbStore } = await import('../../../../packages/vautr-client-sdk/src/storage');
     const store = new IndexedDbStore();
     const storedItems = await store.getItems();
     const ciphertextStore = createItemCiphertextStore(localArea);
@@ -51,10 +49,7 @@ export async function cacheAllCiphertexts(): Promise<void> {
  * Reveal an item's secret and return the plaintext (used by the UI to display a
  * revealed value and to power weak/reused detection). Never persisted.
  */
-export async function revealSecret(
-  client: VautrWebClient,
-  uuid: string,
-): Promise<string> {
+export async function revealSecret(client: VautrWebClient, uuid: string): Promise<string> {
   return client.revealSecret(uuid);
 }
 
@@ -82,10 +77,7 @@ export async function autofillItem(
 }
 
 /** Copy an item's secret to the clipboard via the opaque-handle pattern. */
-export async function copySecret(
-  client: VautrWebClient,
-  item: DecryptedOverview,
-): Promise<void> {
+export async function copySecret(client: VautrWebClient, item: DecryptedOverview): Promise<void> {
   const handle = await client.reveal(item.uuid);
   await client.performAction({ type: 'CopyToClipboard', handle });
   await client.release(handle);

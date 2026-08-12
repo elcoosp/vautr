@@ -86,7 +86,12 @@ async function registerLogin(
 
   const ls = wasm.opaque_login_start_js(password);
   const lr = await req('POST', '/auth/login/start', { username, login_start: b64(ls.message) });
-  const lf = wasm.opaque_login_finish_js(ls.state, unb64(lr.body.login_response), password, username);
+  const lf = wasm.opaque_login_finish_js(
+    ls.state,
+    unb64(lr.body.login_response),
+    password,
+    username,
+  );
   const fr = await req('POST', '/auth/login/finish', { username, login_finish: b64(lf.upload) });
   return { token: fr.body.session_token, kdfSalt: b64(salt) };
 }
@@ -122,141 +127,151 @@ const PROJECT_NAME = 'mlp-shared';
 const SECRET_KEY = 'API_KEY';
 const PASSWORD = 'correct-horse-battery-staple-mlp';
 
-test.describe.serial('MLP projects & secrets E2E', () => {
-  test.beforeAll(async () => {
-    const stamp = Date.now();
-    ownerUsername = `owner-${stamp}@vautr.test`;
-    viewerUsername = `viewer-${stamp}@vautr.test`;
+test.describe
+  .serial('MLP projects & secrets E2E', () => {
+    test.beforeAll(async () => {
+      const stamp = Date.now();
+      ownerUsername = `owner-${stamp}@vautr.test`;
+      viewerUsername = `viewer-${stamp}@vautr.test`;
 
-    const owner = await registerLogin(ownerUsername, PASSWORD);
-    const viewer = await registerLogin(viewerUsername, PASSWORD);
-    ownerToken = owner.token;
-    viewerToken = viewer.token;
-    ownerKdfSalt = owner.kdfSalt;
-    viewerKdfSalt = viewer.kdfSalt;
-    const dbPath = process.env.VAUTR_DB_PATH ?? 'mlp.db';
-    viewerUuid = userUuidByEmail(dbPath, viewerUsername);
+      const owner = await registerLogin(ownerUsername, PASSWORD);
+      const viewer = await registerLogin(viewerUsername, PASSWORD);
+      ownerToken = owner.token;
+      viewerToken = viewer.token;
+      ownerKdfSalt = owner.kdfSalt;
+      viewerKdfSalt = viewer.kdfSalt;
+      const dbPath = process.env.VAUTR_DB_PATH ?? 'mlp.db';
+      viewerUuid = userUuidByEmail(dbPath, viewerUsername);
 
-    // Owner creates the project + secret.
-    const proj = await req(
-      'POST',
-      '/projects',
-      { name: PROJECT_NAME, type: 'shared' },
-      ownerToken,
-    );
-    expect(proj.status).toBe(201);
-    projectUuid = proj.body.uuid;
+      // Owner creates the project + secret.
+      const proj = await req(
+        'POST',
+        '/projects',
+        { name: PROJECT_NAME, type: 'shared' },
+        ownerToken,
+      );
+      expect(proj.status).toBe(201);
+      projectUuid = proj.body.uuid;
 
-    const sec = await req(
-      'POST',
-      '/secrets',
-      { project_uuid: projectUuid, key: SECRET_KEY, value_ciphertext: b64(Uint8Array.from(Buffer.from(SECRET_VALUE))) },
-      ownerToken,
-    );
-    expect(sec.status).toBe(201);
+      const sec = await req(
+        'POST',
+        '/secrets',
+        {
+          project_uuid: projectUuid,
+          key: SECRET_KEY,
+          value_ciphertext: b64(Uint8Array.from(Buffer.from(SECRET_VALUE))),
+        },
+        ownerToken,
+      );
+      expect(sec.status).toBe(201);
 
-    // Owner grants the viewer `can_view` (metadata only, NO secrets:reveal).
-    const add = await req(
-      'POST',
-      `/projects/${projectUuid}/members`,
-      { user_uuid: viewerUuid, role: 'member', permission: 'can_view' },
-      ownerToken,
-    );
-    expect(add.status).toBe(201);
+      // Owner grants the viewer `can_view` (metadata only, NO secrets:reveal).
+      const add = await req(
+        'POST',
+        `/projects/${projectUuid}/members`,
+        { user_uuid: viewerUuid, role: 'member', permission: 'can_view' },
+        ownerToken,
+      );
+      expect(add.status).toBe(201);
 
-    // Sanity: viewer can list metadata but reveal is denied.
-    const list = await req('GET', `/projects/${projectUuid}/secrets`, null, viewerToken);
-    expect(list.status).toBe(200);
-    expect(list.body.secrets[0].key).toBe(SECRET_KEY);
-    const revealDenied = await req(
-      'GET',
-      `/secrets/${list.body.secrets[0].uuid}/value`,
-      null,
-      viewerToken,
-    );
-    expect(revealDenied.status).toBe(403);
-  });
+      // Sanity: viewer can list metadata but reveal is denied.
+      const list = await req('GET', `/projects/${projectUuid}/secrets`, null, viewerToken);
+      expect(list.status).toBe(200);
+      expect(list.body.secrets[0].key).toBe(SECRET_KEY);
+      const revealDenied = await req(
+        'GET',
+        `/secrets/${list.body.secrets[0].uuid}/value`,
+        null,
+        viewerToken,
+      );
+      expect(revealDenied.status).toBe(403);
+    });
 
-  async function loginViaUi(
-    context: BrowserContext,
-    extId: string,
-    username: string,
-    kdfSalt: string,
-  ): Promise<Page> {
-    const popup = await context.newPage();
-    await popup.goto(`chrome-extension://${extId}/src/popup/popup.html`);
-    await popup.waitForSelector('#auth-username');
-    // Accounts are provisioned via HTTP, so the popup never ran its own register
-    // and has no KDF salt in its IndexedDB state. Seed the salt (the one used at
-    // register) so the real login flow can derive the master key, exactly as a
-    // native register-then-login session would. (See IndexedDbStore in the SDK.)
-    await popup.evaluate(async (salt) => {
-      const open = indexedDB.open('vautr-client', 1);
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        // Mirror IndexedDbStore.openDb: create both stores on first open so the
-        // SDK's later transactions resolve.
-        open.onupgradeneeded = () => {
-          if (!open.result.objectStoreNames.contains('state')) open.result.createObjectStore('state');
-          if (!open.result.objectStoreNames.contains('items')) open.result.createObjectStore('items', { keyPath: 'uuid' });
-        };
-        open.onsuccess = () => resolve(open.result);
-        open.onerror = () => reject(open.error);
-      });
-      const tx = db.transaction('state', 'readwrite');
-      tx.objectStore('state').put({ kdfSalt: salt }, 'root');
-      await new Promise<void>((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-      db.close();
-    }, kdfSalt);
-    await popup.fill('#auth-username', username);
-    await popup.fill('#auth-password', PASSWORD);
-    await popup.getByRole('button', { name: 'Unlock' }).click();
-    await popup.getByText(username, { exact: true }).waitFor({ timeout: 30_000 });
-    return popup;
-  }
-
-  async function openSecretsAndReveal(popup: Page, projectName: string): Promise<Page> {
-    await popup.getByRole('tab', { name: 'Secrets' }).click();
-    // Select the project via the shadcn Select.
-    await popup.locator('[role="combobox"]').first().click();
-    await popup.getByRole('option', { name: projectName }).click();
-    await popup.getByText(SECRET_KEY, { exact: true }).waitFor({ timeout: 15_000 });
-    await popup.getByRole('button', { name: 'Reveal' }).click();
-    return popup;
-  }
-
-  test('owner reveals a secret and sees the plaintext value', async () => {
-    const profileDir = mkdtempSync(join(tmpdir(), 'vautr-mlp-owner-'));
-    const context = await launchExtensionContext({ profileDir });
-    try {
-      const extId = await getExtensionId(context);
-      const popup = await loginViaUi(context, extId, ownerUsername, ownerKdfSalt);
-      await openSecretsAndReveal(popup, PROJECT_NAME);
-      await popup.getByText(SECRET_VALUE, { exact: true }).waitFor({ timeout: 15_000 });
-      await expect(popup.getByText(SECRET_VALUE, { exact: true })).toBeVisible();
-    } finally {
-      await context.close();
-      rmSync(profileDir, { recursive: true, force: true });
+    async function loginViaUi(
+      context: BrowserContext,
+      extId: string,
+      username: string,
+      kdfSalt: string,
+    ): Promise<Page> {
+      const popup = await context.newPage();
+      await popup.goto(`chrome-extension://${extId}/src/popup/popup.html`);
+      await popup.waitForSelector('#auth-username');
+      // Accounts are provisioned via HTTP, so the popup never ran its own register
+      // and has no KDF salt in its IndexedDB state. Seed the salt (the one used at
+      // register) so the real login flow can derive the master key, exactly as a
+      // native register-then-login session would. (See IndexedDbStore in the SDK.)
+      await popup.evaluate(async (salt) => {
+        const open = indexedDB.open('vautr-client', 1);
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          // Mirror IndexedDbStore.openDb: create both stores on first open so the
+          // SDK's later transactions resolve.
+          open.onupgradeneeded = () => {
+            if (!open.result.objectStoreNames.contains('state'))
+              open.result.createObjectStore('state');
+            if (!open.result.objectStoreNames.contains('items'))
+              open.result.createObjectStore('items', { keyPath: 'uuid' });
+          };
+          open.onsuccess = () => resolve(open.result);
+          open.onerror = () => reject(open.error);
+        });
+        const tx = db.transaction('state', 'readwrite');
+        tx.objectStore('state').put({ kdfSalt: salt }, 'root');
+        await new Promise<void>((resolve, reject) => {
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      }, kdfSalt);
+      await popup.fill('#auth-username', username);
+      await popup.fill('#auth-password', PASSWORD);
+      await popup.getByRole('button', { name: 'Unlock' }).click();
+      await popup.getByText(username, { exact: true }).waitFor({ timeout: 30_000 });
+      return popup;
     }
-  });
 
-  test('a can_view member without a secrets:reveal grant is denied', async () => {
-    const profileDir = mkdtempSync(join(tmpdir(), 'vautr-mlp-viewer-'));
-    const context = await launchExtensionContext({ profileDir });
-    try {
-      const extId = await getExtensionId(context);
-      const popup = await loginViaUi(context, extId, viewerUsername, viewerKdfSalt);
-      await openSecretsAndReveal(popup, PROJECT_NAME);
-      // "Reveal denied" is rendered both inline (Secrets tab) and as a toast;
-      // use .first() to avoid a strict-mode clash.
-      await popup.getByText(/Reveal denied/i).first().waitFor({ timeout: 15_000 });
-      await expect(popup.getByText(/Reveal denied/i).first()).toBeVisible();
-      await expect(popup.getByText(SECRET_VALUE, { exact: true })).not.toBeVisible();
-    } finally {
-      await context.close();
-      rmSync(profileDir, { recursive: true, force: true });
+    async function openSecretsAndReveal(popup: Page, projectName: string): Promise<Page> {
+      await popup.getByRole('tab', { name: 'Secrets' }).click();
+      // Select the project via the shadcn Select.
+      await popup.locator('[role="combobox"]').first().click();
+      await popup.getByRole('option', { name: projectName }).click();
+      await popup.getByText(SECRET_KEY, { exact: true }).waitFor({ timeout: 15_000 });
+      await popup.getByRole('button', { name: 'Reveal' }).click();
+      return popup;
     }
+
+    test('owner reveals a secret and sees the plaintext value', async () => {
+      const profileDir = mkdtempSync(join(tmpdir(), 'vautr-mlp-owner-'));
+      const context = await launchExtensionContext({ profileDir });
+      try {
+        const extId = await getExtensionId(context);
+        const popup = await loginViaUi(context, extId, ownerUsername, ownerKdfSalt);
+        await openSecretsAndReveal(popup, PROJECT_NAME);
+        await popup.getByText(SECRET_VALUE, { exact: true }).waitFor({ timeout: 15_000 });
+        await expect(popup.getByText(SECRET_VALUE, { exact: true })).toBeVisible();
+      } finally {
+        await context.close();
+        rmSync(profileDir, { recursive: true, force: true });
+      }
+    });
+
+    test('a can_view member without a secrets:reveal grant is denied', async () => {
+      const profileDir = mkdtempSync(join(tmpdir(), 'vautr-mlp-viewer-'));
+      const context = await launchExtensionContext({ profileDir });
+      try {
+        const extId = await getExtensionId(context);
+        const popup = await loginViaUi(context, extId, viewerUsername, viewerKdfSalt);
+        await openSecretsAndReveal(popup, PROJECT_NAME);
+        // "Reveal denied" is rendered both inline (Secrets tab) and as a toast;
+        // use .first() to avoid a strict-mode clash.
+        await popup
+          .getByText(/Reveal denied/i)
+          .first()
+          .waitFor({ timeout: 15_000 });
+        await expect(popup.getByText(/Reveal denied/i).first()).toBeVisible();
+        await expect(popup.getByText(SECRET_VALUE, { exact: true })).not.toBeVisible();
+      } finally {
+        await context.close();
+        rmSync(profileDir, { recursive: true, force: true });
+      }
+    });
   });
-});

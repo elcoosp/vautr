@@ -23,7 +23,12 @@ function MfaPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
-  const [enrollment, setEnrollment] = useState<{ enrollment_id: string; secret: string; qr_code_data_url: string; otpauth_url: string } | null>(null);
+  const [enrollment, setEnrollment] = useState<{
+    enrollment_id: string;
+    secret: string;
+    qr_code_data_url: string;
+    otpauth_url: string;
+  } | null>(null);
   const [liveCode, setLiveCode] = useState<string>('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
@@ -69,7 +74,12 @@ function MfaPage() {
     setRecoveryCodes(null);
     try {
       const res = await mlp.mfaTotpIssue();
-      setEnrollment({ enrollment_id: res.enrollment_id, secret: res.secret, qr_code_data_url: res.qr_code_data_url ?? '', otpauth_url: res.otpauth_url });
+      setEnrollment({
+        enrollment_id: res.enrollment_id,
+        secret: res.secret,
+        qr_code_data_url: res.qr_code_data_url ?? '',
+        otpauth_url: res.otpauth_url,
+      });
     } catch (err) {
       toast.error(err instanceof MlpApiError ? err.message : String(err));
     } finally {
@@ -100,7 +110,10 @@ function MfaPage() {
   const verifyEnroll = async () => {
     if (!enrollment || !liveCode) return;
     try {
-      const res = await mlp.mfaTotpVerify({ enrollment_id: enrollment.enrollment_id, code: liveCode });
+      const res = await mlp.mfaTotpVerify({
+        enrollment_id: enrollment.enrollment_id,
+        code: liveCode,
+      });
       toast.success('TOTP enabled');
       setRecoveryCodes(res.recovery_codes ?? null);
       setEnrollment(null);
@@ -136,7 +149,9 @@ function MfaPage() {
   };
 
   const toggleMethod = (method: string) => {
-    setPolMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
+    setPolMethods((prev) =>
+      prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method],
+    );
   };
 
   if (loading) return <p className="p-6 text-sm text-text-muted">Loading…</p>;
@@ -146,7 +161,9 @@ function MfaPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold text-text">MFA &amp; security</h1>
-        <p className="text-sm text-text-muted">Manage multi-factor authentication and organization policy.</p>
+        <p className="text-sm text-text-muted">
+          Manage multi-factor authentication and organization policy.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -170,23 +187,29 @@ function MfaPage() {
                 {(status?.configured_methods ?? []).length === 0 ? (
                   <Badge variant="outline">none</Badge>
                 ) : (
-                  status?.configured_methods.map((m) => (
-                    <Badge key={m}>{m}</Badge>
-                  ))
+                  status?.configured_methods.map((m) => <Badge key={m}>{m}</Badge>)
                 )}
               </div>
             </div>
 
             {enrollment ? (
               <div className="space-y-3 rounded-md border border-border bg-surface-raised p-4">
-                <p className="text-sm font-medium text-text">Scan or enter the secret in your authenticator app</p>
+                <p className="text-sm font-medium text-text">
+                  Scan or enter the secret in your authenticator app
+                </p>
                 <div className="flex justify-center">
                   {enrollment.qr_code_data_url ? (
-                    <img src={enrollment.qr_code_data_url} alt="TOTP QR code" className="h-36 w-36 rounded-md bg-white p-1" />
+                    <img
+                      src={enrollment.qr_code_data_url}
+                      alt="TOTP QR code"
+                      className="h-36 w-36 rounded-md bg-white p-1"
+                    />
                   ) : null}
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <code className="rounded bg-bg px-2 py-1 font-mono text-xs text-text">{enrollment.secret}</code>
+                  <code className="rounded bg-bg px-2 py-1 font-mono text-xs text-text">
+                    {enrollment.secret}
+                  </code>
                   <span className="font-mono text-2xl tracking-widest text-accent">{liveCode}</span>
                 </div>
                 <Button className="w-full" onClick={() => void verifyEnroll()} disabled={!liveCode}>
@@ -194,7 +217,10 @@ function MfaPage() {
                 </Button>
               </div>
             ) : (
-              <Button onClick={() => void startEnroll()} disabled={enrolling || status?.configured_methods.includes('totp')}>
+              <Button
+                onClick={() => void startEnroll()}
+                disabled={enrolling || status?.configured_methods.includes('totp')}
+              >
                 {enrolling ? 'Preparing…' : 'Set up authenticator app'}
               </Button>
             )}
@@ -219,15 +245,24 @@ function MfaPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-md border border-border bg-surface-raised px-3 py-2">
-              <Label className="cursor-pointer text-sm text-text">Require MFA for all members</Label>
-              <Switch checked={polRequired} onCheckedChange={setPolRequired} aria-label="Require MFA" />
+              <Label className="cursor-pointer text-sm text-text">
+                Require MFA for all members
+              </Label>
+              <Switch
+                checked={polRequired}
+                onCheckedChange={setPolRequired}
+                aria-label="Require MFA"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Allowed methods</Label>
               <div className="grid gap-2">
                 {['totp', 'webauthn', 'email'].map((m) => (
                   <label key={m} className="flex items-center gap-2 text-sm text-text">
-                    <Checkbox checked={polMethods.includes(m)} onCheckedChange={() => toggleMethod(m)} />
+                    <Checkbox
+                      checked={polMethods.includes(m)}
+                      onCheckedChange={() => toggleMethod(m)}
+                    />
                     {m}
                   </label>
                 ))}
@@ -235,11 +270,25 @@ function MfaPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pol-minlen">Minimum password length: {polMinLength}</Label>
-              <Input id="pol-minlen" type="range" min={8} max={32} value={polMinLength} onChange={(e) => setPolMinLength(Number(e.target.value))} />
+              <Input
+                id="pol-minlen"
+                type="range"
+                min={8}
+                max={32}
+                value={polMinLength}
+                onChange={(e) => setPolMinLength(Number(e.target.value))}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pol-entropy">Minimum entropy bits: {polEntropy}</Label>
-              <Input id="pol-entropy" type="range" min={20} max={120} value={polEntropy} onChange={(e) => setPolEntropy(Number(e.target.value))} />
+              <Input
+                id="pol-entropy"
+                type="range"
+                min={20}
+                max={120}
+                value={polEntropy}
+                onChange={(e) => setPolEntropy(Number(e.target.value))}
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[
@@ -248,13 +297,20 @@ function MfaPage() {
                 { label: 'Require digit', value: polDigit, set: setPolDigit },
                 { label: 'Require special', value: polSpecial, set: setPolSpecial },
               ].map(({ label, value, set }) => (
-                <label key={label} className="flex items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text">
+                <label
+                  key={label}
+                  className="flex items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text"
+                >
                   <Checkbox checked={value} onCheckedChange={(v) => set(!!v)} />
                   {label}
                 </label>
               ))}
             </div>
-            <Button className="w-full" onClick={() => void savePolicy()} disabled={policyBusy || polMethods.length === 0}>
+            <Button
+              className="w-full"
+              onClick={() => void savePolicy()}
+              disabled={policyBusy || polMethods.length === 0}
+            >
               {policyBusy ? 'Saving…' : 'Save policy'}
             </Button>
           </CardContent>

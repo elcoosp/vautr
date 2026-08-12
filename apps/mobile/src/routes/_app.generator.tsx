@@ -29,7 +29,9 @@ const OPTION_LABELS: { key: keyof GeneratorOptions; label: string }[] = [
   { key: 'avoidAmbiguous', label: 'Avoid ambiguous (I, O, 1, 0)' },
 ];
 
-function scoreVariant(score: StrengthResult['score']): 'default' | 'secondary' | 'outline' | 'destructive' {
+function scoreVariant(
+  score: StrengthResult['score'],
+): 'default' | 'secondary' | 'outline' | 'destructive' {
   switch (score) {
     case 'strong':
       return 'default';

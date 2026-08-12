@@ -4,7 +4,13 @@ import { mlp, MlpApiError } from '@/lib/mlp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { Project, MachineAccount, AccessToken, MfaStatus, BackupStatus } from '@vautr/api-contract';
+import type {
+  Project,
+  MachineAccount,
+  AccessToken,
+  MfaStatus,
+  BackupStatus,
+} from '@vautr/api-contract';
 import { FolderKanban, Bot, Ticket, ShieldCheck, Database, ArrowRight } from 'lucide-react';
 
 export const Route = createFileRoute('/_authed/dashboard')({
@@ -34,7 +40,14 @@ function DashboardPage() {
           mlp.mfaStatus().catch(() => null),
           mlp.backupStatus().catch(() => null),
         ]);
-        if (active) setData({ projects: projects.projects, machineAccounts: machineAccounts.machine_accounts, tokens: tokens.tokens, mfa, backup });
+        if (active)
+          setData({
+            projects: projects.projects,
+            machineAccounts: machineAccounts.machine_accounts,
+            tokens: tokens.tokens,
+            mfa,
+            backup,
+          });
       } catch (err) {
         if (active) setError(err instanceof MlpApiError ? err.message : String(err));
       }
@@ -49,7 +62,9 @@ function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">Dashboard</h1>
-          <p className="text-sm text-text-muted">Overview of your organization&apos;s vaults and secrets.</p>
+          <p className="text-sm text-text-muted">
+            Overview of your organization&apos;s vaults and secrets.
+          </p>
         </div>
         <Link to="/projects" search={{ create: true }}>
           <Button>New project</Button>
@@ -124,7 +139,17 @@ function DashboardPage() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, hint }: { icon: typeof FolderKanban; label: string; value: number; hint?: string }) {
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+}: {
+  icon: typeof FolderKanban;
+  label: string;
+  value: number;
+  hint?: string;
+}) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">

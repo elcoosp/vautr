@@ -38,7 +38,7 @@ async function registerUser(tag: string): Promise<MobileApiClient> {
   return api;
 }
 
-describe('mobile live-server integration (Wave B5 gate)', () => {
+describe.skipIf(!process.env.VAUTR_API_URL)('mobile live-server integration (Wave B5 gate)', () => {
   it(
     'register → login → create project → create+reveal secret, and denies reveal without authorization',
     async () => {

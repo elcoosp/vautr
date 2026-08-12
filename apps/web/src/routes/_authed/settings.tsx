@@ -39,7 +39,10 @@ function SettingsPage() {
     setBusy(true);
     setResult(null);
     try {
-      const res = await mlp.offboard({ user_uuid: userUuid.trim(), reason: reason.trim() || undefined });
+      const res = await mlp.offboard({
+        user_uuid: userUuid.trim(),
+        reason: reason.trim() || undefined,
+      });
       setResult(res);
       toast.success('User offboarded');
       setUserUuid('');
@@ -71,11 +74,22 @@ function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="offboard-uuid">User UUID</Label>
-            <Input id="offboard-uuid" value={userUuid} onChange={(e) => setUserUuid(e.target.value)} placeholder="xxxxxxxx-xxxx-…" />
+            <Input
+              id="offboard-uuid"
+              value={userUuid}
+              onChange={(e) => setUserUuid(e.target.value)}
+              placeholder="xxxxxxxx-xxxx-…"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="offboard-reason">Reason (optional)</Label>
-            <Textarea id="offboard-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. offboarding, role change" rows={2} />
+            <Textarea
+              id="offboard-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. offboarding, role change"
+              rows={2}
+            />
           </div>
 
           <AlertDialog>
@@ -88,19 +102,23 @@ function SettingsPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Offboard this user?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This immediately revokes the user's memberships, secrets access, and tokens. This action is not reversible.
+                  This immediately revokes the user's memberships, secrets access, and tokens. This
+                  action is not reversible.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => void onOffboard()}>Confirm offboard</AlertDialogAction>
+                <AlertDialogAction onClick={() => void onOffboard()}>
+                  Confirm offboard
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
 
           {result ? (
             <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-text">
-              Offboarded {result.user_uuid}: revoked {result.revoked_projects} projects, {result.revoked_memberships} memberships, {result.revoked_tokens} tokens.
+              Offboarded {result.user_uuid}: revoked {result.revoked_projects} projects,{' '}
+              {result.revoked_memberships} memberships, {result.revoked_tokens} tokens.
             </div>
           ) : null}
         </CardContent>

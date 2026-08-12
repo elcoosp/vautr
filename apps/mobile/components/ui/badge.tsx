@@ -37,17 +37,12 @@ const badgeTextVariants = cva('text-xs font-semibold native:text-sm', {
   },
 });
 
-type BadgeProps = ComponentPropsWithoutRef<typeof Text> &
-  VariantProps<typeof badgeVariants>;
+type BadgeProps = ComponentPropsWithoutRef<typeof Text> & VariantProps<typeof badgeVariants>;
 
 const Badge = forwardRef<ComponentRef<typeof Text>, BadgeProps>(
   ({ className, variant, children, ...props }, ref) => {
     return (
-      <Text
-        ref={ref}
-        className={cn(badgeVariants({ variant }), className)}
-        {...props}
-      >
+      <Text ref={ref} className={cn(badgeVariants({ variant }), className)} {...props}>
         <Text className={cn(badgeTextVariants({ variant }))}>{children}</Text>
       </Text>
     );

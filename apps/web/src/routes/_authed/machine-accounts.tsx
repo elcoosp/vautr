@@ -4,14 +4,39 @@ import { toast } from 'sonner';
 import { mlp, MlpApiError } from '@/lib/mlp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { AccessScope, MachineAccount } from '@vautr/api-contract';
 import { Bot, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 
@@ -55,7 +80,9 @@ function MachineAccountsPage() {
   }, [load]);
 
   const toggleScope = (scope: AccessScope) => {
-    setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
   };
 
   const onCreate = async (e: React.FormEvent) => {
@@ -83,7 +110,9 @@ function MachineAccountsPage() {
     void mlp
       .updateMachineAccount(acc.uuid, { status: acc.status === 'active' ? 'disabled' : 'active' })
       .then(() => {
-        toast.success(acc.status === 'active' ? 'Machine account disabled' : 'Machine account enabled');
+        toast.success(
+          acc.status === 'active' ? 'Machine account disabled' : 'Machine account enabled',
+        );
         void load();
       });
   };
@@ -93,7 +122,9 @@ function MachineAccountsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">Machine accounts</h1>
-          <p className="text-sm text-text-muted">Non-human identities for CI/CD, apps, and agents.</p>
+          <p className="text-sm text-text-muted">
+            Non-human identities for CI/CD, apps, and agents.
+          </p>
         </div>
         <Button onClick={() => setOpen(true)}>
           <Plus className="mr-1.5 size-4" aria-hidden="true" />
@@ -133,7 +164,9 @@ function MachineAccountsPage() {
                       <span className="block font-mono text-xs text-text-muted">{acc.uuid}</span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={acc.status === 'active' ? 'default' : 'secondary'}>{acc.status}</Badge>
+                      <Badge variant={acc.status === 'active' ? 'default' : 'secondary'}>
+                        {acc.status}
+                      </Badge>
                     </TableCell>
                     <TableCell className="flex flex-wrap gap-1">
                       {acc.scopes.map((s) => (
@@ -142,7 +175,9 @@ function MachineAccountsPage() {
                         </Badge>
                       ))}
                     </TableCell>
-                    <TableCell className="text-text-muted">{new Date(acc.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-text-muted">
+                      {new Date(acc.created_at).toLocaleDateString()}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -187,14 +222,22 @@ function MachineAccountsPage() {
             <div className="grid gap-4 py-4">
               <div className="space-y-1.5">
                 <Label htmlFor="ma-name">Name</Label>
-                <Input id="ma-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="ci-deployer" />
+                <Input
+                  id="ma-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="ci-deployer"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Scopes</Label>
                 <div className="grid gap-2">
                   {SCOPES.map((scope) => (
                     <label key={scope} className="flex items-center gap-2 text-sm text-text">
-                      <Checkbox checked={scopes.includes(scope)} onCheckedChange={() => toggleScope(scope)} />
+                      <Checkbox
+                        checked={scopes.includes(scope)}
+                        onCheckedChange={() => toggleScope(scope)}
+                      />
                       <code className="rounded bg-surface-raised px-1">{scope}</code>
                     </label>
                   ))}

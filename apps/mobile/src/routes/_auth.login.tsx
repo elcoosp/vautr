@@ -6,7 +6,13 @@ import { useHaptics } from '../../lib/haptics';
 import { services } from '../../lib/client';
 import { useSession } from '../../lib/session';
 import { Button, ButtonText } from '../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
@@ -101,7 +107,9 @@ function LoginScreen() {
               ) : null}
 
               <Button disabled={busy} onPress={() => void submit()}>
-                <ButtonText>{busy ? 'Working…' : mode === 'login' ? 'Unlock' : 'Create account'}</ButtonText>
+                <ButtonText>
+                  {busy ? 'Working…' : mode === 'login' ? 'Unlock' : 'Create account'}
+                </ButtonText>
               </Button>
             </View>
           </TabsContent>

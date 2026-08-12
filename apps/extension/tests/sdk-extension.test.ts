@@ -63,7 +63,11 @@ describe('vautr-client-sdk extension autofill entrypoints', () => {
 
     await svkStore.cache(new Uint8Array(32).fill(7));
     const env = realEnvelope();
-    await ciphertextStore.cache({ uuid: DEFAULT_UUID, encKeyGen: env.encKeyGen, payload: env.payload });
+    await ciphertextStore.cache({
+      uuid: DEFAULT_UUID,
+      encKeyGen: env.encKeyGen,
+      payload: env.payload,
+    });
 
     const secret = await statelessAutofill(svkStore, ciphertextStore, crypto, DEFAULT_UUID);
     expect(secret).toBe(DEMO_SECRET);

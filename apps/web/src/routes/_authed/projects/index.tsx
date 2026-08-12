@@ -15,7 +15,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Project } from '@vautr/api-contract';
 import { FolderKanban, Plus } from 'lucide-react';
 
@@ -62,7 +68,11 @@ function ProjectsPage() {
     }
     setBusy(true);
     try {
-      const project = await mlp.createProject({ name: name.trim(), description: description.trim() || undefined, type });
+      const project = await mlp.createProject({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        type,
+      });
       toast.success(`Created project "${project.name}"`);
       setDialogOpen(false);
       setName('');
@@ -134,11 +144,21 @@ function ProjectsPage() {
             <div className="grid gap-4 py-4">
               <div className="space-y-1.5">
                 <Label htmlFor="project-name">Name</Label>
-                <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Engineering vault" />
+                <Input
+                  id="project-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Engineering vault"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="project-desc">Description</Label>
-                <Input id="project-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" />
+                <Input
+                  id="project-desc"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional description"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Type</Label>

@@ -15,7 +15,11 @@ interface MfaTabProps {
 
 export function MfaTab({ mlp }: MfaTabProps) {
   const [status, setStatus] = useState<MfaStatus | null>(null);
-  const [issue, setIssue] = useState<{ otpauth_url: string; secret: string; enrollment_id: string } | null>(null);
+  const [issue, setIssue] = useState<{
+    otpauth_url: string;
+    secret: string;
+    enrollment_id: string;
+  } | null>(null);
   const [code, setCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -72,15 +76,11 @@ export function MfaTab({ mlp }: MfaTabProps) {
         <CardHeader>
           <CardTitle className="text-sm">Two-factor authentication</CardTitle>
           <CardDescription className="text-xs">
-            {status ? (
-              status.required ? (
-                'MFA is required for your account.'
-              ) : (
-                'MFA is optional for your account.'
-              )
-            ) : (
-              'Loading status…'
-            )}
+            {status
+              ? status.required
+                ? 'MFA is required for your account.'
+                : 'MFA is optional for your account.'
+              : 'Loading status…'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -108,8 +108,8 @@ export function MfaTab({ mlp }: MfaTabProps) {
           {issue ? (
             <div className="space-y-3 rounded border p-3">
               <p className="text-xs text-muted-foreground">
-                Scan the QR code or add the secret to your authenticator app, then enter the
-                code to confirm.
+                Scan the QR code or add the secret to your authenticator app, then enter the code to
+                confirm.
               </p>
               <div className="space-y-1">
                 <Label>Setup key</Label>

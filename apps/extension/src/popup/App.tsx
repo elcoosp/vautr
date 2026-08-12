@@ -52,7 +52,7 @@ export function App() {
   }, []);
 
   const onVaultUpdate = useCallback(
-    (update: { type: string; overview?: { uuid: string } ; uuid?: string }) => {
+    (update: { type: string; overview?: { uuid: string }; uuid?: string }) => {
       if (update.type === 'OverviewUpserted' && update.overview) {
         upsertItem(update.overview as never);
       } else if (update.type === 'OverviewDeleted' && update.uuid) {

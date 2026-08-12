@@ -23,13 +23,11 @@ function fillActiveElement(secret: string): void {
   }
 }
 
-browser.runtime.onMessage.addListener(
-  ((message: unknown) => {
-    if (message && (message as { type?: string }).type === AUTOFILL_FILL) {
-      fillActiveElement((message as { secret: string }).secret);
-    }
-  }) as Parameters<typeof browser.runtime.onMessage.addListener>[0],
-);
+browser.runtime.onMessage.addListener(((message: unknown) => {
+  if (message && (message as { type?: string }).type === AUTOFILL_FILL) {
+    fillActiveElement((message as { secret: string }).secret);
+  }
+}) as Parameters<typeof browser.runtime.onMessage.addListener>[0]);
 
 /**
  * Relay hook for automated tests only: the page's main world dispatches a DOM
@@ -42,15 +40,15 @@ window.addEventListener('vautr-autofill-request', ((event: CustomEvent<{ uuid: s
   void browser.runtime
     .sendMessage({ type: 'VAUTR_AUTOFILL', uuid: event.detail.uuid })
     .then((response: unknown) => {
-      document.documentElement.setAttribute(
-        'data-vautr-autofill',
-        JSON.stringify(response),
-      );
+      document.documentElement.setAttribute('data-vautr-autofill', JSON.stringify(response));
     })
     .catch((error: unknown) => {
       document.documentElement.setAttribute(
         'data-vautr-autofill',
-        JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+        JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     });
 }) as EventListener);

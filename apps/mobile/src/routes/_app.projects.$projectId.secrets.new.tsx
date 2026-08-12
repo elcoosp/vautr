@@ -53,11 +53,23 @@ function NewSecretScreen() {
       <Card className="p-4 gap-4">
         <View className="gap-1.5">
           <Label htmlFor="secret-key">Key</Label>
-          <Input id="secret-key" value={key} onChangeText={setKey} placeholder="DATABASE_URL" autoCapitalize="characters" />
+          <Input
+            id="secret-key"
+            value={key}
+            onChangeText={setKey}
+            placeholder="DATABASE_URL"
+            autoCapitalize="characters"
+          />
         </View>
         <View className="gap-1.5">
           <Label htmlFor="secret-value">Value</Label>
-          <Input id="secret-value" value={value} onChangeText={setValue} placeholder="Secret value" secureTextEntry />
+          <Input
+            id="secret-value"
+            value={value}
+            onChangeText={setValue}
+            placeholder="Secret value"
+            secureTextEntry
+          />
         </View>
 
         {error ? (

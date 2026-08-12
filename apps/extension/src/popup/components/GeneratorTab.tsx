@@ -94,12 +94,7 @@ export function GeneratorTab() {
             <Button size="sm" variant="outline" disabled={!password} onClick={() => void copy()}>
               {copied ? 'Copied ✓' : 'Copy'}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!password}
-              onClick={() => setPassword('')}
-            >
+            <Button size="sm" variant="ghost" disabled={!password} onClick={() => setPassword('')}>
               Clear
             </Button>
           </div>

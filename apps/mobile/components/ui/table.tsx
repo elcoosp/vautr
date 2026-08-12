@@ -29,7 +29,11 @@ const TableBody = forwardRef<
   ComponentRef<typeof TablePrimitive.Body>,
   ComponentPropsWithoutRef<typeof TablePrimitive.Body>
 >(({ className, ...props }, ref) => (
-  <TablePrimitive.Body ref={ref} className={cn('flex-1 border-t border-border', className)} {...props} />
+  <TablePrimitive.Body
+    ref={ref}
+    className={cn('flex-1 border-t border-border', className)}
+    {...props}
+  />
 ));
 TableBody.displayName = 'TableBody';
 
@@ -51,7 +55,10 @@ const TableHead = forwardRef<
 >(({ className, ...props }, ref) => (
   <TablePrimitive.Head
     ref={ref}
-    className={cn('h-10 flex-1 px-2 text-left align-middle font-medium text-muted-foreground', className)}
+    className={cn(
+      'h-10 flex-1 px-2 text-left align-middle font-medium text-muted-foreground',
+      className,
+    )}
     {...props}
   />
 ));

@@ -8,112 +8,111 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './src/routes/__root'
-import { Route as AppRouteImport } from './src/routes/_app'
-import { Route as AuthRouteImport } from './src/routes/_auth'
-import { Route as AppIndexRouteImport } from './src/routes/_app.index'
-import { Route as AppGeneratorRouteImport } from './src/routes/_app.generator'
-import { Route as AppMfaRouteImport } from './src/routes/_app.mfa'
-import { Route as AppSecretsRouteImport } from './src/routes/_app.secrets'
-import { Route as AppSettingsRouteImport } from './src/routes/_app.settings'
-import { Route as AuthLoginRouteImport } from './src/routes/_auth.login'
-import { Route as AppProjectsProjectIdRouteImport } from './src/routes/_app.projects.$projectId'
-import { Route as AppProjectsNewRouteImport } from './src/routes/_app.projects.new'
-import { Route as AppProjectsProjectIdSecretsNewRouteImport } from './src/routes/_app.projects.$projectId.secrets.new'
+import { Route as rootRouteImport } from './src/routes/__root';
+import { Route as AppRouteImport } from './src/routes/_app';
+import { Route as AuthRouteImport } from './src/routes/_auth';
+import { Route as AppIndexRouteImport } from './src/routes/_app.index';
+import { Route as AppGeneratorRouteImport } from './src/routes/_app.generator';
+import { Route as AppMfaRouteImport } from './src/routes/_app.mfa';
+import { Route as AppSecretsRouteImport } from './src/routes/_app.secrets';
+import { Route as AppSettingsRouteImport } from './src/routes/_app.settings';
+import { Route as AuthLoginRouteImport } from './src/routes/_auth.login';
+import { Route as AppProjectsProjectIdRouteImport } from './src/routes/_app.projects.$projectId';
+import { Route as AppProjectsNewRouteImport } from './src/routes/_app.projects.new';
+import { Route as AppProjectsProjectIdSecretsNewRouteImport } from './src/routes/_app.projects.$projectId.secrets.new';
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AppGeneratorRoute = AppGeneratorRouteImport.update({
   id: '/generator',
   path: '/generator',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AppMfaRoute = AppMfaRouteImport.update({
   id: '/mfa',
   path: '/mfa',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AppSecretsRoute = AppSecretsRouteImport.update({
   id: '/secrets',
   path: '/secrets',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => AuthRoute,
-} as any)
+} as any);
 const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
   getParentRoute: () => AppRoute,
-} as any)
+} as any);
 const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
   id: '/projects/new',
   path: '/projects/new',
   getParentRoute: () => AppRoute,
-} as any)
-const AppProjectsProjectIdSecretsNewRoute =
-  AppProjectsProjectIdSecretsNewRouteImport.update({
-    id: '/secrets/new',
-    path: '/secrets/new',
-    getParentRoute: () => AppProjectsProjectIdRoute,
-  } as any)
+} as any);
+const AppProjectsProjectIdSecretsNewRoute = AppProjectsProjectIdSecretsNewRouteImport.update({
+  id: '/secrets/new',
+  path: '/secrets/new',
+  getParentRoute: () => AppProjectsProjectIdRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof AppIndexRoute
-  '/generator': typeof AppGeneratorRoute
-  '/mfa': typeof AppMfaRoute
-  '/secrets': typeof AppSecretsRoute
-  '/settings': typeof AppSettingsRoute
-  '/login': typeof AuthLoginRoute
-  '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
-  '/projects/new': typeof AppProjectsNewRoute
-  '/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute
+  '/': typeof AppIndexRoute;
+  '/generator': typeof AppGeneratorRoute;
+  '/mfa': typeof AppMfaRoute;
+  '/secrets': typeof AppSecretsRoute;
+  '/settings': typeof AppSettingsRoute;
+  '/login': typeof AuthLoginRoute;
+  '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren;
+  '/projects/new': typeof AppProjectsNewRoute;
+  '/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof AppIndexRoute
-  '/generator': typeof AppGeneratorRoute
-  '/mfa': typeof AppMfaRoute
-  '/secrets': typeof AppSecretsRoute
-  '/settings': typeof AppSettingsRoute
-  '/login': typeof AuthLoginRoute
-  '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
-  '/projects/new': typeof AppProjectsNewRoute
-  '/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute
+  '/': typeof AppIndexRoute;
+  '/generator': typeof AppGeneratorRoute;
+  '/mfa': typeof AppMfaRoute;
+  '/secrets': typeof AppSecretsRoute;
+  '/settings': typeof AppSettingsRoute;
+  '/login': typeof AuthLoginRoute;
+  '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren;
+  '/projects/new': typeof AppProjectsNewRoute;
+  '/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/_app': typeof AppRouteWithChildren
-  '/_auth': typeof AuthRouteWithChildren
-  '/_app/generator': typeof AppGeneratorRoute
-  '/_app/mfa': typeof AppMfaRoute
-  '/_app/secrets': typeof AppSecretsRoute
-  '/_app/settings': typeof AppSettingsRoute
-  '/_auth/login': typeof AuthLoginRoute
-  '/_app/': typeof AppIndexRoute
-  '/_app/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
-  '/_app/projects/new': typeof AppProjectsNewRoute
-  '/_app/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute
+  __root__: typeof rootRouteImport;
+  '/_app': typeof AppRouteWithChildren;
+  '/_auth': typeof AuthRouteWithChildren;
+  '/_app/generator': typeof AppGeneratorRoute;
+  '/_app/mfa': typeof AppMfaRoute;
+  '/_app/secrets': typeof AppSecretsRoute;
+  '/_app/settings': typeof AppSettingsRoute;
+  '/_auth/login': typeof AuthLoginRoute;
+  '/_app/': typeof AppIndexRoute;
+  '/_app/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren;
+  '/_app/projects/new': typeof AppProjectsNewRoute;
+  '/_app/projects/$projectId/secrets/new': typeof AppProjectsProjectIdSecretsNewRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | '/'
     | '/generator'
@@ -123,8 +122,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/projects/$projectId'
     | '/projects/new'
-    | '/projects/$projectId/secrets/new'
-  fileRoutesByTo: FileRoutesByTo
+    | '/projects/$projectId/secrets/new';
+  fileRoutesByTo: FileRoutesByTo;
   to:
     | '/'
     | '/generator'
@@ -134,7 +133,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/projects/$projectId'
     | '/projects/new'
-    | '/projects/$projectId/secrets/new'
+    | '/projects/$projectId/secrets/new';
   id:
     | '__root__'
     | '/_app'
@@ -147,115 +146,116 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/projects/$projectId'
     | '/_app/projects/new'
-    | '/_app/projects/$projectId/secrets/new'
-  fileRoutesById: FileRoutesById
+    | '/_app/projects/$projectId/secrets/new';
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  AppRoute: typeof AppRouteWithChildren
-  AuthRoute: typeof AuthRouteWithChildren
+  AppRoute: typeof AppRouteWithChildren;
+  AuthRoute: typeof AuthRouteWithChildren;
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
     '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+      id: '/_app';
+      path: '';
+      fullPath: '/';
+      preLoaderRoute: typeof AppRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/_auth': {
-      id: '/_auth'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+      id: '/_auth';
+      path: '';
+      fullPath: '/';
+      preLoaderRoute: typeof AuthRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     '/_app/': {
-      id: '/_app/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/';
+      path: '/';
+      fullPath: '/';
+      preLoaderRoute: typeof AppIndexRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/generator': {
-      id: '/_app/generator'
-      path: '/generator'
-      fullPath: '/generator'
-      preLoaderRoute: typeof AppGeneratorRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/generator';
+      path: '/generator';
+      fullPath: '/generator';
+      preLoaderRoute: typeof AppGeneratorRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/mfa': {
-      id: '/_app/mfa'
-      path: '/mfa'
-      fullPath: '/mfa'
-      preLoaderRoute: typeof AppMfaRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/mfa';
+      path: '/mfa';
+      fullPath: '/mfa';
+      preLoaderRoute: typeof AppMfaRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/secrets': {
-      id: '/_app/secrets'
-      path: '/secrets'
-      fullPath: '/secrets'
-      preLoaderRoute: typeof AppSecretsRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/secrets';
+      path: '/secrets';
+      fullPath: '/secrets';
+      preLoaderRoute: typeof AppSecretsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/settings': {
-      id: '/_app/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/settings';
+      path: '/settings';
+      fullPath: '/settings';
+      preLoaderRoute: typeof AppSettingsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_auth/login': {
-      id: '/_auth/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof AuthLoginRouteImport
-      parentRoute: typeof AuthRoute
-    }
+      id: '/_auth/login';
+      path: '/login';
+      fullPath: '/login';
+      preLoaderRoute: typeof AuthLoginRouteImport;
+      parentRoute: typeof AuthRoute;
+    };
     '/_app/projects/$projectId': {
-      id: '/_app/projects/$projectId'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/projects/$projectId';
+      path: '/projects/$projectId';
+      fullPath: '/projects/$projectId';
+      preLoaderRoute: typeof AppProjectsProjectIdRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/projects/new': {
-      id: '/_app/projects/new'
-      path: '/projects/new'
-      fullPath: '/projects/new'
-      preLoaderRoute: typeof AppProjectsNewRouteImport
-      parentRoute: typeof AppRoute
-    }
+      id: '/_app/projects/new';
+      path: '/projects/new';
+      fullPath: '/projects/new';
+      preLoaderRoute: typeof AppProjectsNewRouteImport;
+      parentRoute: typeof AppRoute;
+    };
     '/_app/projects/$projectId/secrets/new': {
-      id: '/_app/projects/$projectId/secrets/new'
-      path: '/secrets/new'
-      fullPath: '/projects/$projectId/secrets/new'
-      preLoaderRoute: typeof AppProjectsProjectIdSecretsNewRouteImport
-      parentRoute: typeof AppProjectsProjectIdRoute
-    }
+      id: '/_app/projects/$projectId/secrets/new';
+      path: '/secrets/new';
+      fullPath: '/projects/$projectId/secrets/new';
+      preLoaderRoute: typeof AppProjectsProjectIdSecretsNewRouteImport;
+      parentRoute: typeof AppProjectsProjectIdRoute;
+    };
   }
 }
 
 interface AppProjectsProjectIdRouteChildren {
-  AppProjectsProjectIdSecretsNewRoute: typeof AppProjectsProjectIdSecretsNewRoute
+  AppProjectsProjectIdSecretsNewRoute: typeof AppProjectsProjectIdSecretsNewRoute;
 }
 
 const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
   AppProjectsProjectIdSecretsNewRoute: AppProjectsProjectIdSecretsNewRoute,
-}
+};
 
-const AppProjectsProjectIdRouteWithChildren =
-  AppProjectsProjectIdRoute._addFileChildren(AppProjectsProjectIdRouteChildren)
+const AppProjectsProjectIdRouteWithChildren = AppProjectsProjectIdRoute._addFileChildren(
+  AppProjectsProjectIdRouteChildren,
+);
 
 interface AppRouteChildren {
-  AppGeneratorRoute: typeof AppGeneratorRoute
-  AppMfaRoute: typeof AppMfaRoute
-  AppSecretsRoute: typeof AppSecretsRoute
-  AppSettingsRoute: typeof AppSettingsRoute
-  AppIndexRoute: typeof AppIndexRoute
-  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren
-  AppProjectsNewRoute: typeof AppProjectsNewRoute
+  AppGeneratorRoute: typeof AppGeneratorRoute;
+  AppMfaRoute: typeof AppMfaRoute;
+  AppSecretsRoute: typeof AppSecretsRoute;
+  AppSettingsRoute: typeof AppSettingsRoute;
+  AppIndexRoute: typeof AppIndexRoute;
+  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren;
+  AppProjectsNewRoute: typeof AppProjectsNewRoute;
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -266,24 +266,24 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRouteWithChildren,
   AppProjectsNewRoute: AppProjectsNewRoute,
-}
+};
 
-const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren);
 
 interface AuthRouteChildren {
-  AuthLoginRoute: typeof AuthLoginRoute
+  AuthLoginRoute: typeof AuthLoginRoute;
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthLoginRoute: AuthLoginRoute,
-}
+};
 
-const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren);
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

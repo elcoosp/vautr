@@ -1,7 +1,4 @@
-import {
-  VautrWebClient,
-  type VautrWebClientOptions,
-} from '@vautr/client-sdk/real';
+import { VautrWebClient, type VautrWebClientOptions } from '@vautr/client-sdk/real';
 import { VautrMlpClient } from '@vautr/client-sdk';
 import { IndexedDbStore } from '../../../../packages/vautr-client-sdk/src/storage';
 import { getApiUrl } from '../lib/apiUrl';

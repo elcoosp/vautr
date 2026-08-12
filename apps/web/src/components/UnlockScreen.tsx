@@ -48,7 +48,10 @@ export function UnlockScreen() {
             : 'Create a new zero-knowledge vault.'}
         </p>
 
-        <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-surface-raised p-1" role="tablist">
+        <div
+          className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-surface-raised p-1"
+          role="tablist"
+        >
           <button
             type="button"
             role="tab"

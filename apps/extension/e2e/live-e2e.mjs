@@ -147,15 +147,22 @@ async function main() {
   );
   const payloadB64 = btoaBytes(ciphertext);
 
-  const pushResp = await api('POST', '/sync/push-batch', {
-    items: [{
-      uuid: itemUuid,
-      target_version: 0,
-      enc_key_gen: 1,
-      payload: payloadB64,
-      deleted_date: null,
-    }],
-  }, token);
+  const pushResp = await api(
+    'POST',
+    '/sync/push-batch',
+    {
+      items: [
+        {
+          uuid: itemUuid,
+          target_version: 0,
+          enc_key_gen: 1,
+          payload: payloadB64,
+          deleted_date: null,
+        },
+      ],
+    },
+    token,
+  );
   log(`  Push result: ${JSON.stringify(pushResp.results[0])}`);
 
   // ---- 5. STATELESS DECRYPT VIA SW WASM ----

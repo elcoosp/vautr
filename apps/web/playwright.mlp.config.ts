@@ -23,7 +23,7 @@ export default defineConfig({
     {
       // Fresh DB per run; clear any competing server on :8080 first.
       command:
-        'bash -c \'lsof -ti tcp:8080 | xargs -r kill; rm -f /tmp/vautr-web-e2e.db; VAUTR_DB_URL=sqlite:/tmp/vautr-web-e2e.db ../../target/debug/vautr-server\'',
+        "bash -c 'lsof -ti tcp:8080 | xargs -r kill; rm -f /tmp/vautr-web-e2e.db; VAUTR_DB_URL=sqlite:/tmp/vautr-web-e2e.db ../../target/debug/vautr-server'",
       url: 'http://localhost:8080/projects',
       reuseExistingServer: false,
       timeout: 30_000,

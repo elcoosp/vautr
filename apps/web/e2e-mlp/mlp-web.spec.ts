@@ -31,7 +31,9 @@ const SECRET_VALUE = `secret-${base}`;
 function userIdFor(email: string): string {
   const db = new DatabaseSync(DB);
   try {
-    const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id?: string } | undefined;
+    const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as
+      | { id?: string }
+      | undefined;
     return row?.id ?? '';
   } finally {
     db.close();

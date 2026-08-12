@@ -17,10 +17,7 @@ const SheetOverlay = forwardRef<
   ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
-    className={cn(
-      'bg-black/50 absolute inset-0 z-50 flex items-center justify-end p-2',
-      className,
-    )}
+    className={cn('bg-black/50 absolute inset-0 z-50 flex items-center justify-end p-2', className)}
     {...props}
     ref={ref}
   />
@@ -60,20 +57,26 @@ const SheetContent = forwardRef<
 ));
 SheetContent.displayName = DialogPrimitive.Content.displayName;
 
-const SheetHeader = forwardRef<
-  ComponentRef<typeof View>,
-  ComponentPropsWithoutRef<typeof View>
->(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props} />
-));
+const SheetHeader = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(
+  ({ className, ...props }, ref) => (
+    <View
+      ref={ref}
+      className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)}
+      {...props}
+    />
+  ),
+);
 SheetHeader.displayName = 'SheetHeader';
 
-const SheetFooter = forwardRef<
-  ComponentRef<typeof View>,
-  ComponentPropsWithoutRef<typeof View>
->(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('flex flex-row justify-end space-x-2 pt-4', className)} {...props} />
-));
+const SheetFooter = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(
+  ({ className, ...props }, ref) => (
+    <View
+      ref={ref}
+      className={cn('flex flex-row justify-end space-x-2 pt-4', className)}
+      {...props}
+    />
+  ),
+);
 SheetFooter.displayName = 'SheetFooter';
 
 const SheetTitle = forwardRef<

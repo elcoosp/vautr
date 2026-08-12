@@ -9,7 +9,14 @@ import type { Project, ProjectMember, Secret } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { useToast } from '../../components/ui/toast';
 
@@ -130,7 +137,9 @@ function ProjectDetailScreen() {
               <Text className="text-sm text-muted-foreground">{secrets.length} secret(s)</Text>
               <Button
                 size="sm"
-                onPress={() => router.navigate({ to: '/projects/$projectId/secrets/new', params: { projectId } })}
+                onPress={() =>
+                  router.navigate({ to: '/projects/$projectId/secrets/new', params: { projectId } })
+                }
               >
                 <Plus size={16} className="text-primary-foreground" />
                 <ButtonText className="ml-1">New</ButtonText>
@@ -172,23 +181,25 @@ function ProjectDetailScreen() {
 
         <TabsContent value="members">
           <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="flex-[2]">User</TableHead>
-                  <TableHead className="flex-1">Role</TableHead>
-                  <TableHead className="flex-1">Permission</TableHead>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="flex-[2]">User</TableHead>
+                <TableHead className="flex-1">Role</TableHead>
+                <TableHead className="flex-1">Permission</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => (
+                <TableRow key={member.user_uuid}>
+                  <TableCell className="flex-[2]">
+                    {member.display_name ?? member.user_uuid}
+                  </TableCell>
+                  <TableCell className="flex-1">{member.role}</TableCell>
+                  <TableCell className="flex-1">{member.permission}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.map((member) => (
-                  <TableRow key={member.user_uuid}>
-                    <TableCell className="flex-[2]">{member.display_name ?? member.user_uuid}</TableCell>
-                    <TableCell className="flex-1">{member.role}</TableCell>
-                    <TableCell className="flex-1">{member.permission}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              ))}
+            </TableBody>
+          </Table>
         </TabsContent>
       </Tabs>
     </View>

@@ -92,20 +92,17 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
       </div>
 
       {projects.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects yet. Create one to organize items.</p>
+        <p className="text-sm text-muted-foreground">
+          No projects yet. Create one to organize items.
+        </p>
       ) : (
         <div className="space-y-2">
           {projects.map((p) => (
-            <div
-              key={p.uuid}
-              className="flex items-center justify-between rounded-lg border p-3"
-            >
+            <div key={p.uuid} className="flex items-center justify-between rounded-lg border p-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{p.name}</span>
-                  <Badge variant={p.type === 'shared' ? 'secondary' : 'outline'}>
-                    {p.type}
-                  </Badge>
+                  <Badge variant={p.type === 'shared' ? 'secondary' : 'outline'}>{p.type}</Badge>
                 </div>
                 {p.description ? (
                   <p className="truncate text-xs text-muted-foreground">{p.description}</p>

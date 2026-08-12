@@ -2,13 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -84,20 +78,20 @@ export function VaultTab({ client }: VaultTabProps) {
     }
   }
 
-  async function handleCopy(item: {
-    uuid: string;
-    title: string;
-  }): Promise<void> {
+  async function handleCopy(item: { uuid: string; title: string }): Promise<void> {
     try {
       const { copySecret } = await import('../vaultActions');
-      await copySecret(client, items.find((i) => i.uuid === item.uuid) ?? {
-        uuid: item.uuid,
-        title: item.title,
-        subtitle: '',
-        iconKey: 'key',
-        urls: [],
-        updatedAt: 0,
-      });
+      await copySecret(
+        client,
+        items.find((i) => i.uuid === item.uuid) ?? {
+          uuid: item.uuid,
+          title: item.title,
+          subtitle: '',
+          iconKey: 'key',
+          urls: [],
+          updatedAt: 0,
+        },
+      );
       toast.success(`Copied "${item.title}".`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -170,11 +164,7 @@ export function VaultTab({ client }: VaultTabProps) {
                     >
                       Autofill
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void handleReveal(item)}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => void handleReveal(item)}>
                       {revealedSecret ? 'Hide' : 'Reveal'}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => void handleCopy(item)}>
@@ -205,11 +195,7 @@ export function VaultTab({ client }: VaultTabProps) {
             </div>
             <div className="space-y-1">
               <Label>Password</Label>
-              <Input
-                type="password"
-                value={addPass}
-                onChange={(e) => setAddPass(e.target.value)}
-              />
+              <Input type="password" value={addPass} onChange={(e) => setAddPass(e.target.value)} />
               {assessment ? (
                 <div className="flex items-center gap-2 pt-1">
                   <Badge

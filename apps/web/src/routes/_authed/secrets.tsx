@@ -3,7 +3,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { mlp, MlpApiError } from '@/lib/mlp';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Project, Secret } from '@vautr/api-contract';
 import { Eye, EyeOff, Lock } from 'lucide-react';
@@ -71,7 +78,10 @@ function SecretsManagerPage() {
       setRevealed((prev) => ({ ...prev, [uuid]: b64decode(res.value_ciphertext) }));
       setRevealError((prev) => ({ ...prev, [uuid]: '' }));
     } catch (err) {
-      setRevealError((prev) => ({ ...prev, [uuid]: err instanceof MlpApiError ? err.message : String(err) }));
+      setRevealError((prev) => ({
+        ...prev,
+        [uuid]: err instanceof MlpApiError ? err.message : String(err),
+      }));
     }
   };
 
@@ -118,7 +128,11 @@ function SecretsManagerPage() {
                 {rows.map(({ project, secret }) => (
                   <TableRow key={secret.uuid}>
                     <TableCell>
-                      <Link to="/projects/$uuid" params={{ uuid: project.uuid }} className="text-accent hover:underline">
+                      <Link
+                        to="/projects/$uuid"
+                        params={{ uuid: project.uuid }}
+                        className="text-accent hover:underline"
+                      >
                         {project.name}
                       </Link>
                       <Badge variant="outline" className="ml-2">
@@ -128,8 +142,16 @@ function SecretsManagerPage() {
                     <TableCell className="font-mono text-text">{secret.key}</TableCell>
                     <TableCell className="text-text-muted">{secret.version}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => void onReveal(secret.uuid)}>
-                        {revealed[secret.uuid] ? <EyeOff className="mr-1 size-4" aria-hidden="true" /> : <Eye className="mr-1 size-4" aria-hidden="true" />}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void onReveal(secret.uuid)}
+                      >
+                        {revealed[secret.uuid] ? (
+                          <EyeOff className="mr-1 size-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="mr-1 size-4" aria-hidden="true" />
+                        )}
                         {revealed[secret.uuid] ? 'Hide' : 'Reveal'}
                       </Button>
                     </TableCell>
@@ -143,7 +165,10 @@ function SecretsManagerPage() {
             <div className="mt-4 space-y-2">
               {rows.map(({ secret }) =>
                 revealed[secret.uuid] ? (
-                  <div key={secret.uuid} className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 font-mono text-sm text-text">
+                  <div
+                    key={secret.uuid}
+                    className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 font-mono text-sm text-text"
+                  >
                     <span className="text-text-muted">{secret.key}: </span>
                     {revealed[secret.uuid]}
                   </div>
@@ -156,7 +181,11 @@ function SecretsManagerPage() {
             <div className="mt-4 space-y-2">
               {rows.map(({ secret }) =>
                 revealError[secret.uuid] ? (
-                  <p key={secret.uuid} role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+                  <p
+                    key={secret.uuid}
+                    role="alert"
+                    className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                  >
                     Reveal denied for {secret.key}: {revealError[secret.uuid]}
                   </p>
                 ) : null,

@@ -50,18 +50,27 @@ function GeneratorPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold text-text">Password generator</h1>
-        <p className="text-sm text-text-muted">Generate strong passwords and detect weak or reused ones.</p>
+        <p className="text-sm text-text-muted">
+          Generate strong passwords and detect weak or reused ones.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Generator</CardTitle>
-            <CardDescription>Options for a cryptographically-secure random password.</CardDescription>
+            <CardDescription>
+              Options for a cryptographically-secure random password.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
-              <Input value={password} readOnly className="font-mono" aria-label="Generated password" />
+              <Input
+                value={password}
+                readOnly
+                className="font-mono"
+                aria-label="Generated password"
+              />
               <Button variant="outline" size="icon" onClick={copy} aria-label="Copy password">
                 <Copy className="size-4" aria-hidden="true" />
               </Button>
@@ -81,11 +90,31 @@ function GeneratorPage() {
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <SwitchRow label="Uppercase" checked={options.uppercase} onChange={(v) => setOptions((o) => ({ ...o, uppercase: v }))} />
-              <SwitchRow label="Lowercase" checked={options.lowercase} onChange={(v) => setOptions((o) => ({ ...o, lowercase: v }))} />
-              <SwitchRow label="Digits" checked={options.digits} onChange={(v) => setOptions((o) => ({ ...o, digits: v }))} />
-              <SwitchRow label="Symbols" checked={options.symbols} onChange={(v) => setOptions((o) => ({ ...o, symbols: v }))} />
-              <SwitchRow label="Avoid ambiguous" checked={!!options.avoidAmbiguous} onChange={(v) => setOptions((o) => ({ ...o, avoidAmbiguous: v }))} />
+              <SwitchRow
+                label="Uppercase"
+                checked={options.uppercase}
+                onChange={(v) => setOptions((o) => ({ ...o, uppercase: v }))}
+              />
+              <SwitchRow
+                label="Lowercase"
+                checked={options.lowercase}
+                onChange={(v) => setOptions((o) => ({ ...o, lowercase: v }))}
+              />
+              <SwitchRow
+                label="Digits"
+                checked={options.digits}
+                onChange={(v) => setOptions((o) => ({ ...o, digits: v }))}
+              />
+              <SwitchRow
+                label="Symbols"
+                checked={options.symbols}
+                onChange={(v) => setOptions((o) => ({ ...o, symbols: v }))}
+              />
+              <SwitchRow
+                label="Avoid ambiguous"
+                checked={!!options.avoidAmbiguous}
+                onChange={(v) => setOptions((o) => ({ ...o, avoidAmbiguous: v }))}
+              />
             </div>
           </CardContent>
         </Card>
@@ -93,7 +122,9 @@ function GeneratorPage() {
         <Card>
           <CardHeader>
             <CardTitle>Weak / reused detection</CardTitle>
-            <CardDescription>Paste a candidate password; we check its strength and reuse.</CardDescription>
+            <CardDescription>
+              Paste a candidate password; we check its strength and reuse.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
@@ -136,13 +167,18 @@ function GeneratorPage() {
                 </div>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-border">
-                <div className={`h-full ${scoreColors[analysis.score] ?? 'bg-border'}`} style={{ width: `${Math.min(100, analysis.entropyBits)}%` }} />
+                <div
+                  className={`h-full ${scoreColors[analysis.score] ?? 'bg-border'}`}
+                  style={{ width: `${Math.min(100, analysis.entropyBits)}%` }}
+                />
               </div>
               {analysis.isReused ? (
                 <p className="mt-2 text-sm font-medium text-warn">⚠ Reused password detected.</p>
               ) : null}
               {analysis.isCommon ? (
-                <p className="mt-1 text-sm font-medium text-danger">This is a common, easily-guessed password.</p>
+                <p className="mt-1 text-sm font-medium text-danger">
+                  This is a common, easily-guessed password.
+                </p>
               ) : null}
               {analysis.suggestions.length > 0 ? (
                 <ul className="mt-2 list-disc pl-4 text-sm text-text-muted">
@@ -159,7 +195,15 @@ function GeneratorPage() {
   );
 }
 
-function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function SwitchRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border bg-surface-raised px-3 py-2">
       <Label className="cursor-pointer text-sm text-text">{label}</Label>

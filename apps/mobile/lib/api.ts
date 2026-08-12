@@ -195,7 +195,10 @@ export class MobileApiClient {
       value_ciphertext: input.value_ciphertext,
     });
   }
-  async updateSecret(uuid: string, input: { key?: string; value_ciphertext?: string }): Promise<Secret> {
+  async updateSecret(
+    uuid: string,
+    input: { key?: string; value_ciphertext?: string },
+  ): Promise<Secret> {
     return this.http.request<Secret>(
       'PATCH',
       HttpClient.interpolate('/secrets/{uuid}', { uuid }),
@@ -220,7 +223,10 @@ export class MobileApiClient {
   async mfaTotpIssue(): Promise<TotpIssueResponse> {
     return this.http.request<TotpIssueResponse>('POST', '/mfa/totp/issue');
   }
-  async mfaTotpVerify(input: { enrollment_id?: string; code: string }): Promise<TotpVerifyResponse> {
+  async mfaTotpVerify(input: {
+    enrollment_id?: string;
+    code: string;
+  }): Promise<TotpVerifyResponse> {
     return this.http.request<TotpVerifyResponse>('POST', '/mfa/totp/verify', input);
   }
 

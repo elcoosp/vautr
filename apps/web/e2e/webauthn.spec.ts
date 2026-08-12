@@ -27,9 +27,11 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 const SERVER = 'http://localhost:8080';
 const ORIGIN = 'http://localhost:5173';
 
-const state = JSON.parse(
-  readFileSync(join(tmpdir(), 'vautr-webauthn-e2e-state.json'), 'utf8'),
-) as { dbPath: string; sessionToken: string; userId: string };
+const state = JSON.parse(readFileSync(join(tmpdir(), 'vautr-webauthn-e2e-state.json'), 'utf8')) as {
+  dbPath: string;
+  sessionToken: string;
+  userId: string;
+};
 
 type Session = { token: string; userId: string; headers: Record<string, string> };
 
@@ -44,8 +46,14 @@ function freshSession(): Session {
        svk_ciphertext_blob_rk, min_enc_key_gen, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).run(
-    userId, `${userId}@vautr.test`, new Uint8Array(32), new Uint8Array(16),
-    new Uint8Array(48), new Uint8Array(48), now, now,
+    userId,
+    `${userId}@vautr.test`,
+    new Uint8Array(32),
+    new Uint8Array(16),
+    new Uint8Array(48),
+    new Uint8Array(48),
+    now,
+    now,
   );
   db.prepare(
     `INSERT INTO sessions (token, user_id, expires_at, created_at)
@@ -244,7 +252,10 @@ async function accountStatus(
 }
 
 /** GET /webauthn/credentials -> { credentials: [{ cred_id, label }] }. */
-async function listCredentials(page: Page, session: Session): Promise<{ cred_id: string; label: string }[]> {
+async function listCredentials(
+  page: Page,
+  session: Session,
+): Promise<{ cred_id: string; label: string }[]> {
   const body = await page.evaluate(
     ({ server, headers }) =>
       fetch(`${server}/webauthn/credentials`, { headers }).then((r) => r.json()),

@@ -63,7 +63,10 @@ export function decrypt_item_js(
   return (raw as any).decrypt_item_js(uuid, ensureBigInt(enc_key_gen), dek, payload);
 }
 
-export function opaque_register_start_js(password: string): { message: Uint8Array; state: Uint8Array } {
+export function opaque_register_start_js(password: string): {
+  message: Uint8Array;
+  state: Uint8Array;
+} {
   return (raw as any).opaque_register_start_js(password);
 }
 
@@ -76,7 +79,10 @@ export function opaque_register_finish_js(
   return (raw as any).opaque_register_finish_js(client_state, server_response, password, username);
 }
 
-export function opaque_login_start_js(password: string): { message: Uint8Array; state: Uint8Array } {
+export function opaque_login_start_js(password: string): {
+  message: Uint8Array;
+  state: Uint8Array;
+} {
   return (raw as any).opaque_login_start_js(password);
 }
 

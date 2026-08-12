@@ -187,11 +187,7 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
                           v{s.version}
                         </Badge>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleReveal(s)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => void handleReveal(s)}>
                         {valueText || denial ? 'Hide' : 'Reveal'}
                       </Button>
                     </div>
@@ -212,9 +208,7 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
           )}
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Select a project to manage its secrets.
-        </p>
+        <p className="text-sm text-muted-foreground">Select a project to manage its secrets.</p>
       )}
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

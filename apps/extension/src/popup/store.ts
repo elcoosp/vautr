@@ -1,10 +1,6 @@
 import { create } from 'zustand';
 import type { DecryptedOverview } from '@vautr/client-sdk';
-import type {
-  MachineAccount,
-  Project,
-  Secret,
-} from '@vautr/api-contract';
+import type { MachineAccount, Project, Secret } from '@vautr/api-contract';
 
 export type PopupStatus = 'locked' | 'unlocking' | 'unlocked' | 'busy';
 

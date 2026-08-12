@@ -69,12 +69,10 @@ async function handleAutofill(
   }
 }
 
-browser.runtime.onMessage.addListener(
-  ((message, sender, sendResponse) => {
-    if (isAutofillRequest(message)) {
-      void handleAutofill(message, sender).then(sendResponse);
-      return true; // keep the message channel open for the async response
-    }
-    return;
-  }) as Parameters<typeof browser.runtime.onMessage.addListener>[0],
-);
+browser.runtime.onMessage.addListener(((message, sender, sendResponse) => {
+  if (isAutofillRequest(message)) {
+    void handleAutofill(message, sender).then(sendResponse);
+    return true; // keep the message channel open for the async response
+  }
+  return;
+}) as Parameters<typeof browser.runtime.onMessage.addListener>[0]);

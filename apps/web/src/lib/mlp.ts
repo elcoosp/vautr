@@ -75,11 +75,7 @@ async function sessionToken(): Promise<string | null> {
   return state.sessionToken;
 }
 
-async function request<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = await sessionToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -104,7 +100,12 @@ async function request<T>(
   }
   if (!res.ok) {
     const err = data as ErrorEnvelope;
-    throw new MlpApiError(res.status, err.error ?? 'http_error', err.message ?? `HTTP ${res.status}`, err.context);
+    throw new MlpApiError(
+      res.status,
+      err.error ?? 'http_error',
+      err.message ?? `HTTP ${res.status}`,
+      err.context,
+    );
   }
   return data as T;
 }
@@ -135,7 +136,8 @@ export const mlp = {
     uuid: string,
     userUuid: string,
     req: { role?: string; permission?: string; hide_password?: boolean },
-  ) => request<ProjectMember>('PATCH', `/projects/${encode(uuid)}/members/${encode(userUuid)}`, req),
+  ) =>
+    request<ProjectMember>('PATCH', `/projects/${encode(uuid)}/members/${encode(userUuid)}`, req),
   removeMember: (uuid: string, userUuid: string) =>
     request<StatusResponse>('DELETE', `/projects/${encode(uuid)}/members/${encode(userUuid)}`),
 
@@ -148,7 +150,11 @@ export const mlp = {
   deleteGroup: (uuid: string, groupId: string) =>
     request<StatusResponse>('DELETE', `/projects/${encode(uuid)}/groups/${encode(groupId)}`),
   addGroupMember: (uuid: string, groupId: string, req: { user_uuid: string; role?: string }) =>
-    request<StatusResponse>('POST', `/projects/${encode(uuid)}/groups/${encode(groupId)}/members`, req),
+    request<StatusResponse>(
+      'POST',
+      `/projects/${encode(uuid)}/groups/${encode(groupId)}/members`,
+      req,
+    ),
   removeGroupMember: (uuid: string, groupId: string, userUuid: string) =>
     request<StatusResponse>(
       'DELETE',
@@ -175,7 +181,8 @@ export const mlp = {
   // -------------------------------------------------------------------------
   mfaStatus: () => request<MfaStatus>('GET', '/mfa/status'),
   mfaTotpIssue: () => request<TotpIssueResponse>('POST', '/mfa/totp/issue'),
-  mfaTotpVerify: (req: TotpVerifyRequest) => request<TotpVerifyResponse>('POST', '/mfa/totp/verify', req),
+  mfaTotpVerify: (req: TotpVerifyRequest) =>
+    request<TotpVerifyResponse>('POST', '/mfa/totp/verify', req),
   mfaPolicyGet: () => request<MfaPolicy>('GET', '/mfa/policy'),
   mfaPolicyUpdate: (req: MfaPolicyUpdateRequest) => request<MfaPolicy>('PUT', '/mfa/policy', req),
 
@@ -196,7 +203,8 @@ export const mlp = {
   // Access tokens
   // -------------------------------------------------------------------------
   listTokens: () => request<AccessTokenListResponse>('GET', '/tokens'),
-  createToken: (req: AccessTokenCreateRequest) => request<AccessTokenCreateResponse>('POST', '/tokens', req),
+  createToken: (req: AccessTokenCreateRequest) =>
+    request<AccessTokenCreateResponse>('POST', '/tokens', req),
   getToken: (uuid: string) => request<AccessToken>('GET', `/tokens/${encode(uuid)}`),
   revokeToken: (uuid: string) => request<StatusResponse>('DELETE', `/tokens/${encode(uuid)}`),
 

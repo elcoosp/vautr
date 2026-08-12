@@ -67,7 +67,9 @@ function ProjectsListScreen() {
         projects.map((project) => (
           <Pressable
             key={project.uuid}
-            onPress={() => router.navigate({ to: '/projects/$projectId', params: { projectId: project.uuid } })}
+            onPress={() =>
+              router.navigate({ to: '/projects/$projectId', params: { projectId: project.uuid } })
+            }
           >
             <Card className="p-4">
               <View className="flex-row items-center justify-between">

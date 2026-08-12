@@ -40,7 +40,9 @@ function ImportExportPage() {
     setBusy('export');
     try {
       const res = await mlp.backupExport({ include_secrets: includeSecrets });
-      toast.success(`Backup created (${res.size_bytes ?? 'unknown'} bytes). Use the restore box with backup ID to restore.`);
+      toast.success(
+        `Backup created (${res.size_bytes ?? 'unknown'} bytes). Use the restore box with backup ID to restore.`,
+      );
       void load();
     } catch (err) {
       toast.error(err instanceof MlpApiError ? err.message : String(err));
@@ -73,7 +75,9 @@ function ImportExportPage() {
           <ArrowLeftRight className="size-5 text-accent" aria-hidden="true" />
           Import / export
         </h1>
-        <p className="text-sm text-text-muted">Backup and restore your organization data against the live server.</p>
+        <p className="text-sm text-text-muted">
+          Backup and restore your organization data against the live server.
+        </p>
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -85,12 +89,18 @@ function ImportExportPage() {
             <CardDescription>Automated and on-demand backups.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-4">
-            <Badge variant={status.enabled ? 'default' : 'secondary'}>{status.enabled ? 'enabled' : 'disabled'}</Badge>
+            <Badge variant={status.enabled ? 'default' : 'secondary'}>
+              {status.enabled ? 'enabled' : 'disabled'}
+            </Badge>
             {status.last_backup_at ? (
-              <span className="text-sm text-text-muted">Last backup {new Date(status.last_backup_at).toLocaleString()}</span>
+              <span className="text-sm text-text-muted">
+                Last backup {new Date(status.last_backup_at).toLocaleString()}
+              </span>
             ) : null}
             {status.last_restore_test_status ? (
-              <span className="text-sm text-text-muted">Last restore test: {status.last_restore_test_status}</span>
+              <span className="text-sm text-text-muted">
+                Last restore test: {status.last_restore_test_status}
+              </span>
             ) : null}
           </CardContent>
         </Card>
@@ -103,7 +113,9 @@ function ImportExportPage() {
               <Download className="size-4 text-accent" aria-hidden="true" />
               Export backup
             </CardTitle>
-            <CardDescription>Create an encrypted backup archive of the current state.</CardDescription>
+            <CardDescription>
+              Create an encrypted backup archive of the current state.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <label className="flex items-center gap-2 text-sm text-text">

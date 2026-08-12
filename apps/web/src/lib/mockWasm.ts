@@ -55,7 +55,7 @@ function unbuilt(): Error {
   );
 }
 
-const stub = <T,>(): T => {
+const stub = <T>(): T => {
   throw unbuilt();
 };
 
@@ -69,27 +69,27 @@ export const unwrap_svk_js = stub<(wrapped: Uint8Array, kek: Uint8Array) => Uint
 export const generate_recovery_mnemonic_js = stub<() => string>();
 export const wrap_svk_with_rk_js = stub<(svk: Uint8Array, mnemonic: string) => Uint8Array>();
 export const derive_dek_js = stub<(svk: Uint8Array) => Uint8Array>();
-export const encrypt_item_js = stub<
-  (uuid: string, encKeyGen: number, dek: Uint8Array, plaintext: Uint8Array) => Uint8Array
->();
-export const decrypt_item_js = stub<
-  (uuid: string, encKeyGen: number, dek: Uint8Array, payload: Uint8Array) => Uint8Array
->();
+export const encrypt_item_js =
+  stub<(uuid: string, encKeyGen: number, dek: Uint8Array, plaintext: Uint8Array) => Uint8Array>();
+export const decrypt_item_js =
+  stub<(uuid: string, encKeyGen: number, dek: Uint8Array, payload: Uint8Array) => Uint8Array>();
 export const opaque_register_start_js = stub<(password: string) => OpaqueStart>();
-export const opaque_register_finish_js = stub<
-  (
-    clientState: Uint8Array,
-    serverResponse: Uint8Array,
-    password: string,
-    username: string,
-  ) => Uint8Array
->();
+export const opaque_register_finish_js =
+  stub<
+    (
+      clientState: Uint8Array,
+      serverResponse: Uint8Array,
+      password: string,
+      username: string,
+    ) => Uint8Array
+  >();
 export const opaque_login_start_js = stub<(password: string) => OpaqueStart>();
-export const opaque_login_finish_js = stub<
-  (
-    clientState: Uint8Array,
-    serverResponse: Uint8Array,
-    password: string,
-    username: string,
-  ) => OpaqueLoginFinish
->();
+export const opaque_login_finish_js =
+  stub<
+    (
+      clientState: Uint8Array,
+      serverResponse: Uint8Array,
+      password: string,
+      username: string,
+    ) => OpaqueLoginFinish
+  >();
