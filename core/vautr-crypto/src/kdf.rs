@@ -30,13 +30,8 @@ pub fn generate_kdf_salt() -> [u8; 32] {
 ///
 /// Returns `Zeroizing<[u8; 32]>` so the MK is wiped on drop.
 pub fn derive_master_key(mp: &str, salt: &[u8; 32]) -> Result<Zeroizing<[u8; 32]>> {
-    let params = Params::new(
-        ARGON2_M_COST,
-        ARGON2_T_COST,
-        ARGON2_P_COST,
-        Some(MK_LEN),
-    )
-    .map_err(|e| CryptoError::KdfError(e.to_string()))?;
+    let params = Params::new(ARGON2_M_COST, ARGON2_T_COST, ARGON2_P_COST, Some(MK_LEN))
+        .map_err(|e| CryptoError::KdfError(e.to_string()))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut raw = Zeroizing::new([0u8; MK_LEN]);
     argon2

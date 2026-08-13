@@ -108,7 +108,10 @@ pub fn share_item(
     let nonce_bytes = random_nonce();
     let nonce = chacha20poly1305::XNonce::from_slice(&nonce_bytes);
     let mut ct = cipher
-        .encrypt(nonce, chacha20poly1305::aead::Payload { msg: sik, aad: &ad })
+        .encrypt(
+            nonce,
+            chacha20poly1305::aead::Payload { msg: sik, aad: &ad },
+        )
         .map_err(|_| CryptoError::Internal("share seal failed".into()))?;
     let mut out = Vec::with_capacity(NONCE_LEN + ct.len() + 16);
     out.extend_from_slice(&nonce_bytes);
@@ -139,13 +142,7 @@ pub fn unwrap_shared_item(
     let cipher = XChaCha20Poly1305::new(Key::from_slice(&key[..]));
     let nonce = chacha20poly1305::XNonce::from_slice(nonce_bytes);
     let pt = cipher
-        .decrypt(
-            nonce,
-            chacha20poly1305::aead::Payload {
-                msg: ct,
-                aad: &ad,
-            },
-        )
+        .decrypt(nonce, chacha20poly1305::aead::Payload { msg: ct, aad: &ad })
         .map_err(|_| CryptoError::TagMismatch)?;
 
     if pt.len() != MK_LEN {

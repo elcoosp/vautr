@@ -16,9 +16,9 @@
 
 use crate::error::{CryptoError, Result};
 use opaque_ke::{
-    CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientRegistration,
-    ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters,
-    ServerRegistration, ServerSetup, ksf::Identity,
+    ksf::Identity, CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientRegistration,
+    ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters, ServerRegistration,
+    ServerSetup,
 };
 use rand::rngs::OsRng;
 use sha2::Sha512;
@@ -44,8 +44,7 @@ pub fn server_setup_public_key() -> Result<Vec<u8>> {
 }
 
 fn load_server_setup(bytes: &[u8]) -> Result<ServerSetup<VautrSuite>> {
-    ServerSetup::<VautrSuite>::deserialize(bytes)
-        .map_err(|e| CryptoError::AuthError(e.to_string()))
+    ServerSetup::<VautrSuite>::deserialize(bytes).map_err(|e| CryptoError::AuthError(e.to_string()))
 }
 
 // --- Registration (client start → server start → client finish → server finish) ---
@@ -56,7 +55,10 @@ pub fn client_register_start(password: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     let mut rng = OsRng;
     let res = ClientRegistration::<VautrSuite>::start(&mut rng, password)
         .map_err(|e| CryptoError::AuthError(e.to_string()))?;
-    Ok((res.message.serialize().to_vec(), res.state.serialize().to_vec()))
+    Ok((
+        res.message.serialize().to_vec(),
+        res.state.serialize().to_vec(),
+    ))
 }
 
 /// Server registration start. `server_setup` = bytes from [`server_setup_public_key`].
@@ -115,7 +117,10 @@ pub fn client_login_start(password: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     let mut rng = OsRng;
     let res = ClientLogin::<VautrSuite>::start(&mut rng, password)
         .map_err(|e| CryptoError::AuthError(e.to_string()))?;
-    Ok((res.message.serialize().to_vec(), res.state.serialize().to_vec()))
+    Ok((
+        res.message.serialize().to_vec(),
+        res.state.serialize().to_vec(),
+    ))
 }
 
 /// Server login start. `record` = the stored `opaque_record` for the user.
@@ -145,16 +150,12 @@ pub fn server_login_start(
         },
         ..Default::default()
     };
-    let res = ServerLogin::<VautrSuite>::start(
-        &mut rng,
-        &setup,
-        pwfile,
-        req,
-        username,
-        params,
-    )
-    .map_err(|e| CryptoError::AuthError(e.to_string()))?;
-    Ok((res.message.serialize().to_vec(), res.state.serialize().to_vec()))
+    let res = ServerLogin::<VautrSuite>::start(&mut rng, &setup, pwfile, req, username, params)
+        .map_err(|e| CryptoError::AuthError(e.to_string()))?;
+    Ok((
+        res.message.serialize().to_vec(),
+        res.state.serialize().to_vec(),
+    ))
 }
 
 /// Client login finish. Returns `(login_upload_bytes, session_key)`.
@@ -217,7 +218,10 @@ mod tests {
         let (lupload, c_session) = client_login_finish(&lstate, &lresp, pw, user).unwrap();
         let s_session = server_login_finish(&sstate, &lupload).unwrap();
 
-        assert_eq!(c_session, s_session, "client/server session keys must match");
+        assert_eq!(
+            c_session, s_session,
+            "client/server session keys must match"
+        );
         assert_eq!(c_session.len(), 64);
     }
 

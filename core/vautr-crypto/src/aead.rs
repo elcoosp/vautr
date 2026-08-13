@@ -55,7 +55,11 @@ pub fn construct_ad(uuid: &Uuid, enc_key_gen: u64) -> [u8; 24] {
 /// §2.2) to prevent chunk reordering or insertion by a malicious server:
 /// `ad[..16] = file_uuid`, `ad[16..24] = enc_key_gen.to_be_bytes()`,
 /// `ad[24..28] = chunk_index.to_be_bytes()`.
-pub fn construct_file_ad(file_uuid: &Uuid, enc_key_gen: u64, chunk_index: u32) -> [u8; FILE_AD_LEN] {
+pub fn construct_file_ad(
+    file_uuid: &Uuid,
+    enc_key_gen: u64,
+    chunk_index: u32,
+) -> [u8; FILE_AD_LEN] {
     let mut ad = [0u8; FILE_AD_LEN];
     ad[..16].copy_from_slice(file_uuid.as_bytes());
     ad[16..24].copy_from_slice(&enc_key_gen.to_be_bytes());
@@ -79,12 +83,7 @@ pub fn chunk_nonce(file_uuid: &Uuid, chunk_index: u32) -> [u8; NONCE_LEN] {
 }
 
 /// Encrypt `plaintext` under `key` (32 bytes) with AD = `(uuid, enc_key_gen)`.
-pub fn encrypt(
-    key: &[u8; 32],
-    uuid: &Uuid,
-    enc_key_gen: u64,
-    plaintext: &[u8],
-) -> Result<Vec<u8>> {
+pub fn encrypt(key: &[u8; 32], uuid: &Uuid, enc_key_gen: u64, plaintext: &[u8]) -> Result<Vec<u8>> {
     let nonce = random_nonce();
     encrypt_with_nonce(key, &nonce, &construct_ad(uuid, enc_key_gen), plaintext)
 }
@@ -103,7 +102,13 @@ pub fn encrypt_with_nonce(
     let cipher = XChaCha20Poly1305::new(key.into());
     let n: XNonce = nonce.as_slice().try_into().expect("nonce len");
     let ct = cipher
-        .encrypt(&n, Payload { msg: plaintext, aad: ad })
+        .encrypt(
+            &n,
+            Payload {
+                msg: plaintext,
+                aad: ad,
+            },
+        )
         .map_err(|_| CryptoError::Internal("encryption failed".into()))?;
     let mut out = Vec::with_capacity(NONCE_LEN + ct.len());
     out.extend_from_slice(nonce);
@@ -114,12 +119,7 @@ pub fn encrypt_with_nonce(
 /// Decrypt an envelope produced by [`encrypt`].
 ///
 /// Returns `TagMismatch` on wrong key/tamper, `MalformedCiphertext` on bad length.
-pub fn decrypt(
-    key: &[u8; 32],
-    uuid: &Uuid,
-    enc_key_gen: u64,
-    envelope: &[u8],
-) -> Result<Vec<u8>> {
+pub fn decrypt(key: &[u8; 32], uuid: &Uuid, enc_key_gen: u64, envelope: &[u8]) -> Result<Vec<u8>> {
     decrypt_with_ad(key, &construct_ad(uuid, enc_key_gen), envelope)
 }
 

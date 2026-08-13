@@ -2,14 +2,10 @@
 //! Spec: docs/architecture/db-contract.md §5 — save_item_txn,
 //! apply_sync_batch_txn, persist_dashmap_txn, reaper_reset_ttl_txn.
 
-use crate::entity::{
-    item_overview, item_payload, local_blacklist, quarantine, sync_meta,
-};
+use crate::entity::{item_overview, item_payload, local_blacklist, quarantine, sync_meta};
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    DatabaseTransaction, DbErr, EntityTrait, Set,
-};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
+use sea_orm::{DatabaseTransaction, DbErr, EntityTrait, Set};
 
 /// Atomic upsert of hot/cold item data (db-contract §5.1).
 /// The FTS5 trigger over `item_overviews` fires automatically on upsert.
@@ -183,10 +179,7 @@ pub async fn reaper_reset_ttl_txn(
 }
 
 /// Persist the (re)wrapped SVK blob into `sync_meta` (rotation / recovery).
-pub async fn store_svk_blob(
-    db: &DatabaseConnection,
-    blob: &[u8],
-) -> Result<(), DbErr> {
+pub async fn store_svk_blob(db: &DatabaseConnection, blob: &[u8]) -> Result<(), DbErr> {
     sync_meta::Entity::update_many()
         .col_expr(
             sync_meta::Column::SvkCiphertextBlob,
@@ -216,7 +209,8 @@ mod tests {
     use sea_orm::{ActiveValue::Set, Database, DatabaseConnection, TransactionTrait};
 
     async fn connect() -> DatabaseConnection {
-        let path = std::env::temp_dir().join(format!("vautr_db_test_{}.sqlite", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_db_test_{}.sqlite", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}?mode=rwc", path.display());
         let db = Database::connect(&url).await.unwrap();
         crate::migrate::init(&db).await.unwrap();
@@ -276,4 +270,3 @@ mod tests {
         txn.commit().await.unwrap();
     }
 }
-

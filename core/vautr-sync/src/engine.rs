@@ -176,6 +176,12 @@ impl Engine {
         force_overwrite: bool,
     ) -> (occ::ConflictResolution, occ::ConflictEvent) {
         let is_toxic = self.blacklist.is_toxic(&uuid);
-        occ::resolve(uuid, local_version, server_version, is_toxic, force_overwrite)
+        occ::resolve(
+            uuid,
+            local_version,
+            server_version,
+            is_toxic,
+            force_overwrite,
+        )
     }
 }

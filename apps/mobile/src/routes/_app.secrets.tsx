@@ -1,13 +1,11 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { getMobileClient } from '@vautr/client-sdk/mobile';
-import { Eye, EyeOff } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { SecretOverlay } from '../../components/SecretOverlay';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
-import { useToast } from '../../components/ui/toast';
 import type { Project, Secret } from '../../lib/api';
 import { services } from '../../lib/client';
 
@@ -22,7 +20,6 @@ interface SecretsEntry {
 
 function SecretsScreen() {
   const router = useRouter();
-  const toast = useToast();
   const [entries, setEntries] = useState<SecretsEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
