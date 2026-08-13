@@ -19,6 +19,11 @@ pub enum CoreAction {
     CopyToClipboard { handle: u64 },
     /// Autofill the revealed secret into the focused field.
     Autofill { handle: u64 },
+    /// Render the revealed secret in the native overlay view (Kotlin/Swift).
+    /// The plaintext is delivered only to the native `PlatformActionHandler`
+    /// (never JS); the overlay view renders it from `on_action` and calls
+    /// `release_secret` on unmount (VTR-048, ADR-003).
+    RenderInOverlay { handle: u64 },
 }
 
 /// Platform capability trait. Implemented by the FFI/WASM layer (GPUI,

@@ -1540,7 +1540,9 @@ impl CoreAction {
     /// The handle this action targets.
     pub fn handle(&self) -> u64 {
         match self {
-            CoreAction::CopyToClipboard { handle } | CoreAction::Autofill { handle } => *handle,
+            CoreAction::CopyToClipboard { handle }
+            | CoreAction::Autofill { handle }
+            | CoreAction::RenderInOverlay { handle } => *handle,
         }
     }
 }

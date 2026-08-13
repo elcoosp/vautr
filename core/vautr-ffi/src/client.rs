@@ -33,8 +33,18 @@ pub type SecretHandle = u64;
 /// FFI-safe action enum mirroring `vautr_app_state::handles::CoreAction`.
 #[derive(Clone, Debug, Enum)]
 pub enum CoreAction {
-    CopyToClipboard { handle: SecretHandle },
-    Autofill { handle: SecretHandle },
+    CopyToClipboard {
+        handle: SecretHandle,
+    },
+    Autofill {
+        handle: SecretHandle,
+    },
+    /// Render the secret in the native overlay view. The plaintext is delivered
+    /// only to the native `PlatformActionHandler` (never JS); the overlay calls
+    /// `release_secret` on unmount (VTR-048, ADR-003).
+    RenderInOverlay {
+        handle: SecretHandle,
+    },
 }
 
 impl From<CoreAction> for CoreCoreAction {
@@ -42,6 +52,7 @@ impl From<CoreAction> for CoreCoreAction {
         match a {
             CoreAction::CopyToClipboard { handle } => CoreCoreAction::CopyToClipboard { handle },
             CoreAction::Autofill { handle } => CoreCoreAction::Autofill { handle },
+            CoreAction::RenderInOverlay { handle } => CoreCoreAction::RenderInOverlay { handle },
         }
     }
 }
@@ -51,6 +62,7 @@ impl From<CoreCoreAction> for CoreAction {
         match a {
             CoreCoreAction::CopyToClipboard { handle } => CoreAction::CopyToClipboard { handle },
             CoreCoreAction::Autofill { handle } => CoreAction::Autofill { handle },
+            CoreCoreAction::RenderInOverlay { handle } => CoreAction::RenderInOverlay { handle },
         }
     }
 }
@@ -230,13 +242,7 @@ impl MobileClient {
         salt.copy_from_slice(&kdf_salt);
         let uid = Uuid::parse_str(&user_id).map_err(|e| FfiError::Uuid(e.to_string()))?;
         self.inner
-            .unlock_with_password(
-                Zeroizing::new(mp),
-                &salt,
-                &wrapped_svk,
-                uid,
-                local_gen,
-            )
+            .unlock_with_password(Zeroizing::new(mp), &salt, &wrapped_svk, uid, local_gen)
             .await
             .map_err(FfiError::Core)
     }
@@ -252,7 +258,9 @@ impl MobileClient {
         }
         let mut key = [0u8; 32];
         key.copy_from_slice(&raw_key);
-        self.inner.unlock_with_raw_key(Zeroizing::new(key), local_gen).await;
+        self.inner
+            .unlock_with_raw_key(Zeroizing::new(key), local_gen)
+            .await;
         Ok(())
     }
 
@@ -275,7 +283,11 @@ impl MobileClient {
     /// Get a single overview by uuid string. Returns JSON `DecryptedOverview`.
     pub async fn get_overview(&self, uuid: String) -> Result<String, FfiError> {
         let uuid = Uuid::parse_str(&uuid).map_err(|e| FfiError::Uuid(e.to_string()))?;
-        let ov = self.inner.get_overview(uuid).await.map_err(FfiError::Core)?;
+        let ov = self
+            .inner
+            .get_overview(uuid)
+            .await
+            .map_err(FfiError::Core)?;
         serde_json::to_string(&ov).map_err(|e| FfiError::Core(format!("serialize: {e}")))
     }
 
@@ -287,13 +299,29 @@ impl MobileClient {
 
     /// Delegate copy/autofill to the native platform handler.
     pub async fn perform_action(&self, action: CoreAction) -> Result<(), FfiError> {
-        self.inner.perform_action(action.into()).await.map_err(FfiError::Core)
+        self.inner
+            .perform_action(action.into())
+            .await
+            .map_err(FfiError::Core)
     }
 
     /// Explicitly release a handle (zeroizes the in-memory secret).
     pub fn release_secret(&self, handle: SecretHandle) -> Result<(), FfiError> {
         self.inner.release_secret(handle);
         Ok(())
+    }
+
+    /// Render a revealed secret in the native overlay view (VTR-048, ADR-003).
+    ///
+    /// Delegates to `PlatformActionHandler::on_action(RenderInOverlay, secret)`
+    /// so the plaintext is delivered **only to native code** (the overlay view)
+    /// and never crosses into the JS heap. The overlay component is responsible
+    /// for calling `release_secret` when it unmounts.
+    pub async fn render_secret_in_overlay(&self, handle: SecretHandle) -> Result<(), FfiError> {
+        self.inner
+            .perform_action(CoreCoreAction::RenderInOverlay { handle })
+            .await
+            .map_err(FfiError::Core)
     }
 
     /// Save an item. `payload` is the pre-encrypted ciphertext blob; `enc_key_gen`

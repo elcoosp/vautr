@@ -55,6 +55,13 @@ export interface VautrNativeBridge {
   revealSecret(uuid: string): Promise<OpaqueHandle>;
   /** Explicitly dispose a handle (zeroizes the in-memory secret). */
   releaseSecret(handle: OpaqueHandle): Promise<void>;
+  /**
+   * Render a revealed secret in the native overlay view (VTR-048, ADR-003).
+   * The native TurboModule delivers the plaintext only to the native overlay
+   * component (Kotlin/Swift) via the registered `PlatformActionHandler` — the
+   * JS side never receives the secret string, only the opaque handle.
+   */
+  renderInOverlay(handle: OpaqueHandle): Promise<void>;
   /** Lock the vault (zeroizes keys + in-memory secrets). */
   lock(): Promise<void>;
   /** Run a metadata-first sync. */
@@ -102,6 +109,15 @@ export class MobileVautrClient {
   /** Explicitly dispose a handle (zeroizes the in-memory secret). */
   release(handle: OpaqueHandle): Promise<void> {
     return this.native.releaseSecret(handle);
+  }
+
+  /**
+   * Render the revealed secret in the native overlay view (VTR-048, ADR-003).
+   * The plaintext is delivered only to the native overlay component via the
+   * registered `PlatformActionHandler`; JS keeps only the opaque handle.
+   */
+  renderInOverlay(handle: OpaqueHandle): Promise<void> {
+    return this.native.renderInOverlay(handle);
   }
 
   /** Lock the vault. */

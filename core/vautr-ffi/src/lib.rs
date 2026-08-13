@@ -30,7 +30,9 @@ mod tests {
     use uuid::Uuid;
     use zeroize::Zeroizing;
 
-    use super::client::{CoreAction, FfiError, MobileClient, SecureEnclaveBridge};
+    use super::client::{
+        CoreAction, FfiError, MobileClient, PlatformActionHandler, SecureEnclaveBridge,
+    };
     use vautr_crypto::{aead, key_tree};
     use vautr_db::entity::{item_overview, item_payload};
     use vautr_db::migrate;
@@ -105,10 +107,16 @@ mod tests {
     #[tokio::test]
     async fn mobile_unlock_list_reveal_release_lock() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db_path = dir.path().join("vault.sqlite3").to_string_lossy().into_owned();
+        let db_path = dir
+            .path()
+            .join("vault.sqlite3")
+            .to_string_lossy()
+            .into_owned();
 
         // initialize links the core and runs migrations on the fresh vault DB.
-        let client = MobileClient::initialize(db_path.clone()).await.expect("initialize");
+        let client = MobileClient::initialize(db_path.clone())
+            .await
+            .expect("initialize");
         assert!(client.is_locked(), "fresh vault must start locked");
 
         // Register a Secure Enclave bridge and persist the SVK.
@@ -142,7 +150,10 @@ mod tests {
         assert_eq!(parsed[0].uuid, uuid);
 
         // reveal -> opaque handle (u64 surfaced to TS as a string).
-        let handle = client.reveal_secret(uuid.to_string()).await.expect("reveal");
+        let handle = client
+            .reveal_secret(uuid.to_string())
+            .await
+            .expect("reveal");
         assert_ne!(handle, 0);
 
         // "Unmount" the Detail screen: the component's cleanup calls
@@ -167,9 +178,96 @@ mod tests {
     #[tokio::test]
     async fn mobile_locked_rejects_reads() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db_path = dir.path().join("vault2.sqlite3").to_string_lossy().into_owned();
+        let db_path = dir
+            .path()
+            .join("vault2.sqlite3")
+            .to_string_lossy()
+            .into_owned();
         let client = MobileClient::initialize(db_path).await.expect("initialize");
-        assert!(client.reveal_secret(Uuid::new_v4().to_string()).await.is_err());
+        assert!(client
+            .reveal_secret(Uuid::new_v4().to_string())
+            .await
+            .is_err());
+    }
+
+    /// VTR-048 (TDD1/2 in Rust): a revealed secret rendered into the native
+    /// overlay is delivered as plaintext ONLY to the `PlatformActionHandler`
+    /// (the native overlay component), and never crosses into JS. The test
+    /// stands in for the Kotlin/Swift `on_action` implementation: it captures
+    /// the `(action, secret)` the core delegates and asserts the plaintext
+    /// reached native code, with the opaque handle (not the string) being the
+    /// only thing JS would have held.
+    #[tokio::test]
+    async fn overlay_renders_plaintext_only_in_native_handler() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir
+            .path()
+            .join("vault3.sqlite3")
+            .to_string_lossy()
+            .into_owned();
+        let client = MobileClient::initialize(db_path.clone())
+            .await
+            .expect("initialize");
+
+        let enclave = Arc::new(MockEnclave {
+            svk: std::sync::RwLock::new(None),
+        });
+        client.set_secure_enclave_bridge(enclave.clone());
+        let svk = key_tree::generate_svk();
+        enclave.save_svk(svk.to_vec()).expect("enclave save");
+        let dek = key_tree::derive_dek(&svk).expect("dek");
+
+        let db = Database::connect(&format!("sqlite://{db_path}"))
+            .await
+            .expect("connect");
+        let uuid = Uuid::new_v4();
+        seed_item(&db, uuid, 1, "s3cr3t-overlay", &dek).await;
+        let svk_vec = enclave.load_svk().expect("load").expect("present");
+        client.unlock(svk_vec, 1).await.expect("unlock");
+
+        // Capture the native action+secret delegated by the overlay render.
+        let captured: Arc<std::sync::RwLock<Option<(CoreAction, String)>>> =
+            Arc::new(std::sync::RwLock::new(None));
+        let handler = Arc::new(MockActionHandler {
+            captured: captured.clone(),
+        });
+        client.set_platform_handler(handler).await;
+
+        let handle = client
+            .reveal_secret(uuid.to_string())
+            .await
+            .expect("reveal");
+        // JS holds only the opaque handle (u64 as string) — never the secret.
+        assert_ne!(handle, 0);
+
+        client
+            .render_secret_in_overlay(handle)
+            .await
+            .expect("overlay render");
+
+        let got = captured.read().unwrap().clone().expect("handler called");
+        match got.0 {
+            CoreAction::RenderInOverlay { handle: h } => assert_eq!(h, handle),
+            other => panic!("expected RenderInOverlay, got {other:?}"),
+        }
+        assert_eq!(got.1, "s3cr3t-overlay");
+
+        // Unmounting the overlay releases the handle (zeroizes the secret).
+        client.release_secret(handle).expect("release");
+        let after_release = client.render_secret_in_overlay(handle).await;
+        assert!(after_release.is_err(), "released handle must be rejected");
+    }
+
+    /// Mock native `PlatformActionHandler`: records the `(action, secret)` the
+    /// core delegates for the overlay (or clipboard/autofill) so tests prove the
+    /// plaintext reached native code and not JS.
+    struct MockActionHandler {
+        captured: Arc<std::sync::RwLock<Option<(CoreAction, String)>>>,
+    }
+
+    impl PlatformActionHandler for MockActionHandler {
+        fn on_action(&self, action: CoreAction, secret: String) {
+            *self.captured.write().unwrap() = Some((action, secret));
+        }
     }
 }
-

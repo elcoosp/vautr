@@ -1,7 +1,9 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { getMobileClient } from '@vautr/client-sdk/mobile';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { SecretOverlay } from '../../components/SecretOverlay';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -23,8 +25,6 @@ function SecretsScreen() {
   const toast = useToast();
   const [entries, setEntries] = useState<SecretsEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [denied, setDenied] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -64,42 +64,7 @@ function SecretsScreen() {
     return <ActivityIndicator className="mt-8" color="#42b59a" />;
   }
 
-  const reveal = async (entry: SecretsEntry) => {
-    if (revealed[entry.secret.uuid] || denied[entry.secret.uuid]) {
-      setRevealed((current) => {
-        const next = { ...current };
-        delete next[entry.secret.uuid];
-        return next;
-      });
-      setDenied((current) => {
-        const next = { ...current };
-        delete next[entry.secret.uuid];
-        return next;
-      });
-      return;
-    }
-    try {
-      // Mobile is HTTP-only: the server returns the *ciphertext*, not plaintext.
-      // Client-side decryption needs the vautr-wasm DEK, which the mobile app
-      // does not ship, so reveal shows a locked state rather than fake-decrypt.
-      await services.api.revealSecret(entry.secret.uuid);
-      setDenied((current) => ({
-        ...current,
-        [entry.secret.uuid]:
-          'Encrypted on this device — open Vautr desktop or web to view the secret.',
-      }));
-    } catch (err) {
-      setDenied((current) => ({
-        ...current,
-        [entry.secret.uuid]: err instanceof Error ? err.message : 'Reveal denied.',
-      }));
-      toast.show({
-        title: 'Reveal denied',
-        description: err instanceof Error ? err.message : 'You lack the secrets:reveal permission.',
-        variant: 'destructive',
-      });
-    }
-  };
+  const hasNativeVault = getMobileClient() !== null;
 
   return (
     <View className="gap-4">
@@ -115,26 +80,21 @@ function SecretsScreen() {
       ) : (
         entries.map((entry) => (
           <Card key={entry.secret.uuid} className="p-4">
-            <Pressable onPress={() => void reveal(entry)}>
-              <View className="flex-row items-center justify-between">
-                <View className="flex-1 pr-2">
-                  <Text className="text-base font-medium text-foreground">{entry.secret.key}</Text>
-                  <Text className="mt-0.5 text-xs text-muted-foreground">
-                    {entry.project.name} · v{entry.secret.version}
-                  </Text>
-                  {denied[entry.secret.uuid] ? (
-                    <Text className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
-                      {denied[entry.secret.uuid]}
-                    </Text>
-                  ) : null}
-                </View>
-                {denied[entry.secret.uuid] ? (
-                  <EyeOff size={18} className="text-muted-foreground" />
-                ) : (
-                  <Eye size={18} className="text-muted-foreground" />
-                )}
-              </View>
-            </Pressable>
+            <View className="flex-1 pr-2">
+              <Text className="text-base font-medium text-foreground">{entry.secret.key}</Text>
+              <Text className="mt-0.5 text-xs text-muted-foreground">
+                {entry.project.name} · v{entry.secret.version}
+              </Text>
+              {/* VTR-048: the native overlay reveals the plaintext via the opaque
+                  handle (never JS). In the HTTP-only build the FFI client is absent,
+                  so the overlay degrades to a toggle and we surface the locked hint. */}
+              {hasNativeVault ? null : (
+                <Text className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                  Encrypted on this device — open Vautr desktop or web to view the secret.
+                </Text>
+              )}
+            </View>
+            <SecretOverlay uuid={entry.secret.uuid} label={entry.secret.key} />
           </Card>
         ))
       )}
