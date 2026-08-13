@@ -827,3 +827,57 @@ async fn e2e_export_vault_csv_and_gate() {
         "locked vault must fail export with EpochMismatch, got: {err}"
     );
 }
+
+/// VTR-047 TDD #5: when a previously toxic item becomes valid on the server,
+/// the quarantine reaper must emit `ItemRecovered` on the event bus AND trigger
+/// an immediate sync pull so the now-readable payload is fetched.
+#[tokio::test]
+async fn quarantine_reaper_recovery_triggers_sync_pull() {
+    use vautr_sync::quarantine::ItemStatus;
+
+    let client = VautrClient::new(fresh_db().await);
+
+    // Park an item as toxic (e.g. a lagged device that could not yet be read).
+    let toxic = Uuid::new_v4();
+    client.mark_item_toxic(toxic).await;
+
+    // Subscribe to the reactive event stream.
+    let mut rx = client.watch_state();
+
+    // Server reports the item is now valid.
+    let mut meta = HashMap::new();
+    meta.insert(toxic, ItemStatus::Valid);
+
+    // The reaper runs (best-effort) and should resolve the toxic item.
+    client.run_quarantine_reap(&meta).await;
+
+    // TDD 5: a sync pull must have been requested in response to recovery.
+    assert!(
+        client.reaper_sync_request_count() >= 1,
+        "recovery must trigger an immediate sync pull"
+    );
+
+    // The bus must carry the `ItemRecovered` event.
+    let mut saw_recovered = false;
+    let mut saw_deleted = false;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await {
+            Ok(Ok(VaultStateUpdate::ItemRecovered(u))) if u == toxic => {
+                saw_recovered = true;
+                break;
+            }
+            Ok(Ok(VaultStateUpdate::ItemPermanentlyDeleted(u))) if u == toxic => {
+                saw_deleted = true;
+                break;
+            }
+            Ok(Ok(_)) => continue,
+            _ => break,
+        }
+    }
+    assert!(saw_recovered, "expected ItemRecovered event on the bus");
+    assert!(
+        !saw_deleted,
+        "recovered item must not be reported as deleted"
+    );
+}

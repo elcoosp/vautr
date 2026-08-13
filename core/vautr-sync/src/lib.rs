@@ -10,7 +10,8 @@
 //! - `reaper`   — background zeroization task (every 10s, 60s idle TTL).
 //! - `occ`      — 412 / version_mismatch resolution -> DashMap.
 
-pub mod engine;
 pub mod dashmap;
-pub mod reaper;
+pub mod engine;
 pub mod occ;
+pub mod quarantine;
+pub mod reaper;

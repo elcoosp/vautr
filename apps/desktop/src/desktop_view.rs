@@ -30,6 +30,7 @@ use crate::state::{self, VaultConfig, VaultManagerState};
 use crate::theme;
 use crate::ui_states::{empty_state, error_callout, loading_state, skeleton_list, success_callout};
 use vautr_app_state::VautrClient;
+use vautr_app_state::event_bus::VaultStateUpdate;
 use vautr_app_state::hardening::lock_secret_memory;
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
@@ -594,6 +595,10 @@ impl DesktopView {
                 this.section = Section::Vault;
                 this.login_state = FormState::Success;
                 cx.notify();
+
+                // VTR-047: subscribe to the reactive event bus so quarantine
+                // reaper outcomes surface in the UI (recovery toast + refresh).
+                this.subscribe_quarantine_events(cx);
             })
             .ok();
         })
@@ -975,6 +980,55 @@ impl DesktopView {
                 }
             })
             .ok();
+        })
+        .detach();
+    }
+
+    /// VTR-047: subscribe to the reactive event bus so quarantine-reaper
+    /// outcomes reach the UI. On `ItemRecovered` we surface a success toast and
+    /// immediately refresh the vault (the recovery already triggers a sync pull
+    /// inside the core); on `ItemPermanentlyDeleted` we refresh so the item
+    /// list stays consistent.
+    fn subscribe_quarantine_events(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let view_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let mut rx = client.watch_state();
+            while let Ok(ev) = rx.recv().await {
+                let target = view_entity.clone();
+                let c = client.clone();
+                let _ = cx.update_entity::<DesktopView, _>(&target, |this, cx| match ev {
+                    VaultStateUpdate::ItemRecovered(_) => {
+                        this.toast_success("A previously unreadable item has been recovered.", cx);
+                        this.trigger_refresh(cx);
+                    }
+                    VaultStateUpdate::ItemPermanentlyDeleted(_) => {
+                        this.trigger_refresh(cx);
+                    }
+                    _ => {}
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Refresh the vault item list after a background change (VTR-047). Mirrors
+    /// the inner half of `do_sync` but does not require a `Window` handle.
+    fn trigger_refresh(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            if let Ok(items) = client.search("").await {
+                this.update(cx, |this, cx| {
+                    this.vault.set_items(items);
+                    cx.notify();
+                })
+                .ok();
+            }
         })
         .detach();
     }

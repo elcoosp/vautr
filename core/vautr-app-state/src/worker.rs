@@ -46,11 +46,12 @@ pub enum TaskOutcome {
 /// The gated, contention-resilient persistence worker (core.md §2).
 /// Owns a monotonic receipt counter and channels commit outcomes through the
 /// [`EventBus`].
+#[derive(Clone)]
 pub struct PersistenceWorker {
     db: DatabaseConnection,
     epoch: EpochState,
     bus: EventBus,
-    receipts: std::sync::atomic::AtomicU64,
+    receipts: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl PersistenceWorker {
@@ -59,7 +60,7 @@ impl PersistenceWorker {
             db,
             epoch,
             bus,
-            receipts: std::sync::atomic::AtomicU64::new(1),
+            receipts: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
         }
     }
 

@@ -57,6 +57,13 @@ pub enum VaultStateUpdate {
     RecoveryCompleted,
     /// An offline mutation was queued for later push (queued receipt).
     OfflineMutationQueued(u64),
+    /// A previously toxic/unreadable item became valid on the server (VTR-047
+    /// quarantine reaper). The UI should notify the user and re-sync to fetch
+    /// the now-readable payload.
+    ItemRecovered(Uuid),
+    /// A toxic item was permanently deleted server-side (tombstoned). The UI
+    /// should drop any stale toxic indicator (VTR-047).
+    ItemPermanentlyDeleted(Uuid),
 }
 
 /// Payload for 412 Resolution UI (data.md §7.2).

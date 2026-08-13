@@ -14,6 +14,7 @@
 //! - Rotation (core.md §4 / ADR-006): `rotate_key`.
 
 use sea_orm::{DatabaseConnection, Set, TransactionTrait};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -33,6 +34,7 @@ use vautr_sharing::{
 };
 use vautr_sync::dashmap::{DashMapEntryState, LocalBlacklist};
 use vautr_sync::engine::{Engine, PulledOverview, Transport};
+use vautr_sync::quarantine::{ItemStatus, Quarantine, ReaperEvent};
 
 use base64::Engine as _;
 
@@ -110,6 +112,12 @@ pub struct VautrClient {
     recovery_creds: Arc<tokio::sync::Mutex<Option<crate::recovery::RecoveryCredentials>>>,
     /// Offline mutation queue (VTR-047).
     offline: OfflineQueue,
+    /// Quarantine of toxic/unreadable items (VTR-047). The reaper evaluates
+    /// these against server metadata and emits `ItemRecovered` / `ItemPermanentlyDeleted`.
+    quarantine: Arc<tokio::sync::Mutex<Quarantine>>,
+    /// Count of sync pulls triggered by the quarantine reaper (VTR-047 TDD 5).
+    /// Incremented by `trigger_recovery_sync`; read by tests.
+    reaper_sync_requests: Arc<AtomicU64>,
     // --- WebAuthn / TOTP second factor (VTR-052 + mandatory MFA) ----------
     /// The required second factor for this login, if any. `None` means no
     /// second factor is required; `Some(method)` means the account must
@@ -153,6 +161,8 @@ impl VautrClient {
             recovery_pending: Arc::new(AtomicBool::new(false)),
             recovery_creds: Arc::new(tokio::sync::Mutex::new(None)),
             offline: OfflineQueue::new(),
+            quarantine: Arc::new(tokio::sync::Mutex::new(Quarantine::new())),
+            reaper_sync_requests: Arc::new(AtomicU64::new(0)),
             second_factor: Arc::new(tokio::sync::Mutex::new(None)),
             second_factor_verified: Arc::new(AtomicBool::new(false)),
         }
@@ -187,6 +197,89 @@ impl VautrClient {
     /// Disconnect the sync transport.
     pub async fn disconnect_sync(&self) {
         *self.transport.write().await = None;
+    }
+
+    // --- Quarantine Reaper (VTR-047) -------------------------------------
+    /// Park an item as toxic/unreadable so the reaper can later recover or
+    /// tombstone it. Called by the sync engine when it cannot decrypt an item
+    /// (e.g. a lagged device, or a conflict needing human resolution).
+    pub async fn mark_item_toxic(&self, uuid: Uuid) {
+        self.quarantine.lock().await.mark_toxic(uuid);
+    }
+
+    /// Run one quarantine reaper pass against `server_metadata` (the current
+    /// server disposition of known items). Emits `ItemRecovered` /
+    /// `ItemPermanentlyDeleted` onto the event bus for each resolved item.
+    ///
+    /// On recovery (`ItemRecovered`) the vault must re-sync immediately to fetch
+    /// the now-readable payload — `trigger_recovery_sync` performs that pull.
+    pub async fn run_quarantine_reap(&self, server_metadata: &HashMap<Uuid, ItemStatus>) {
+        let events = {
+            let mut guard = self.quarantine.lock().await;
+            vautr_sync::quarantine::evaluate(&mut guard, server_metadata)
+        };
+        for ev in events {
+            match ev {
+                ReaperEvent::ItemRecovered(uuid) => {
+                    self.bus.publish(VaultStateUpdate::ItemRecovered(uuid));
+                    // TDD 5: recovery triggers an immediate sync pull to fetch
+                    // the now-valid payload. Best-effort; logged, never fatal.
+                    self.trigger_recovery_sync();
+                }
+                ReaperEvent::ItemPermanentlyDeleted(uuid) => {
+                    self.bus
+                        .publish(VaultStateUpdate::ItemPermanentlyDeleted(uuid));
+                }
+            }
+        }
+    }
+
+    /// Re-sync after a recovery (VTR-047 TDD 5). Increments the request counter
+    /// (observable by tests) and spawns the real `sync` in the background.
+    fn trigger_recovery_sync(&self) {
+        self.reaper_sync_requests.fetch_add(1, Ordering::SeqCst);
+        let client = self.clone_for_sync();
+        tokio::spawn(async move {
+            let _ = client.sync().await;
+        });
+    }
+
+    /// Cheap clone of the client handle for background sync tasks.
+    fn clone_for_sync(&self) -> VautrClient {
+        VautrClient {
+            db: self.db.clone(),
+            bus: self.bus.clone(),
+            epoch: self.epoch.clone(),
+            worker: self.worker.clone(),
+            svk: self.svk.clone(),
+            dek: self.dek.clone(),
+            local_gen: self.local_gen.clone(),
+            locked: self.locked.clone(),
+            handles: self.handles.clone(),
+            blacklist: self.blacklist.clone(),
+            blacklist_dirty: self.blacklist_dirty.clone(),
+            cursor: self.cursor.clone(),
+            platform: self.platform.clone(),
+            transport: self.transport.clone(),
+            server_user_id: self.server_user_id.clone(),
+            share_transport: self.share_transport.clone(),
+            sharing_keypair: self.sharing_keypair.clone(),
+            groups: self.groups.clone(),
+            file_transport: self.file_transport.clone(),
+            project_transport: self.project_transport.clone(),
+            recovery_pending: self.recovery_pending.clone(),
+            recovery_creds: self.recovery_creds.clone(),
+            offline: self.offline.clone(),
+            quarantine: self.quarantine.clone(),
+            reaper_sync_requests: self.reaper_sync_requests.clone(),
+            second_factor: self.second_factor.clone(),
+            second_factor_verified: self.second_factor_verified.clone(),
+        }
+    }
+
+    /// Number of sync pulls triggered by the quarantine reaper (test hook).
+    pub fn reaper_sync_request_count(&self) -> u64 {
+        self.reaper_sync_requests.load(Ordering::SeqCst)
     }
 
     /// Subscribe to the reactive event stream (data.md §6.3 `watch_state`).

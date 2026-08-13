@@ -209,15 +209,16 @@ impl ShareTransport for InMemoryShareRelay {
 /// The sharing keypair is generated at vault creation (VTR-057) and kept here.
 /// `ShareGroupKey` is stored behind an `Arc` because it is not `Clone`
 /// (`vautr-sharing` holds its Group SIK in a `Zeroizing` buffer).
+#[derive(Clone)]
 pub struct ShareGroupStore {
-    groups: Mutex<HashMap<Uuid, Arc<ShareGroupKey>>>,
+    groups: std::sync::Arc<Mutex<HashMap<Uuid, Arc<ShareGroupKey>>>>,
 }
 
 impl ShareGroupStore {
     /// Fresh (empty) group store.
     pub fn new() -> Self {
         Self {
-            groups: Mutex::new(HashMap::new()),
+            groups: std::sync::Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
