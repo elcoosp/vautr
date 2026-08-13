@@ -25,6 +25,15 @@ pub struct VaultConfig {
     pub username: String,
     /// Argon2id KDF salt (32 bytes), base64-encoded for JSON.
     pub kdf_salt_b64: String,
+    /// Whether the desktop should check for and offer updates automatically.
+    /// Defaults to true for configs written before this field existed.
+    #[serde(default = "default_true")]
+    pub auto_update_enabled: bool,
+}
+
+/// `serde` default for `auto_update_enabled` (opt-out, not opt-in).
+fn default_true() -> bool {
+    true
 }
 
 impl VaultConfig {

@@ -6,6 +6,7 @@
 //! roles, members, and Secrets UI). Uses gpui-component widgets throughout:
 //! Button, Input/InputState, h_flex/v_flex.
 
+use crate::updater;
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -214,6 +215,9 @@ pub struct DesktopView {
     // ── Toast system (single transient-feedback channel; §8 parity) ──────
     toasts: Vec<Toast>,
     next_toast_id: u64,
+    /// Pending, signature-verified update offered to the user (None = no update).
+    /// VTR-049: set by the background update check; surfaced via a modal.
+    pending_update: Option<updater::UpdateInfo>,
 
     // ── Secrets overview section ────────────────────────────────────────
     secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
@@ -388,6 +392,7 @@ impl DesktopView {
             import_text: String::new(),
             import_busy: false,
             import_archive_input,
+            pending_update: None,
         }
     }
 
@@ -433,6 +438,7 @@ impl DesktopView {
                     let cfg = VaultConfig {
                         username: username.clone(),
                         kdf_salt_b64: B64.encode(&reg.kdf_salt),
+                        auto_update_enabled: true,
                     };
                     let _ = cfg.save();
                     this.login_state = FormState::Error(format!(
@@ -599,6 +605,11 @@ impl DesktopView {
                 // VTR-047: subscribe to the reactive event bus so quarantine
                 // reaper outcomes surface in the UI (recovery toast + refresh).
                 this.subscribe_quarantine_events(cx);
+
+                // VTR-049: check for a signature-verified update in the
+                // background (never blocks the UI). Honors the auto-update
+                // preference loaded from VaultConfig.
+                this.check_for_updates(cx);
             })
             .ok();
         })
@@ -1031,6 +1042,92 @@ impl DesktopView {
             }
         })
         .detach();
+    }
+
+    /// VTR-049: check for a signature-verified update in the background and,
+    /// when a newer valid package is available, stash it in `pending_update`
+    /// (surfaced by `render_update_modal`) plus a toast. Respects the
+    /// `auto_update_enabled` preference. Never blocks the caller.
+    fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+        let auto = VaultConfig::load()
+            .map(|c| c.auto_update_enabled)
+            .unwrap_or(true);
+        let view_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let updater = updater::Updater::new(env!("CARGO_PKG_VERSION"), auto);
+            let decision = match updater.check().await {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("update check failed: {e:?}");
+                    return;
+                }
+            };
+            if let updater::UpdateDecision::Available(info) = decision {
+                let target = view_entity.clone();
+                let _ = cx.update_entity::<DesktopView, _>(&target, |this, cx| {
+                    this.pending_update = Some(info);
+                    this.toast_info("An update is available.", cx);
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Accept and install the pending update (VTR-049). Downloads the package,
+    /// verifies its ed25519 signature, and — on success — launches the platform
+    /// installer. On signature failure the update is rejected (rollback: nothing
+    /// is installed) and an error toast is shown.
+    fn install_pending_update(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(info) = self.pending_update.clone() else {
+            return;
+        };
+        self.pending_update = None;
+        cx.notify();
+        let view_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let updater = updater::Updater::new(env!("CARGO_PKG_VERSION"), true);
+            match updater.download_and_verify(&info).await {
+                Ok(bytes) => {
+                    let path = std::env::temp_dir().join(format!(
+                        "vautr-update-{}.bin",
+                        info.version.replace(['.', '/'], "_")
+                    ));
+                    if std::fs::write(&path, &bytes).is_err() {
+                        let t = view_entity.clone();
+                        let _ = cx.update_entity::<DesktopView, _>(&t, |this, cx| {
+                            this.toast_error("Failed to stage the update package.", cx);
+                        });
+                        return;
+                    }
+                    let _ = updater::Updater::install_command(&path).status();
+                    // The installer (e.g. `open`/`msiexec`) takes over; the new
+                    // version reports itself on next launch (TDD #5).
+                }
+                Err(updater::UpdateError::SignatureInvalid) => {
+                    let t = view_entity.clone();
+                    let _ = cx.update_entity::<DesktopView, _>(&t, |this, cx| {
+                        this.toast_error(
+                            "Update rejected: signature verification failed. Rolling back.",
+                            cx,
+                        );
+                    });
+                }
+                Err(e) => {
+                    let t = view_entity.clone();
+                    let _ = cx.update_entity::<DesktopView, _>(&t, |this, cx| {
+                        this.toast_error(format!("Update failed: {e}"), cx);
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Dismiss the pending-update prompt without installing (VTR-049).
+    fn postpone_update(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_update = None;
+        cx.notify();
     }
 
     /// Create a new vault item from the inline Add form: build a
@@ -2603,6 +2700,9 @@ impl DesktopView {
             .when(self.pending_create_project, |this| {
                 this.child(self.render_create_project_modal(cx))
             })
+            .when(self.pending_update.is_some(), |this| {
+                this.child(self.render_update_modal(cx))
+            })
             .child(self.render_toasts(cx))
     }
 
@@ -3100,6 +3200,88 @@ impl DesktopView {
                         Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
                         |el, t| el.opacity(t),
                     )
+                    )
+    }
+
+    /// VTR-049: modal offering a signature-verified update. Shows the available
+    /// version and lets the user Install (downloads + verifies + launches the
+    /// platform installer) or Postpone (dismiss without installing).
+    fn render_update_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let version = self
+            .pending_update
+            .as_ref()
+            .map(|u| u.version.clone())
+            .unwrap_or_default();
+        let current = env!("CARGO_PKG_VERSION");
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("update-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_update = None;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child("Update available"),
+                            )
+                            .child(div().text_xs().text_color(theme::TEXT_DIM).child(format!(
+                                "Version {version} is available (you have {current}). \
+                                 The package signature will be verified before install."
+                            )))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(Button::new("update-postpone").label("Later").on_click(
+                                        cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                            this.postpone_update(window, cx);
+                                        }),
+                                    ))
+                                    .child(
+                                        Button::new("update-install")
+                                            .primary()
+                                            .label("Install update")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.install_pending_update(window, cx);
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "update-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
             )
     }
 
