@@ -464,6 +464,7 @@ impl VautrClient {
         } else {
             vautr_db::query::search_overviews(&self.db, query)
                 .await
+                .map(|(rows, _leading_wildcard)| rows)
                 .map_err(|e| format!("search: {e}"))?
         };
         Ok(rows)

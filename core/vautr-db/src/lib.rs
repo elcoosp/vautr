@@ -10,8 +10,11 @@
 //! - `migrate` — schema bootstrap + FTS5 triggers (db-contract §3–4).
 //! - `txn`     — save / apply_sync_batch / persist_dashmap / reaper_reset_ttl
 //!               (db-contract §5).
+//! - `query`   — FTS5/recent/overview read queries (db-contract §4).
+//! - `search`  — FTS5 query preparation (stopwords, wildcards, VTR-055).
 
 pub mod entity;
 pub mod migrate;
 pub mod query;
+pub mod search;
 pub mod txn;

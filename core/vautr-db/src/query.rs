@@ -5,7 +5,7 @@
 //! sees ciphertext — crypto.md §4).
 
 use sea_orm::FromQueryResult;
-use sea_orm::{DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde_json::from_str;
 use uuid::Uuid;
 use vautr_domain::DecryptedOverview;
@@ -34,12 +34,25 @@ fn row_to_overview(r: OverviewRow) -> DecryptedOverview {
 }
 
 /// Full-text search over the local FTS5 index (db-contract §4).
-/// Returns matches ordered by FTS5 rank (relevance).
+///
+/// The raw query is rewritten by [`crate::search::prepare_search`] (stopword
+/// stripping, safe quoting, prefix wildcards) and results are ordered by FTS5
+/// BM25 `rank` (relevance, not date) and bounded to `LIMIT 100` (VTR-055).
+/// Returns `(matches, leading_wildcard)` so the UI can warn when the query
+/// defeats the index with a leading `*` (TDD3).
 pub async fn search_overviews(
     db: &DatabaseConnection,
     query: &str,
-) -> Result<Vec<DecryptedOverview>, String> {
-    // Match the FTS5 virtual table; join back to the hot table for columns.
+) -> Result<(Vec<DecryptedOverview>, bool), String> {
+    use crate::search::prepare_search;
+
+    let prepared = prepare_search(query);
+    if prepared.is_empty {
+        // Nothing searchable: fall back to the recent list (no FTS).
+        let recent = recent_overviews(db, 50).await?;
+        return Ok((recent, false));
+    }
+
     let sql = r#"
         SELECT o.uuid, o.overview_title, o.overview_subtitle,
                o.overview_icon_key, o.overview_urls, o.updated_at
@@ -47,18 +60,50 @@ pub async fn search_overviews(
         JOIN item_overviews o ON o.uuid = f.uuid
         WHERE items_fts MATCH ?
         ORDER BY rank
-        LIMIT 200
+        LIMIT 100
     "#;
     let stmt = Statement::from_sql_and_values(
         sea_orm::DatabaseBackend::Sqlite,
         sql,
-        [query.into()],
+        [prepared.match_expr.into()],
     );
     let rows = OverviewRow::find_by_statement(stmt)
         .all(db)
         .await
         .map_err(|e| format!("fts search: {e}"))?;
-    Ok(rows.into_iter().map(row_to_overview).collect())
+    Ok((
+        rows.into_iter().map(row_to_overview).collect(),
+        prepared.leading_wildcard,
+    ))
+}
+
+/// Drop, recreate, and rebuild the FTS5 index from `item_overviews` (VTR-055,
+/// TDD5). Used after bulk imports and to defragment/recover the index. Returns
+/// the wall-clock rebuild duration so callers can assert the < 2s target.
+pub async fn rebuild_fts(db: &DatabaseConnection) -> Result<std::time::Duration, String> {
+    let start = std::time::Instant::now();
+    // 1. Drop the FTS5 virtual table and its triggers (db-contract §4).
+    db.execute_unprepared(
+        "DROP TABLE IF EXISTS items_fts; \
+         DROP TRIGGER IF EXISTS overviews_ai; \
+         DROP TRIGGER IF EXISTS overviews_ad; \
+         DROP TRIGGER IF EXISTS overviews_au;",
+    )
+    .await
+    .map_err(|e| format!("drop fts: {e}"))?;
+    // 2. Recreate the schema (idempotent) — re-adds the virtual table + triggers.
+    crate::migrate::init(db)
+        .await
+        .map_err(|e| format!("recreate fts: {e}"))?;
+    // 3. Bulk re-index every row atomically (data-import-seeding §3.2 fast-path).
+    db.execute_unprepared(
+        "INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls) \
+         SELECT rowid, uuid, overview_title, overview_subtitle, overview_urls \
+         FROM item_overviews;",
+    )
+    .await
+    .map_err(|e| format!("rebuild fts: {e}"))?;
+    Ok(start.elapsed())
 }
 
 /// The 50 most-recently-used items (client.md §2 `search("")` contract).
@@ -74,11 +119,8 @@ pub async fn recent_overviews(
         ORDER BY updated_at DESC
         LIMIT ?
     "#;
-    let stmt = Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        sql,
-        [limit.into()],
-    );
+    let stmt =
+        Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, [limit.into()]);
     let rows = OverviewRow::find_by_statement(stmt)
         .all(db)
         .await
@@ -97,11 +139,7 @@ pub async fn get_overview(
         FROM item_overviews
         WHERE uuid = ?
     "#;
-    let stmt = Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        sql,
-        [uuid.into()],
-    );
+    let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, [uuid.into()]);
     let row = OverviewRow::find_by_statement(stmt)
         .one(db)
         .await
@@ -113,9 +151,7 @@ pub async fn get_overview(
 /// Read the persisted DashMap (`local_blacklist`) for crash recovery (core.md §3).
 /// Returns `(uuid, ignored_version, state_str)` tuples where `state_str` is
 /// `ToxicIgnored` / `ValidIgnored` (db-contract §3 `CHECK` constraint).
-pub async fn list_blacklist(
-    db: &DatabaseConnection,
-) -> Result<Vec<(String, i64, String)>, String> {
+pub async fn list_blacklist(db: &DatabaseConnection) -> Result<Vec<(String, i64, String)>, String> {
     let sql = "SELECT uuid, ignored_version, state FROM local_blacklist";
     let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
     let rows = BlacklistRow::find_by_statement(stmt)

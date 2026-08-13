@@ -32,7 +32,7 @@ DROP TRIGGER IF EXISTS overviews_au;
 /// bulk-populate the index with a set-based `INSERT ... SELECT`, which is the
 /// drop/rebuild fast-path in §3.2 and re-indexes every row atomically.
 const REBUILD_FTS_SQL: &str =
-    "INSERT INTO items_fts(rowid, uuid, title, subtitle, urls) \
+    "INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls) \
      SELECT rowid, uuid, overview_title, overview_subtitle, overview_urls FROM item_overviews;";
 
 /// Persist the encrypted batch: drop FTS5, bulk-insert in one transaction,

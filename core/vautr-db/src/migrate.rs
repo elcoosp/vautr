@@ -58,24 +58,24 @@ CREATE TABLE IF NOT EXISTS quarantine (
 CREATE INDEX IF NOT EXISTS idx_quarantine_until ON quarantine(quarantine_until);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
-    uuid UNINDEXED, title, subtitle, urls,
+    uuid UNINDEXED, overview_title, overview_subtitle, overview_urls,
     content='item_overviews', content_rowid='rowid', tokenize="unicode61"
 );
 
 CREATE TRIGGER IF NOT EXISTS overviews_ai AFTER INSERT ON item_overviews BEGIN
-    INSERT INTO items_fts(rowid, uuid, title, subtitle, urls)
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
     VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
 END;
 
 CREATE TRIGGER IF NOT EXISTS overviews_ad AFTER DELETE ON item_overviews BEGIN
-    INSERT INTO items_fts(items_fts, rowid, uuid, title, subtitle, urls)
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
     VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
 END;
 
 CREATE TRIGGER IF NOT EXISTS overviews_au AFTER UPDATE ON item_overviews BEGIN
-    INSERT INTO items_fts(items_fts, rowid, uuid, title, subtitle, urls)
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
     VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
-    INSERT INTO items_fts(rowid, uuid, title, subtitle, urls)
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
     VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
 END;
 "#;
