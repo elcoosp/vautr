@@ -19,6 +19,7 @@ pub mod epoch;
 pub mod event_bus;
 pub mod file_transfer;
 pub mod handles;
+pub mod hardening;
 pub mod offline;
 pub mod orchestrator;
 pub mod project_transport;

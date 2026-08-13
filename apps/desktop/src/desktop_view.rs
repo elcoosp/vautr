@@ -30,6 +30,7 @@ use crate::state::{self, VaultConfig, VaultManagerState};
 use crate::theme;
 use crate::ui_states::{empty_state, error_callout, loading_state, skeleton_list, success_callout};
 use vautr_app_state::VautrClient;
+use vautr_app_state::hardening::lock_secret_memory;
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 
@@ -534,6 +535,10 @@ impl DesktopView {
                 }
                 let mut svk = Zeroizing::new([0u8; 32]);
                 svk.copy_from_slice(&svk_bytes);
+                // VTR-040: pin the SVK into RAM so it cannot be swapped to disk.
+                // Best-effort — a denied mlock (e.g. no CAP_IPC_LOCK) only weakens
+                // the guarantee and must never break unlock.
+                let _ = lock_secret_memory(svk.as_slice());
                 key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
             })() {
                 Ok(d) => d,
@@ -657,6 +662,7 @@ impl DesktopView {
                 }
                 let mut svk = Zeroizing::new([0u8; 32]);
                 svk.copy_from_slice(&wrapped_svk);
+                let _ = lock_secret_memory(svk.as_slice());
                 key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
             })() {
                 Ok(d) => d,

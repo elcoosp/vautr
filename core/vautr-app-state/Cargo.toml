@@ -37,6 +37,10 @@ sha2.workspace = true
 ed25519-dalek.workspace = true
 futures-util.workspace = true
 bip39.workspace = true
+# Memory locking for secret heap pages (VTR-040). Unix-only; the `mlock`
+# feature enables the real `libc::mlock` call. On other platforms the call is
+# a documented no-op.
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
@@ -49,3 +53,6 @@ loom = ["dep:loom"]
 # (client.md §2 / data.md §4 Restricted API Rule). CI checks no other target
 # enables this symbol.
 desktop-api = []
+# Production hardening (VTR-040): lock secret heap pages with mlock() so they
+# cannot be swapped to disk. Enabled only for desktop builds. No-op elsewhere.
+mlock = ["dep:libc"]

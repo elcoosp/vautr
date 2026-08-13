@@ -32,7 +32,7 @@ serde_json.workspace = true
 
 # Sole consumer of the restricted `read_secret` API (data.md §4, build §2.5).
 # The desktop-api feature gate must never be enabled by web/extension/mobile.
-vautr-app-state = { workspace = true, features = ["desktop-api"] }
+vautr-app-state = { workspace = true, features = ["desktop-api", "mlock"] }
 vautr-domain.workspace = true
 vautr-db.workspace = true
 vautr-auth.workspace = true
