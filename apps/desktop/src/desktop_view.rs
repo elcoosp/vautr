@@ -239,6 +239,16 @@ pub struct DesktopView {
     import_text: String,
     import_busy: bool,
     import_archive_input: Entity<InputState>,
+
+    // ── Sharing / key rotation (VTR-063) ────────────────────────────────
+    /// Item currently targeted by the share modal.
+    pending_share: Option<Uuid>,
+    /// Recipient user UUID entered in the share modal.
+    share_recipient_input: Entity<InputState>,
+    /// Status / error text shown in the share modal.
+    share_text: String,
+    /// Current vault key generation (advanced by one on rotate_key).
+    key_gen: u64,
 }
 
 impl DesktopView {
@@ -397,6 +407,11 @@ impl DesktopView {
             import_archive_input,
             pending_update: None,
             conflict_queue: Vec::new(),
+            pending_share: None,
+            share_recipient_input: cx
+                .new(|cx| InputState::new(window, cx).placeholder("recipient user uuid")),
+            share_text: String::new(),
+            key_gen: 1,
         }
     }
 
@@ -733,6 +748,7 @@ impl DesktopView {
                 this.restore_session = None;
                 this.vault.set_items(items);
                 this.section = Section::Vault;
+                this.key_gen = local_gen;
                 this.login_state = FormState::Success;
                 cx.notify();
             })
@@ -899,6 +915,108 @@ impl DesktopView {
                 }
                 Err(err) => {
                     this.vault.show_error(err);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Open the share modal for the currently selected vault item (VTR-063).
+    fn request_share(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let uuid = match self.vault.selected_overview().map(|o| o.uuid) {
+            Some(u) => u,
+            None => {
+                self.vault.show_error("no item selected");
+                cx.notify();
+                return;
+            }
+        };
+        self.pending_share = Some(uuid);
+        self.share_text.clear();
+        cx.notify();
+    }
+
+    /// Share the pending item with the recipient entered in the modal (VTR-063).
+    /// Reveals the plaintext locally (trusted desktop client), then encrypts it
+    /// under the recipient's sharing key via `VautrClient::share_item`.
+    fn do_share(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(uuid) = self.pending_share else {
+            return;
+        };
+        let recipient = self.share_recipient_input.read(cx).value().to_string();
+        let recipient_uuid = match Uuid::parse_str(recipient.trim()) {
+            Ok(r) => r,
+            Err(_) => {
+                self.share_text = "Recipient must be a valid UUID.".into();
+                cx.notify();
+                return;
+            }
+        };
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+
+        self.share_text = "Sharing…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let outcome = match client.reveal_secret(uuid).await {
+                Ok(handle) => match client.read_secret(handle) {
+                    Ok(plaintext) => {
+                        let res = client
+                            .share_item(recipient_uuid, uuid, plaintext.as_bytes())
+                            .await;
+                        client.release_secret(handle);
+                        res.map(|b| b.share_id)
+                    }
+                    Err(err) => {
+                        client.release_secret(handle);
+                        Err(err)
+                    }
+                },
+                Err(err) => Err(err),
+            };
+
+            this.update(cx, |this, cx| match outcome {
+                Ok(share_id) => {
+                    this.pending_share = None;
+                    this.share_text = format!("Shared (id {share_id})");
+                    cx.notify();
+                }
+                Err(err) => {
+                    this.share_text = format!("Share failed: {err}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Advance the vault key generation (VTR-063). Mirrors the web rotation
+    /// flow: derive a new generation and re-wrap the SVK server-side.
+    fn do_rotate_key(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+        let new_gen = self.key_gen + 1;
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let result = client.rotate_key(new_gen).await;
+            this.update(cx, |this, cx| match result {
+                Ok(()) => {
+                    this.key_gen = new_gen;
+                    this.toast_success("Vault key rotated.", cx);
+                    cx.notify();
+                }
+                Err(err) => {
+                    this.toast_error(format!("Rotation failed: {err}"), cx);
                     cx.notify();
                 }
             })
@@ -2739,6 +2857,9 @@ impl DesktopView {
             .when(!self.conflict_queue.is_empty(), |this| {
                 this.child(self.render_conflict_modal(cx))
             })
+            .when(self.pending_share.is_some(), |this| {
+                this.child(self.render_share_modal(cx))
+            })
             .child(self.render_toasts(cx))
     }
 
@@ -3001,6 +3122,11 @@ impl DesktopView {
                                 .child(Button::new("reveal-btn").label("Reveal").on_click(
                                     cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
                                         this.do_reveal(window, cx);
+                                    }),
+                                ))
+                                .child(Button::new("share-btn").label("Share").on_click(
+                                    cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                        this.request_share(window, cx);
                                     }),
                                 ))
                                 .child(
@@ -3462,6 +3588,84 @@ impl DesktopView {
             }
         })
         .detach();
+    }
+
+    /// Modal to share the item in `pending_share` with another user (VTR-063).
+    /// Collects the recipient user UUID and calls `do_share`.
+    fn render_share_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let text = self.share_text.clone();
+        let _recipient = self.share_recipient_input.read(cx);
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(Rgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.5,
+            })
+            .child(
+                div()
+                    .w(px(420.))
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_5()
+                    .shadow_lg()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child("Share secret"),
+                            )
+                            .child(
+                                div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                    "Encrypt this secret under the recipient's sharing key.",
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child("Recipient user UUID"),
+                            )
+                            .child(Input::new(&self.share_recipient_input).w_full())
+                            .when(!text.is_empty(), |this| {
+                                this.child(
+                                    div().text_sm().text_color(theme::WARN).child(text.clone()),
+                                )
+                            })
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(Button::new("share-cancel").label("Cancel").on_click(
+                                        cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.pending_share = None;
+                                            cx.notify();
+                                        }),
+                                    ))
+                                    .child(
+                                        Button::new("share-confirm")
+                                            .primary()
+                                            .label("Share")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.do_share(window, cx);
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    ),
+            )
     }
 
     /// Confirm destructive deletion of the selected project.
@@ -4567,6 +4771,31 @@ impl DesktopView {
                 .child(list),
             );
         }
+
+        body = body.child(
+            self.card(
+                "Vault key rotation",
+                "Advance the encryption key generation. Re-wraps the vault key under a new generation server-side.",
+            )
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(format!("Current key generation: {}", self.key_gen)),
+                    )
+                    .child(
+                        Button::new("rotate-key-btn")
+                            .label("Rotate key")
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_rotate_key(window, cx);
+                            })),
+                    ),
+            ),
+        );
 
         body
     }
