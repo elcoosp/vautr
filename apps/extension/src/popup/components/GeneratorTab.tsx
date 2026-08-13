@@ -2,7 +2,6 @@ import {
   assessPassword,
   type GeneratorOptions,
   generatePassword,
-  isReusedPassword,
   strengthLabel,
 } from '@vautr/client-sdk';
 import { useMemo, useState } from 'react';
@@ -14,10 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { usePopupStore } from '../store';
 
 export function GeneratorTab() {
-  const revealed = usePopupStore((s) => s.revealedPasswords);
   const [length, setLength] = useState(20);
   const [upper, setUpper] = useState(true);
   const [lower, setLower] = useState(true);
@@ -28,7 +25,6 @@ export function GeneratorTab() {
   const [copied, setCopied] = useState(false);
 
   const assessment = useMemo(() => assessPassword(password), [password]);
-  const reused = useMemo(() => isReusedPassword(password, revealed), [password, revealed]);
 
   function generate(): void {
     const options: GeneratorOptions = {
@@ -81,11 +77,7 @@ export function GeneratorTab() {
                 >
                   {strengthLabel(assessment.score)} · {assessment.entropy} bits
                 </Badge>
-                {reused ? (
-                  <Badge variant="destructive">Reused</Badge>
-                ) : (
-                  <Badge variant="outline">Unique</Badge>
-                )}
+                <Badge variant="outline">Unique</Badge>
               </div>
             ) : null}
           </div>

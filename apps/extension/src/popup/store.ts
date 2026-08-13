@@ -19,9 +19,6 @@ interface PopupState {
   /** FIFO queue of active sync-conflict events (VTR-064 / VTR-056). */
   conflictQueue: ConflictEvent[];
 
-  /** Plaintext passwords revealed this session (in-memory only) for reused detection. */
-  revealedPasswords: string[];
-
   setStatus: (status: PopupStatus) => void;
   setActiveTab: (tab: string) => void;
   setNotice: (notice: string | null) => void;
@@ -47,7 +44,6 @@ interface PopupState {
   /** Drop the head conflict without resolving (dismiss). */
   dismissConflict: (uuid: string) => void;
 
-  addRevealedPassword: (password: string) => void;
   reset: () => void;
 }
 
@@ -63,7 +59,6 @@ export const usePopupStore = create<PopupState>((set) => ({
   secrets: [],
   machines: [],
   conflictQueue: [],
-  revealedPasswords: [],
 
   setStatus: (status) => set({ status }),
   setActiveTab: (activeTab) => set({ activeTab }),
@@ -119,9 +114,6 @@ export const usePopupStore = create<PopupState>((set) => ({
       return { conflictQueue: s.conflictQueue.slice(1) };
     }),
 
-  addRevealedPassword: (password) =>
-    set((s) => ({ revealedPasswords: [...s.revealedPasswords, password] })),
-
   reset: () =>
     set({
       status: 'locked',
@@ -134,6 +126,5 @@ export const usePopupStore = create<PopupState>((set) => ({
       secrets: [],
       machines: [],
       conflictQueue: [],
-      revealedPasswords: [],
     }),
 }));

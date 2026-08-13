@@ -39,10 +39,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
   const setError = usePopupStore((s) => s.setError);
 
   const [projectUuid, setProjectUuid] = useState<string>('__none__');
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [denied, setDenied] = useState<Record<string, string>>({});
-
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
 
@@ -83,46 +80,27 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
       upsertSecret(secret);
       setKey('');
       setValue('');
-      setShowCreate(false);
       toast.success(`Created secret "${secret.key}".`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
+  /**
+   * ZK reveal (VTR-062 follow-up): decrypt the secret value in wasm, copy it to
+   * the clipboard, then drop the plaintext. The value is never stored in React
+   * state or rendered into the DOM.
+   */
   async function handleReveal(secret: Secret): Promise<void> {
-    if (revealed[secret.uuid]) {
-      setRevealed((prev) => {
-        const next = { ...prev };
-        delete next[secret.uuid];
-        return next;
-      });
-      setDenied((prev) => {
-        const next = { ...prev };
-        delete next[secret.uuid];
-        return next;
-      });
-      return;
-    }
-    setDenied((prev) => {
-      const next = { ...prev };
-      delete next[secret.uuid];
-      return next;
-    });
     try {
       const res = await mlp.getSecretValue(secret.uuid);
       const plaintext = await client.decryptSecretValue(projectUuid, res.value_ciphertext);
-      setRevealed((prev) => ({ ...prev, [secret.uuid]: plaintext }));
-      toast.success(`Revealed "${secret.key}".`);
+      await navigator.clipboard.writeText(plaintext);
+      toast.success(`Copied "${secret.key}".`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setDenied((prev) => ({ ...prev, [secret.uuid]: message }));
-      setRevealed((prev) => {
-        const next = { ...prev };
-        delete next[secret.uuid];
-        return next;
-      });
-      toast.error(`Reveal denied: ${message}`);
+      setError(message);
+      toast.error(`Reveal failed: ${message}`);
     }
   }
 
@@ -156,7 +134,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
                 {secrets.length} in “{selectedProject.name}”
               </p>
             </div>
-            <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Button size="sm" onClick={() => void handleCreate()}>
               New secret
             </Button>
           </div>
@@ -165,35 +143,21 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
             <p className="text-sm text-muted-foreground">No secrets in this project yet.</p>
           ) : (
             <div className="space-y-2">
-              {secrets.map((s) => {
-                const valueText = revealed[s.uuid];
-                const denial = denied[s.uuid];
-                return (
-                  <div key={s.uuid} className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium">{s.key}</span>
-                        <Badge variant="outline" className="ml-2">
-                          v{s.version}
-                        </Badge>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={() => void handleReveal(s)}>
-                        {valueText || denial ? 'Hide' : 'Reveal'}
-                      </Button>
+              {secrets.map((s) => (
+                <div key={s.uuid} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">{s.key}</span>
+                      <Badge variant="outline" className="ml-2">
+                        v{s.version}
+                      </Badge>
                     </div>
-                    {valueText ? (
-                      <div className="mt-2 rounded border bg-muted/40 px-2 py-1 font-mono text-xs break-all">
-                        {valueText}
-                      </div>
-                    ) : null}
-                    {denial ? (
-                      <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
-                        Reveal denied: {denial}
-                      </div>
-                    ) : null}
+                    <Button size="sm" variant="outline" onClick={() => void handleReveal(s)}>
+                      Copy
+                    </Button>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </>
@@ -201,7 +165,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
         <p className="text-sm text-muted-foreground">Select a project to manage its secrets.</p>
       )}
 
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={showCreate} onOpenChange={() => undefined}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New secret</DialogTitle>

@@ -46,14 +46,6 @@ export async function cacheAllCiphertexts(): Promise<void> {
 }
 
 /**
- * Reveal an item's secret and return the plaintext (used by the UI to display a
- * revealed value and to power weak/reused detection). Never persisted.
- */
-export async function revealSecret(client: VautrWebClient, uuid: string): Promise<string> {
-  return client.revealSecret(uuid);
-}
-
-/**
  * Autofill an item into the active tab via the stateless Service Worker. The SW
  * decrypts from `chrome.storage` and asks the tab's content script to fill the
  * focused field.

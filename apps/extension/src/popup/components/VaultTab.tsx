@@ -1,4 +1,4 @@
-import { assessPassword, isReusedPassword, strengthLabel } from '@vautr/client-sdk';
+import { assessPassword, strengthLabel } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -23,8 +23,6 @@ interface VaultTabProps {
 
 export function VaultTab({ client }: VaultTabProps) {
   const items = usePopupStore((s) => s.items);
-  const revealed = usePopupStore((s) => s.revealedPasswords);
-  const addRevealedPassword = usePopupStore((s) => s.addRevealedPassword);
   const setError = usePopupStore((s) => s.setError);
   const setStatus = usePopupStore((s) => s.setStatus);
 
@@ -33,10 +31,8 @@ export function VaultTab({ client }: VaultTabProps) {
   const [addUser, setAddUser] = useState('');
   const [addPass, setAddPass] = useState('');
   const [addUrl, setAddUrl] = useState('');
-  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
 
   const assessment = addPass ? assessPassword(addPass) : null;
-  const reused = addPass ? isReusedPassword(addPass, revealed) : false;
 
   async function handleAdd(): Promise<void> {
     if (!addTitle || !addUser || !addPass) {
@@ -53,7 +49,6 @@ export function VaultTab({ client }: VaultTabProps) {
         url: addUrl,
       });
       await client.sync();
-      addRevealedPassword(addPass);
       setAddTitle('');
       setAddUser('');
       setAddPass('');
@@ -78,6 +73,7 @@ export function VaultTab({ client }: VaultTabProps) {
     }
   }
 
+  /** ZK reveal: copy via an opaque wasm handle; plaintext never enters React state. */
   async function handleCopy(item: { uuid: string; title: string }): Promise<void> {
     try {
       const { copySecret } = await import('../vaultActions');
@@ -93,30 +89,6 @@ export function VaultTab({ client }: VaultTabProps) {
         },
       );
       toast.success(`Copied "${item.title}".`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function handleReveal(item: {
-    uuid: string;
-    title: string;
-    subtitle: string;
-  }): Promise<void> {
-    try {
-      if (revealedSecrets[item.uuid]) {
-        setRevealedSecrets((prev) => {
-          const next = { ...prev };
-          delete next[item.uuid];
-          return next;
-        });
-        return;
-      }
-      const { revealSecret } = await import('../vaultActions');
-      const secret = await revealSecret(client, item.uuid);
-      addRevealedPassword(secret);
-      setRevealedSecrets((prev) => ({ ...prev, [item.uuid]: secret }));
-      toast.success(`Revealed "${item.title}".`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -143,7 +115,6 @@ export function VaultTab({ client }: VaultTabProps) {
       ) : (
         <div className="space-y-2">
           {items.map((item) => {
-            const revealedSecret = revealedSecrets[item.uuid];
             return (
               <Card key={item.uuid}>
                 <CardHeader className="space-y-0 py-3">
@@ -151,11 +122,6 @@ export function VaultTab({ client }: VaultTabProps) {
                   <CardDescription className="text-xs">{item.subtitle}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 py-2">
-                  {revealedSecret ? (
-                    <div className="rounded border bg-muted/40 px-2 py-1 font-mono text-xs break-all">
-                      {revealedSecret}
-                    </div>
-                  ) : null}
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -164,10 +130,7 @@ export function VaultTab({ client }: VaultTabProps) {
                     >
                       Autofill
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => void handleReveal(item)}>
-                      {revealedSecret ? 'Hide' : 'Reveal'}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void handleCopy(item)}>
+                    <Button size="sm" variant="outline" onClick={() => void handleCopy(item)}>
                       Copy
                     </Button>
                   </div>
@@ -209,11 +172,7 @@ export function VaultTab({ client }: VaultTabProps) {
                   >
                     {strengthLabel(assessment.score)} · {assessment.entropy} bits
                   </Badge>
-                  {reused ? (
-                    <Badge variant="destructive">Reused</Badge>
-                  ) : (
-                    <Badge variant="outline">New</Badge>
-                  )}
+                  <Badge variant="outline">New</Badge>
                 </div>
               ) : null}
             </div>
