@@ -183,7 +183,7 @@ export function App() {
             <GeneratorTab />
           </TabsContent>
           <TabsContent value="mfa" className="mt-0">
-            {mlp ? <MfaTab mlp={mlp} /> : null}
+            {mlp && client ? <MfaTab mlp={mlp} client={client} /> : null}
           </TabsContent>
           <TabsContent value="import-export" className="mt-0">
             {mlp ? <ImportExportTab mlp={mlp} /> : null}

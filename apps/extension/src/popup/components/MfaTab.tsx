@@ -1,5 +1,6 @@
 import type { MfaStatus } from '@vautr/api-contract';
 import type { VautrMlpClient } from '@vautr/client-sdk';
+import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +12,10 @@ import { Switch } from '@/components/ui/switch';
 
 interface MfaTabProps {
   mlp: VautrMlpClient;
+  client: VautrWebClient;
 }
 
-export function MfaTab({ mlp }: MfaTabProps) {
+export function MfaTab({ mlp, client }: MfaTabProps) {
   const [status, setStatus] = useState<MfaStatus | null>(null);
   const [issue, setIssue] = useState<{
     otpauth_url: string;
@@ -23,6 +25,33 @@ export function MfaTab({ mlp }: MfaTabProps) {
   const [code, setCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [error, setError] = useState('');
+
+  const [keyGen, setKeyGen] = useState<number | null>(null);
+  const [rotatePassword, setRotatePassword] = useState('');
+  const [rotating, setRotating] = useState(false);
+
+  useEffect(() => {
+    setKeyGen(client.getKeyGen());
+  }, [client]);
+
+  async function handleRotate(): Promise<void> {
+    if (!rotatePassword) {
+      setError('Enter your master password to rotate the key.');
+      return;
+    }
+    setRotating(true);
+    setError('');
+    try {
+      const newGen = await client.rotateKey(rotatePassword);
+      setKeyGen(newGen);
+      setRotatePassword('');
+      toast.success(`Vault key rotated to generation ${newGen}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRotating(false);
+    }
+  }
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -153,6 +182,39 @@ export function MfaTab({ mlp }: MfaTabProps) {
               }}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Vault key rotation</CardTitle>
+          <CardDescription className="text-xs">
+            Re-wraps your vault key under a new generation. Enter your master password to confirm.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Current key generation</span>
+            <span className="font-mono">{keyGen ?? '—'}</span>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ext-rotate-mp">Master password</Label>
+            <Input
+              id="ext-rotate-mp"
+              type="password"
+              value={rotatePassword}
+              onChange={(e) => setRotatePassword(e.target.value)}
+              placeholder="Confirm to rotate"
+            />
+          </div>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <Button
+            variant="outline"
+            onClick={() => void handleRotate()}
+            disabled={rotating || !client.isUnlocked()}
+          >
+            {rotating ? 'Rotating…' : 'Rotate vault key'}
+          </Button>
         </CardContent>
       </Card>
     </div>

@@ -273,6 +273,53 @@ export class VautrWebClient {
     await this.store.setState({ sessionToken: null, svk: null });
   }
 
+  /**
+   * Rotate the vault encryption key (server `POST /account/rotate-key`).
+   *
+   * Key rotation re-wraps the in-memory SVK under a freshly-derived KEK (from the
+   * master password) at the next `min_enc_key_gen`. The server stores the new
+   * MP-wrapped `svk` blob and advances the epoch gate; clients at a lower
+   * generation are forced read-only until they re-derive (data.md §5). Mirrors
+   * the desktop orchestrator's `rotate_key` but performed explicitly here because
+   * the server-backed client does not keep the master password in memory.
+   */
+  async rotateKey(password: string): Promise<number> {
+    if (!this.svk) {
+      throw new Error('vault is locked');
+    }
+    await this.crypto.ready();
+
+    const status = await this.api.request<AccountStatus>('GET', '/account/status');
+    const state = await this.store.getState();
+    const kdfSalt = state.kdfSalt ? fromBase64(state.kdfSalt) : null;
+    if (!kdfSalt) {
+      throw new Error('no stored KDF salt for this account; register or recover first');
+    }
+
+    const mk = this.crypto.deriveMasterKey(password, kdfSalt);
+    const kek = this.crypto.deriveKek(mk);
+    const newSvkWrapped = this.crypto.wrapSvk(this.svk, kek);
+
+    const newGen = status.min_enc_key_gen + 1;
+    const resp = await this.api.request<{ status: string; min_enc_key_gen: number }>(
+      'POST',
+      '/account/rotate-key',
+      { new_min_enc_key_gen: newGen, new_svk_ciphertext_blob: toBase64(newSvkWrapped) },
+    );
+
+    this.localKeyGen = resp.min_enc_key_gen;
+    await this.store.setState({
+      localKeyGen: this.localKeyGen,
+      minEncKeyGen: resp.min_enc_key_gen,
+    });
+    return resp.min_enc_key_gen;
+  }
+
+  /** Current local encryption-key generation (for the rotation UI). */
+  getKeyGen(): number {
+    return this.localKeyGen;
+  }
+
   // -------------------------------------------------------------------------
   // Sync (api.md §4)
   // -------------------------------------------------------------------------

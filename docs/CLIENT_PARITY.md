@@ -23,7 +23,7 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 | Tokens (VTR-047) | ✅ | ✅ | ✅ | ✅ (VTR-064) | ✅ |
 | MFA / WebAuthn (VTR-049) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Generator | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Sharing / key rotation | ✅ crypto + server `/shares`, `/account/rotate-key` | ⚠️ core only, no UI | ✅ local orchestrator | ✗ no SDK/crypto exposure (see gaps) | ✗ |
+| Sharing / key rotation | ✅ crypto + server `/shares`, `/account/rotate-key` | ⚠️ core only, no UI | ✅ local orchestrator + ext key rotation (VTR-065) | ⚠️ key rotation done (VTR-065); sharing needs SDK/crypto exposure (see gaps) | ✗ |
 | Quarantine reaper UI (VTR-047) | ✅ | ✗ no UI | ✅ `watch_state` subscription | ✗ no server endpoint | ✅ local orchestrator |
 
 ## Security-invariant gaps (highest priority)
@@ -55,12 +55,12 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
    sharing surface + UI added. Not a UI port — needs SDK/crypto exposure.
    Tracked separately (new VTR), not a parity patch.
 
-4. **Key-rotation UI on web/extension/mobile (✗).** The server has
+4. **Key-rotation UI on web/extension/mobile.** The server has
    `POST /account/rotate-key` (`new_min_enc_key_gen` + MP-wrapped `svk`); desktop
-   drives it via its local orchestrator's `rotate_key` (SVK re-wrap in memory).
-   The server-backed `VautrWebClient` does not expose SVK re-wrapping, so the
-   extension cannot produce `new_svk_ciphertext_blob` client-side without new
-   client-crypto work. New VTR, not a parity port.
+   drives it via its local orchestrator's `rotate_key`, and the extension now
+   surfaces it (VTR-065) by re-entering the master password to re-wrap the SVK
+   client-side. Web/mobile still lack a rotation UI (no client-crypto surface
+   exposed there yet).
 
 5. **Quarantine reaper UI on web/extension (✗).** Quarantine/reaper is a
    local-orchestrator concept surfaced via `watch_state()` (desktop ✅, mobile ✅).
