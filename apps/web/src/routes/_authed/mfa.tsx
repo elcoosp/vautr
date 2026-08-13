@@ -1,17 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
+import type { MfaMethod, MfaPolicy, MfaStatus } from '@vautr/api-contract';
+import { totpCode } from '@vautr/ui-logic';
+import { ShieldCheck, Smartphone } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { mlp, MlpApiError } from '@/lib/mlp';
-import { totpCode } from '@vautr/ui-logic';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { MfaStatus, MfaPolicy, MfaMethod } from '@vautr/api-contract';
-import { ShieldCheck, Smartphone } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/mfa')({
   component: MfaPage,
@@ -19,7 +19,7 @@ export const Route = createFileRoute('/_authed/mfa')({
 
 function MfaPage() {
   const [status, setStatus] = useState<MfaStatus | null>(null);
-  const [policy, setPolicy] = useState<MfaPolicy | null>(null);
+  const [_policy, setPolicy] = useState<MfaPolicy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
@@ -258,8 +258,13 @@ function MfaPage() {
               <Label>Allowed methods</Label>
               <div className="grid gap-2">
                 {['totp', 'webauthn', 'email'].map((m) => (
-                  <label key={m} className="flex items-center gap-2 text-sm text-text">
+                  <label
+                    key={m}
+                    htmlFor={`pol-method-${m}`}
+                    className="flex items-center gap-2 text-sm text-text"
+                  >
                     <Checkbox
+                      id={`pol-method-${m}`}
                       checked={polMethods.includes(m)}
                       onCheckedChange={() => toggleMethod(m)}
                     />
@@ -299,9 +304,14 @@ function MfaPage() {
               ].map(({ label, value, set }) => (
                 <label
                   key={label}
+                  htmlFor={`pol-${label.replace(/\s+/g, '-').toLowerCase()}`}
                   className="flex items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-text"
                 >
-                  <Checkbox checked={value} onCheckedChange={(v) => set(!!v)} />
+                  <Checkbox
+                    id={`pol-${label.replace(/\s+/g, '-').toLowerCase()}`}
+                    checked={value}
+                    onCheckedChange={(v) => set(!!v)}
+                  />
                   {label}
                 </label>
               ))}

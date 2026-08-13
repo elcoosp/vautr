@@ -63,6 +63,10 @@ EXPOSE 8080
 # Postgres users keep this volume for /data but store rows in their Postgres.
 VOLUME ["/data"]
 WORKDIR /data
+# The named volume is mounted as root-owned; the non-root `vautr` runtime user
+# must own /data to create the SQLite db + WAL files (fixes SQLite CANTOPEN
+# panics at startup).
+RUN chown -R vautr:vautr /data
 
 # Health check: /account/status is auth-gated and returns HTTP 401 when the
 # server is up (curl succeeds on any HTTP response); a connection refusal

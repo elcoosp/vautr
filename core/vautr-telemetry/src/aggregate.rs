@@ -17,18 +17,56 @@ use std::time::{Duration, Instant};
 /// A fixed window duration of exactly 24 hours.
 pub const WINDOW_24H: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// Maximum number of raw samples retained per histogram for percentile
+/// estimation. A fixed cap keeps memory bounded regardless of event volume
+/// (spec §1: no unbounded growth, no per-event timestamps stored).
+const RESERVOIR_CAP: usize = 4096;
+
+/// Percentile estimates derived from a [`Histogram`]'s bounded reservoir.
+///
+/// Serialized into the heartbeat so the backend receives aggregated timing
+/// distribution (p50/p95/p99) without any raw per-event values (spec §4.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HistogramPercentiles {
+    /// 50th percentile (median), if any samples were recorded.
+    pub p50: Option<u64>,
+    /// 95th percentile, if any samples were recorded.
+    pub p95: Option<u64>,
+    /// 99th percentile, if any samples were recorded.
+    pub p99: Option<u64>,
+}
+
 /// An integer-only histogram over a 24-hour window.
 ///
-/// Records the `count`, `sum`, `min` and `max` of a single metric. No
+/// Records the `count`, `sum`, `min` and `max` of a single metric. A bounded
+/// reservoir of raw samples is kept solely to estimate percentiles; no
 /// per-event timestamps are retained, so the temporal correlation attack
 /// vector described in spec §4.1 is eliminated.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Histogram {
     count: u64,
     sum: u64,
     min: Option<u64>,
     max: Option<u64>,
+    /// Percentile estimates, recomputed on each `record` from the reservoir.
+    #[serde(default)]
+    percentiles: HistogramPercentiles,
+    /// Bounded raw-sample reservoir for percentile estimation (not serialized).
+    #[serde(skip)]
+    reservoir: Vec<u64>,
 }
+
+impl PartialEq for Histogram {
+    fn eq(&self, other: &Self) -> bool {
+        self.count == other.count
+            && self.sum == other.sum
+            && self.min == other.min
+            && self.max == other.max
+            && self.percentiles == other.percentiles
+    }
+}
+
+impl Eq for Histogram {}
 
 impl Histogram {
     /// Record a single integer observation.
@@ -37,6 +75,55 @@ impl Histogram {
         self.sum = self.sum.saturating_add(value);
         self.min = Some(self.min.map_or(value, |m| m.min(value)));
         self.max = Some(self.max.map_or(value, |m| m.max(value)));
+        // Maintain a bounded reservoir for percentile estimation.
+        if self.reservoir.len() >= RESERVOIR_CAP {
+            self.reservoir.remove(0);
+        }
+        self.reservoir.push(value);
+        self.recompute_percentiles();
+    }
+
+    /// Recompute p50/p95/p99 from the current reservoir (nearest-rank).
+    fn recompute_percentiles(&mut self) {
+        if self.reservoir.is_empty() {
+            self.percentiles = HistogramPercentiles::default();
+            return;
+        }
+        let mut sorted = self.reservoir.clone();
+        sorted.sort_unstable();
+        let rank = |p: f64| -> u64 {
+            // Nearest-rank: index = ceil(p * n) - 1, clamped.
+            let n = sorted.len();
+            let idx = ((p * n as f64).ceil() as usize)
+                .saturating_sub(1)
+                .min(n - 1);
+            sorted[idx]
+        };
+        self.percentiles = HistogramPercentiles {
+            p50: Some(rank(0.50)),
+            p95: Some(rank(0.95)),
+            p99: Some(rank(0.99)),
+        };
+    }
+
+    /// The percentile estimates for this histogram (p50/p95/p99).
+    pub fn percentiles(&self) -> HistogramPercentiles {
+        self.percentiles
+    }
+
+    /// 50th percentile (median) of recorded samples, if any.
+    pub fn p50(&self) -> Option<u64> {
+        self.percentiles.p50
+    }
+
+    /// 95th percentile of recorded samples, if any.
+    pub fn p95(&self) -> Option<u64> {
+        self.percentiles.p95
+    }
+
+    /// 99th percentile of recorded samples, if any.
+    pub fn p99(&self) -> Option<u64> {
+        self.percentiles.p99
     }
 
     /// Merge another histogram into this one (used when folding windows).
@@ -55,6 +142,13 @@ impl Histogram {
             (None, Some(b)) => Some(b),
             (None, None) => None,
         };
+        // Fold reservoirs (bounded), then recompute percentiles.
+        self.reservoir.extend_from_slice(&other.reservoir);
+        if self.reservoir.len() > RESERVOIR_CAP {
+            let drop = self.reservoir.len() - RESERVOIR_CAP;
+            self.reservoir.drain(0..drop);
+        }
+        self.recompute_percentiles();
     }
 
     /// Number of observations recorded.
@@ -116,12 +210,18 @@ pub struct AggregatedMetrics {
 impl AggregatedMetrics {
     /// Record a sync failure, segmenting by the (PII-free) error type name.
     pub fn record_sync_failure(&mut self, error_type: &str) {
-        *self.sync_failure_counts.entry(error_type.to_string()).or_insert(0) += 1;
+        *self
+            .sync_failure_counts
+            .entry(error_type.to_string())
+            .or_insert(0) += 1;
     }
 
     /// Record an OCC conflict, segmenting by the (PII-free) error type name.
     pub fn record_occ_conflict(&mut self, error_type: &str) {
-        *self.occ_conflict_counts.entry(error_type.to_string()).or_insert(0) += 1;
+        *self
+            .occ_conflict_counts
+            .entry(error_type.to_string())
+            .or_insert(0) += 1;
     }
 }
 
@@ -219,7 +319,8 @@ impl DailyAggregator {
 
     /// Time remaining in the current window, saturating at zero.
     pub fn window_remaining(&self) -> Duration {
-        self.window_duration.saturating_sub(self.window_started_at.elapsed())
+        self.window_duration
+            .saturating_sub(self.window_started_at.elapsed())
     }
 
     /// Roll the completed window over, returning the finished metrics and
@@ -331,7 +432,9 @@ mod tests {
         agg.record_sync_duration_ms(7);
         agg.record_sync_failure("CoreError::OccConflict");
 
-        let finished = agg.roll_window().expect("zero-duration window rolls immediately");
+        let finished = agg
+            .roll_window()
+            .expect("zero-duration window rolls immediately");
         assert_eq!(finished.sync_duration_ms.sum(), 7);
         assert_eq!(finished.sync_failure_counts["CoreError::OccConflict"], 1);
 
@@ -345,5 +448,37 @@ mod tests {
     fn default_window_is_24h() {
         assert_eq!(WINDOW_24H, Duration::from_secs(24 * 60 * 60));
         assert_eq!(DailyAggregator::new().window_duration(), WINDOW_24H);
+    }
+
+    #[test]
+    fn histogram_computes_percentiles_from_reservoir() {
+        let mut h = Histogram::default();
+        // 1..=100 inclusive.
+        for v in 1u64..=100 {
+            h.record(v);
+        }
+        // Nearest-rank percentiles over 1..=100.
+        assert_eq!(h.p50(), Some(50));
+        assert_eq!(h.p95(), Some(95));
+        assert_eq!(h.p99(), Some(99));
+        // Count/sum/min/max still tracked alongside percentiles.
+        assert_eq!(h.count(), 100);
+        assert_eq!(h.min(), Some(1));
+        assert_eq!(h.max(), Some(100));
+        // Percentiles are serialized into the report (no raw values leaked).
+        let json = serde_json::to_string(&h).expect("serializes");
+        assert!(json.contains("\"p50\""));
+        assert!(json.contains("\"p95\""));
+        assert!(json.contains("\"p99\""));
+        // Reservoir is never serialized (no per-event data on the wire).
+        assert!(!json.contains("reservoir"));
+    }
+
+    #[test]
+    fn empty_histogram_has_no_percentiles() {
+        let h = Histogram::default();
+        assert_eq!(h.p50(), None);
+        assert_eq!(h.p95(), None);
+        assert_eq!(h.p99(), None);
     }
 }

@@ -1,11 +1,10 @@
 import * as DialogPrimitive from '@rn-primitives/dialog';
+import { X } from 'lucide-react-native';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 import { forwardRef } from 'react';
-import { Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
-
-import { Button, ButtonText } from './button';
+import { View } from 'react-native';
 import { cn } from '../../lib/utils';
+import { Button, ButtonText } from './button';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;

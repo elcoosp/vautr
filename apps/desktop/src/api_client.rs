@@ -7,7 +7,7 @@
 //! "reveal" path fetches the stored ciphertext via `/secrets/{uuid}/value` and
 //! the desktop decrypts it locally with the DEK.
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use reqwest::{Client, Method};
 use serde::{Deserialize, Serialize};
 
@@ -287,7 +287,10 @@ impl ApiClient {
         if let Some(b) = body {
             req = req.json(&b);
         }
-        let resp = req.send().await.map_err(|e| format!("request {url}: {e}"))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("request {url}: {e}"))?;
         let status = resp.status();
         let bytes = resp
             .bytes()
@@ -303,21 +306,16 @@ impl ApiClient {
                         Some(format!("{}: {}", e.error, e.message))
                     }
                 })
-                .unwrap_or_else(|| {
-                    String::from_utf8_lossy(&bytes).into_owned()
-                });
+                .unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned());
             return Err(format!("HTTP {} {method} {path}: {msg}", status.as_u16()));
         }
-        serde_json::from_slice::<T>(&bytes)
-            .map_err(|e| format!("parse {url}: {e}"))
+        serde_json::from_slice::<T>(&bytes).map_err(|e| format!("parse {url}: {e}"))
     }
 
     // ── Projects ────────────────────────────────────────────────────────
 
     pub async fn list_projects(&self, token: &str) -> Result<Vec<ProjectDto>, String> {
-        let env: ProjectListEnvelope = self
-            .send(Method::GET, token, "/projects", None)
-            .await?;
+        let env: ProjectListEnvelope = self.send(Method::GET, token, "/projects", None).await?;
         Ok(env.projects)
     }
 
@@ -525,13 +523,8 @@ impl ApiClient {
         token: &str,
         uuid: &str,
     ) -> Result<SecretValueDto, String> {
-        self.send(
-            Method::GET,
-            token,
-            &format!("/secrets/{uuid}/value"),
-            None,
-        )
-        .await
+        self.send(Method::GET, token, &format!("/secrets/{uuid}/value"), None)
+            .await
     }
 
     // ── Offboarding (revoke all of a user's access) ─────────────────────
@@ -592,7 +585,10 @@ impl ApiClient {
 
     // ── Machine accounts (Wave A2) ──────────────────────────────────────
 
-    pub async fn list_machine_accounts(&self, token: &str) -> Result<Vec<MachineAccountDto>, String> {
+    pub async fn list_machine_accounts(
+        &self,
+        token: &str,
+    ) -> Result<Vec<MachineAccountDto>, String> {
         let env: MachineAccountListEnvelope = self
             .send(Method::GET, token, "/machine-accounts", None)
             .await?;
@@ -632,8 +628,7 @@ impl ApiClient {
     // ── Access tokens (Wave A2) ─────────────────────────────────────────
 
     pub async fn list_tokens(&self, token: &str) -> Result<Vec<AccessTokenDto>, String> {
-        let env: AccessTokenListEnvelope =
-            self.send(Method::GET, token, "/tokens", None).await?;
+        let env: AccessTokenListEnvelope = self.send(Method::GET, token, "/tokens", None).await?;
         Ok(env.tokens)
     }
 
@@ -685,7 +680,11 @@ impl ApiClient {
     }
 
     /// Delete a machine account (`DELETE /machine-accounts/{uuid}`).
-    pub async fn delete_machine_account(&self, token: &str, uuid: &str) -> Result<serde_json::Value, String> {
+    pub async fn delete_machine_account(
+        &self,
+        token: &str,
+        uuid: &str,
+    ) -> Result<serde_json::Value, String> {
         self.send(
             Method::DELETE,
             token,
@@ -703,7 +702,11 @@ impl ApiClient {
     }
 
     /// `POST /backup/export` — create an encrypted backup archive.
-    pub async fn backup_export(&self, token: &str, include_secrets: bool) -> Result<BackupExportDto, String> {
+    pub async fn backup_export(
+        &self,
+        token: &str,
+        include_secrets: bool,
+    ) -> Result<BackupExportDto, String> {
         let mut body = serde_json::Map::new();
         body.insert("include_secrets".into(), serde_json::json!(include_secrets));
         self.send(
@@ -716,7 +719,11 @@ impl ApiClient {
     }
 
     /// `POST /backup/restore` — restore from a base64 archive.
-    pub async fn backup_restore(&self, token: &str, archive_base64: &str) -> Result<BackupRestoreDto, String> {
+    pub async fn backup_restore(
+        &self,
+        token: &str,
+        archive_base64: &str,
+    ) -> Result<BackupRestoreDto, String> {
         let mut body = serde_json::Map::new();
         body.insert("archive_base64".into(), serde_json::json!(archive_base64));
         self.send(

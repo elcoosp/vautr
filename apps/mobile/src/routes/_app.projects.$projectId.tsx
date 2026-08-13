@@ -1,11 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { Eye, EyeOff, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { Eye, EyeOff, Plus } from 'lucide-react-native';
-
-import { services } from '../../lib/client';
-import { requireBiometric } from '../../lib/biometrics';
-import type { Project, ProjectMember, Secret } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -19,6 +15,9 @@ import {
 } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { useToast } from '../../components/ui/toast';
+import type { Project, ProjectMember, Secret } from '../../lib/api';
+import { requireBiometric } from '../../lib/biometrics';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/projects/$projectId')({
   component: ProjectDetailScreen,

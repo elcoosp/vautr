@@ -1,21 +1,22 @@
-import { createFileRoute, Outlet, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, Outlet, useNavigate } from '@tanstack/react-router';
 import { useIsLocked } from '@vautr/ui-logic';
-import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard,
-  FolderKanban,
-  KeyRound,
-  Wrench,
   Bot,
-  Ticket,
-  ShieldCheck,
-  ArrowLeftRight,
-  Settings,
-  LogOut,
+  CircleCheck,
+  Eye,
+  Folder,
+  Globe,
+  HardDrive,
+  LayoutDashboard,
   Lock,
+  LogOut,
+  Replace,
+  Settings,
+  Settings2,
 } from 'lucide-react';
-import { logout } from '@/lib/client';
 import { useEffect } from 'react';
+import { logout } from '@/lib/client';
+import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authed')({
   component: AuthedLayout,
@@ -23,14 +24,14 @@ export const Route = createFileRoute('/_authed')({
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/vault', label: 'Vault', icon: KeyRound },
-  { to: '/generator', label: 'Generator', icon: Wrench },
-  { to: '/secrets', label: 'Secrets', icon: Lock },
+  { to: '/projects', label: 'Projects', icon: Folder },
+  { to: '/vault', label: 'Vault', icon: Eye },
+  { to: '/generator', label: 'Generator', icon: Settings2 },
+  { to: '/secrets', label: 'Secrets', icon: HardDrive },
   { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
-  { to: '/tokens', label: 'Tokens', icon: Ticket },
-  { to: '/mfa', label: 'MFA & security', icon: ShieldCheck },
-  { to: '/import-export', label: 'Import / export', icon: ArrowLeftRight },
+  { to: '/tokens', label: 'Tokens', icon: Globe },
+  { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
+  { to: '/import-export', label: 'Import / export', icon: Replace },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import type { Project, ProjectType } from '@vautr/api-contract';
+import type { VautrMlpClient } from '@vautr/client-sdk';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,8 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { VautrMlpClient } from '@vautr/client-sdk';
-import type { ProjectType } from '@vautr/api-contract';
 import { usePopupStore } from '../store';
 
 interface ProjectsTabProps {
@@ -34,22 +34,23 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
   const setError = usePopupStore((s) => s.setError);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<ProjectType>('personal');
 
-  async function refresh(): Promise<void> {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
       const res = await mlp.listProjects();
       setProjects(res.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  }, [mlp, setProjects, setError]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function handleCreate(): Promise<void> {
     if (!name) {
@@ -69,13 +70,17 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
     }
   }
 
-  async function handleDelete(uuid: string, name: string): Promise<void> {
+  async function confirmDelete(): Promise<void> {
+    const target = deleteTarget;
+    if (!target) return;
     try {
-      await mlp.deleteProject(uuid);
-      removeProject(uuid);
-      toast.success(`Deleted project "${name}".`);
+      await mlp.deleteProject(target.uuid);
+      removeProject(target.uuid);
+      toast.success(`Deleted project "${target.name}".`);
+      setDeleteTarget(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setDeleteTarget(null);
     }
   }
 
@@ -113,7 +118,7 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
                 size="sm"
                 variant="ghost"
                 className="text-destructive"
-                onClick={() => void handleDelete(p.uuid, p.name)}
+                onClick={() => setDeleteTarget(p)}
               >
                 Delete
               </Button>
@@ -152,6 +157,25 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
           </div>
           <DialogFooter>
             <Button onClick={() => void handleCreate()}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project</DialogTitle>
+            <DialogDescription>
+              Permanently delete project &quot;{deleteTarget?.name}&quot;? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()}>
+              Delete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

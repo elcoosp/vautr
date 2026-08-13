@@ -1,5 +1,5 @@
 import { MobileApiClient } from './api';
-import { VautrAuth, secureTokenStore } from './auth';
+import { secureTokenStore, VautrAuth } from './auth';
 
 /** App-wide shared API client + auth (lazy singleton). */
 class AppServices {

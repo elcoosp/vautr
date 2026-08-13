@@ -1,0 +1,23 @@
+{
+  "name": "Node.js app",
+  "kind": "node",
+  "bootstrap": ["pnpm install"],
+  "build": ["pnpm build", "pnpm typecheck"],
+  "test": [
+    "pnpm test",
+    "pnpm lint",
+    "pnpm run test",
+    "pnpm run lint",
+    "pnpm run typecheck",
+    "pnpm run build",
+    "pnpm run format"
+  ],
+  "start": "pnpm dev",
+  "port": 5173,
+  "readinessPath": "/",
+  "evidence": [
+    "Detected package.json",
+    "Package manager: pnpm",
+    "Scripts: build, dev, typecheck, test, lint, format"
+  ]
+}

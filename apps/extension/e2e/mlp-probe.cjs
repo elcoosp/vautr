@@ -4,7 +4,7 @@ const unb64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
 const BASE = 'http://localhost:8080';
 async function req(method, path, body, token) {
   const h = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = 'Bearer ' + token;
+  if (token) h.Authorization = `Bearer ${token}`;
   const r = await fetch(BASE + path, {
     method,
     headers: h,
@@ -47,7 +47,7 @@ async function registerLogin(u, pw) {
   return fr.body.session_token;
 }
 async function main() {
-  const u = 'probe-' + Date.now() + '@vautr.test';
+  const u = `probe-${Date.now()}@vautr.test`;
   const pw = 'correct-horse-battery-staple-e2e';
   const token = await registerLogin(u, pw);
   console.log('got token for', u);
@@ -65,7 +65,7 @@ async function main() {
   const secret = se.body;
   console.log('create secret:', se.status, secret.key, 'uuid', secret.uuid);
   // reveal with user token
-  const val = await req('GET', '/secrets/' + secret.uuid + '/value', null, token);
+  const val = await req('GET', `/secrets/${secret.uuid}/value`, null, token);
   console.log('reveal with USER token:', val.status, JSON.stringify(val.body));
   // machine account without reveal scope
   const ma = await req(
@@ -83,13 +83,13 @@ async function main() {
   );
   console.log('create token:', tok.status, tok.body.token_id);
   const maTok = tok.body.token;
-  const val2 = await req('GET', '/secrets/' + secret.uuid + '/value', null, maTok);
+  const val2 = await req('GET', `/secrets/${secret.uuid}/value`, null, maTok);
   console.log(
     'reveal with MACHINE token (no reveal scope):',
     val2.status,
     JSON.stringify(val2.body),
   );
-  const val3 = await req('GET', '/secrets/' + secret.uuid, null, maTok);
+  const val3 = await req('GET', `/secrets/${secret.uuid}`, null, maTok);
   console.log('get secret meta with MACHINE token:', val3.status);
 }
 main().catch((e) => {

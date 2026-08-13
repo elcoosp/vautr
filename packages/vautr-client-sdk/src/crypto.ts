@@ -39,7 +39,10 @@ export class AsyncCryptoAdapter {
   /** Ensure the wasm module is loaded. Idempotent. */
   async ready(): Promise<void> {
     if (!this.module) {
-      this.module = await (this.modulePromise ??= import('vautr-wasm'));
+      if (!this.modulePromise) {
+        this.modulePromise = import('vautr-wasm');
+      }
+      this.module = await this.modulePromise;
     }
   }
 

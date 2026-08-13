@@ -31,15 +31,20 @@
 
 pub mod aggregate;
 pub mod consent;
+pub mod controller;
 pub mod monitoring;
 pub mod report;
+pub mod sender;
 
-pub use aggregate::{AggregatedMetrics, DailyAggregator, Histogram};
+pub use aggregate::{AggregatedMetrics, DailyAggregator, Histogram, HistogramPercentiles};
 pub use consent::{Consent, ConsentGate};
-pub use monitoring::{
-    AlertEvent, AlertSeverity, Alerting, HealthStatus, MetricsSnapshot, ServerMetrics,
-    WebhookHook,
-};
+pub use controller::{TelemetryController, DEFAULT_HEARTBEAT_PATH};
 #[cfg(feature = "webhook")]
 pub use monitoring::WebhookDeliverer;
+pub use monitoring::{
+    AlertEvent, AlertSeverity, Alerting, HealthStatus, MetricsSnapshot, ServerMetrics, WebhookHook,
+};
 pub use report::{HeartbeatReport, InstallationUuid, WindowMeta};
+#[cfg(feature = "http")]
+pub use sender::HttpHeartbeatSender;
+pub use sender::{HeartbeatSender, RecordingSender, SendError};

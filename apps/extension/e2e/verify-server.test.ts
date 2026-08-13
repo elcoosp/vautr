@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
 import * as nodeCrypto from 'node:crypto';
+
 if (!globalThis.crypto) globalThis.crypto = nodeCrypto;
 if (!globalThis.crypto.randomUUID) globalThis.crypto.randomUUID = () => nodeCrypto.randomUUID();
 const { VautrWebClient } = await import('../../../packages/vautr-client-sdk/src/realClient');

@@ -29,6 +29,7 @@ vautr-auth.workspace = true
 vautr-keyring.workspace = true
 vautr-crypto = { workspace = true, features = ["sharing"] }
 vautr-import.workspace = true
+vautr-export.workspace = true
 vautr-sharing.workspace = true
 vautr-files.workspace = true
 hkdf.workspace = true

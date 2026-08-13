@@ -1,5 +1,5 @@
-import * as browser from 'webextension-polyfill';
 import type { StorageArea } from '@vautr/client-sdk/extension';
+import * as browser from 'webextension-polyfill';
 
 /**
  * Typed adapters over the browser extension storage areas.

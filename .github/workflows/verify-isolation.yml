@@ -79,6 +79,26 @@ jobs:
             echo "::notice::scripts/check-restricted-api.sh not present; skipping FFI symbol check"
           fi
 
+      - name: Setup pnpm (for token-drift gate)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Design-token drift gate (check:tokens)
+        # Phase 9 deliverable: fail the PR if tokens.json and any generated
+        # output (tokens.css, tokens.rs, tokens.ts, vautr-theme.json, tokens.md,
+        # apps/desktop/src/theme_tokens.rs) are out of sync. One author, no drift.
+        run: pnpm --filter @vautr/design-tokens check:tokens
+
   # ---------------------------------------------------------------------------
   # Nightly exhaustive verification (build-env-deploy.md §6.2 / roadmap §9).
   # ---------------------------------------------------------------------------
@@ -121,3 +141,41 @@ jobs:
 
       - name: Test (pnpm test)
         run: pnpm test
+
+  # ---------------------------------------------------------------------------
+  # Nightly extension accessibility + visual gallery (Phase 9).
+  # Browser-only: the A11y and screenshot specs audit the locked popup and
+  # capture per-state PNGs without a backend, so they run green with no server.
+  # (Server-backed live E2E — popup-flow / cli / desktop — needs a running
+  # Vautr server and is a separate follow-up; those suites are #[ignore]/manual.)
+  # ---------------------------------------------------------------------------
+  extension-a11y:
+    name: Extension A11y + gallery (Playwright)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build extension
+        run: pnpm --filter @vautr/extension build
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @vautr/extension exec playwright install chromium
+
+      - name: A11y audit + screenshot gallery
+        run: pnpm --filter @vautr/extension exec playwright test tests/popup-a11y.spec.ts tests/popup-screenshots.spec.ts

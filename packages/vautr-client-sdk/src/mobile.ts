@@ -19,10 +19,8 @@
 import type { DecryptedOverview, OpaqueHandle } from './types';
 
 /** Opaque u64 surfaced as a string. Re-exported for mobile consumers. */
-export type { OpaqueHandle } from './types';
-
 /** Re-exported list-item type for mobile consumers. */
-export type { DecryptedOverview } from './types';
+export type { DecryptedOverview, OpaqueHandle } from './types';
 
 /**
  * OS-keystore biometrics storage of the 32-byte SVK. The app implements this

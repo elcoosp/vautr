@@ -1,17 +1,17 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import type {
+  AccessToken,
+  BackupStatus,
+  MachineAccount,
+  MfaStatus,
+  Project,
+} from '@vautr/api-contract';
+import { ArrowRight, Bot, Database, FolderKanban, ShieldCheck, Ticket } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { mlp, MlpApiError } from '@/lib/mlp';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import type {
-  Project,
-  MachineAccount,
-  AccessToken,
-  MfaStatus,
-  BackupStatus,
-} from '@vautr/api-contract';
-import { FolderKanban, Bot, Ticket, ShieldCheck, Database, ArrowRight } from 'lucide-react';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/dashboard')({
   component: DashboardPage,

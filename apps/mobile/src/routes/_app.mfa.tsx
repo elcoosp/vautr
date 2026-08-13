@@ -1,15 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-
-import { services } from '../../lib/client';
-import type { MfaMethod } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { useToast } from '../../components/ui/toast';
+import type { MfaMethod } from '../../lib/api';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/mfa')({
   component: MfaScreen,

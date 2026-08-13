@@ -1,18 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
+import type { AccessScope, MachineAccount } from '@vautr/api-contract';
+import { Bot, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { mlp, MlpApiError } from '@/lib/mlp';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -21,24 +15,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { AccessScope, MachineAccount } from '@vautr/api-contract';
-import { Bot, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/machine-accounts')({
   component: MachineAccountsPage,
@@ -233,8 +226,13 @@ function MachineAccountsPage() {
                 <Label>Scopes</Label>
                 <div className="grid gap-2">
                   {SCOPES.map((scope) => (
-                    <label key={scope} className="flex items-center gap-2 text-sm text-text">
+                    <label
+                      key={scope}
+                      htmlFor={`ma-scope-${scope}`}
+                      className="flex items-center gap-2 text-sm text-text"
+                    >
                       <Checkbox
+                        id={`ma-scope-${scope}`}
                         checked={scopes.includes(scope)}
                         onCheckedChange={() => toggleScope(scope)}
                       />

@@ -17,6 +17,12 @@ pub(crate) struct AccountStatusResp {
     /// feature is compiled in; otherwise always `false`.
     #[serde(skip_serializing_if = "is_false")]
     second_factor_required: bool,
+    /// The kind of second factor the account requires before MP unlock, if any.
+    /// `"webauthn"` when WebAuthn is required; `"totp"` when the org policy
+    /// makes MFA mandatory and the user has a configured TOTP method. `null`
+    /// when no second factor is required (mlp-wave-plan §3 A4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    second_factor_method: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -61,13 +67,28 @@ pub(crate) async fn account_status(
                 min_enc_key_gen: user.min_enc_key_gen,
                 svk_ciphertext_blob: String::new(),
                 second_factor_required: true,
+                second_factor_method: Some("webauthn".to_string()),
             }));
         }
     }
+    // A4 (mlp-wave-plan §3): report the required second-factor method so the
+    // client can drive the correct handshake. WebAuthn is handled above (it
+    // returns early when withheld); here we surface TOTP when the org policy
+    // makes MFA mandatory and the user has a configured TOTP method (the server
+    // enforces the same policy at login).
+    let second_factor_method = {
+        let policy = st.repo.mfa_get_policy().await.map_err(|e| ApiError::internal(&e.to_string()))?;
+        if policy.required && st.repo.mfa_has_totp(&user_id).await.map_err(|e| ApiError::internal(&e.to_string()))? {
+            Some("totp".to_string())
+        } else {
+            None
+        }
+    };
     Ok(Json(AccountStatusResp {
         min_enc_key_gen: user.min_enc_key_gen,
         svk_ciphertext_blob: b64(&user.svk_ciphertext_blob),
-        second_factor_required: false,
+        second_factor_required: second_factor_method.is_some(),
+        second_factor_method,
     }))
 }
 

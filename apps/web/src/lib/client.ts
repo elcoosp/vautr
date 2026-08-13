@@ -1,7 +1,7 @@
-import { VautrWebClient } from '@vautr/client-sdk/real';
 import type { CoreAction, OpaqueHandle } from '@vautr/client-sdk';
+import { VautrWebClient } from '@vautr/client-sdk/real';
 import type { DecryptedOverview } from '@vautr/ui-logic';
-import { attachStoreToEventBus, vaultStore, vaultEventBus } from '@vautr/ui-logic';
+import { attachStoreToEventBus, vaultEventBus, vaultStore } from '@vautr/ui-logic';
 
 let client: VautrWebClient | null = null;
 let storeAttached = false;

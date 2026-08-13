@@ -1,0 +1,20 @@
+{
+  "name": "@vautr/design-tokens",
+  "version": "0.1.0",
+  "description": "Single source of truth for Vautr design tokens ('The Vault Ledger'). Authored sources: tokens.json + gpui-map.json. Generated outputs in dist/ (tokens.css, tokens.rs, tokens.ts, vautr-theme.json, tokens.md).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:tokens": "node scripts/build.mjs",
+    "check:tokens": "node scripts/build.mjs --check",
+    "build": "node scripts/build.mjs"
+  },
+  "files": [
+    "tokens.json",
+    "gpui-map.json",
+    "scripts",
+    "tokens.css",
+    "tokens.ts",
+    "tokens.md"
+  ]
+}

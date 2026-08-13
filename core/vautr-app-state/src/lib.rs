@@ -11,6 +11,7 @@
 //! - `epoch`        — Read-Only Gate logic when `local_gen < min_enc_key_gen`.
 //! - `sharing`      — sharing PKI transport + in-memory relay + group store.
 //! - `file_transfer`— `FileTransferWorker` (throttled multipart upload/download).
+//! - `project_transport` — projects + project-scoped secret metadata transport.
 //! - `recovery`     — Recovery Key auth gate + proof-of-possession (§2-4).
 //! - `offline`      — offline mutation queue (VTR-047).
 
@@ -20,9 +21,12 @@ pub mod file_transfer;
 pub mod handles;
 pub mod offline;
 pub mod orchestrator;
+pub mod project_transport;
 pub mod recovery;
 pub mod sharing;
 pub mod sync_transport;
 pub mod worker;
 
+pub use orchestrator::SecondFactorMethod;
 pub use orchestrator::VautrClient;
+pub use project_transport::{ProjectSecretSummary, ProjectSummary, ProjectTransportHandle};

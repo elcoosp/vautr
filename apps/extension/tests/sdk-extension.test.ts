@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
 import {
   createItemCiphertextStore,
   createStatelessCrypto,
   createSvkSessionStore,
-  statelessAutofill,
   type StorageArea,
+  statelessAutofill,
 } from '@vautr/client-sdk/extension';
+import { describe, expect, it } from 'vitest';
 import { buildSecretEnvelope } from './helpers';
 
 /**

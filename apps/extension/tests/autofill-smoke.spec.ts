@@ -1,10 +1,10 @@
-import { test, expect, chromium } from '@playwright/test';
-import type { BrowserContext, Page, Worker } from '@playwright/test';
-import { buildSecretEnvelope } from './helpers';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { BrowserContext, Page, Worker } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
+import { buildSecretEnvelope } from './helpers';
 
 /**
  * Stateless autofill Service Worker smoke test (build-env-deploy §6.2).

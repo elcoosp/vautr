@@ -468,7 +468,10 @@ mod tests {
     fn alerting_cooldown_suppresses_repeats() {
         let mut a = Alerting::new().with_cooldown(Duration::from_secs(3600));
         assert_eq!(a.evaluate(HealthStatus::Down), None);
-        assert!(a.evaluate(HealthStatus::Down).is_some(), "first alert fires");
+        assert!(
+            a.evaluate(HealthStatus::Down).is_some(),
+            "first alert fires"
+        );
         // Immediate repeat is suppressed by the cooldown.
         assert_eq!(a.evaluate(HealthStatus::Down), None);
         assert_eq!(a.fired_events(), 1);
@@ -516,6 +519,11 @@ mod tests {
     fn default_threshold_and_cooldown() {
         assert_eq!(DEFAULT_FAILURE_THRESHOLD, 2);
         assert_eq!(DEFAULT_ALERT_COOLDOWN, Duration::from_secs(300));
-        assert_eq!(Alerting::new().with_cooldown(DEFAULT_ALERT_COOLDOWN).cooldown, Duration::from_secs(300));
+        assert_eq!(
+            Alerting::new()
+                .with_cooldown(DEFAULT_ALERT_COOLDOWN)
+                .cooldown,
+            Duration::from_secs(300)
+        );
     }
 }

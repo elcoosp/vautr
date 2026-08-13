@@ -7,7 +7,25 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!core", "!brand", "!docs", "!target", "!node_modules", "!dist"]
+    "includes": [
+      "**",
+      "!core",
+      "!brand",
+      "!docs",
+      "!target",
+      "!node_modules",
+      "!dist",
+      "!**/routeTree.gen.ts",
+      "!**/vautr_wasm.js",
+      "!**/vautr_wasm.d.ts",
+      "!**/generated.ts",
+      "!**/.hermes",
+      "!packages/design-tokens/tokens.css",
+      "!packages/design-tokens/tokens.ts",
+      "!packages/design-tokens/tokens.md",
+      "!packages/design-tokens/tokens.json",
+      "!apps/desktop/src/theme_tokens.rs"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -20,13 +38,48 @@
     "rules": {
       "preset": "recommended",
       "suspicious": {
-        "noConsole": "error"
+        "noConsole": "error",
+        "noUnknownAtRules": "off"
       },
       "correctness": {
         "noUnusedVariables": "warn"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/e2e/**",
+        "**/tests/**",
+        "**/test/**",
+        "**/load/**",
+        "**/scripts/**",
+        "**/globalSetup.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off",
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/wasm*.ts", "**/wasm*.js", "**/wasm*.d.ts", "packages/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "single",

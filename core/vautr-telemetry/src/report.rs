@@ -149,7 +149,10 @@ mod tests {
         assert_eq!(back, report);
         assert_eq!(back.os_version, "macos-14.5");
         assert_eq!(back.metrics.sync_duration_ms.sum(), 120);
-        assert_eq!(back.metrics.sync_failure_counts["CoreError::OccConflict"], 1);
+        assert_eq!(
+            back.metrics.sync_failure_counts["CoreError::OccConflict"],
+            1
+        );
     }
 
     #[test]

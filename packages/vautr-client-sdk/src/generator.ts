@@ -46,9 +46,7 @@ function secureRandomInt(max: number): number {
  */
 export function generatePassword(options: GeneratorOptions = {}): string {
   const opts: Required<GeneratorOptions> = { ...DEFAULT_OPTIONS, ...options };
-  const enabled = (['upper', 'lower', 'digits', 'symbols'] as const).filter(
-    (k) => opts[k],
-  );
+  const enabled = (['upper', 'lower', 'digits', 'symbols'] as const).filter((k) => opts[k]);
   if (enabled.length === 0) {
     return '';
   }
@@ -56,16 +54,15 @@ export function generatePassword(options: GeneratorOptions = {}): string {
     .map((k) => CHARSETS[k])
     .join('')
     .split('');
-  const filtered = opts.excludeAmbiguous
-    ? pool.filter((c) => !AMBIGUOUS.includes(c))
-    : pool;
+  const filtered = opts.excludeAmbiguous ? pool.filter((c) => !AMBIGUOUS.includes(c)) : pool;
 
   const parts: string[] = [];
   // Guarantee one of each enabled charset.
   for (const k of enabled) {
-    const chars = (opts.excludeAmbiguous
-      ? CHARSETS[k].split('').filter((c) => !AMBIGUOUS.includes(c))
-      : CHARSETS[k].split('')
+    const chars = (
+      opts.excludeAmbiguous
+        ? CHARSETS[k].split('').filter((c) => !AMBIGUOUS.includes(c))
+        : CHARSETS[k].split('')
     ).filter((c) => c);
     if (chars.length > 0) {
       parts.push(chars[secureRandomInt(chars.length)] ?? '');
@@ -133,7 +130,16 @@ export function assessPassword(password: string): PasswordStrength {
     score = 0;
     feedback.push('This is a known common password.');
   }
-  return { score, entropy: Math.round(entropy), length, hasUpper, hasLower, hasDigit, hasSymbol, feedback };
+  return {
+    score,
+    entropy: Math.round(entropy),
+    length,
+    hasUpper,
+    hasLower,
+    hasDigit,
+    hasSymbol,
+    feedback,
+  };
 }
 
 /**

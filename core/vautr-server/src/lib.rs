@@ -14,3 +14,11 @@ pub mod db;
 pub mod handlers;
 pub mod repository;
 pub mod middleware;
+
+/// The canonical OpenAPI 3 spec (api.md), embedded at compile time so the
+/// server can serve it at `GET /openapi.json` (VTR-010 TDD #2) and the SPA /
+/// external tooling can fetch the contract directly from a running instance.
+///
+/// Source of truth: `packages/api-contract/openapi.json`. Re-run the contract
+/// generator after editing request/response shapes so this stays in sync.
+pub const OPENAPI_SPEC: &str = include_str!("../../../packages/api-contract/openapi.json");

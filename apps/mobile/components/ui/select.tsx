@@ -1,8 +1,8 @@
 import * as SelectPrimitive from '@rn-primitives/select';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
 import type { ComponentPropsWithoutRef, ComponentRef, ReactNode } from 'react';
 import { forwardRef } from 'react';
 import { Text, View } from 'react-native';
-import { Check, ChevronDown, ChevronUp } from 'lucide-react-native';
 
 import { cn } from '../../lib/utils';
 

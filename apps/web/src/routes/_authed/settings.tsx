@@ -1,12 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
+import type { OffboardResponse } from '@vautr/api-contract';
+import { ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { mlp, MlpApiError } from '@/lib/mlp';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,8 +14,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import type { OffboardResponse } from '@vautr/api-contract';
-import { ShieldAlert } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/settings')({
   component: SettingsPage,

@@ -1,10 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { useHaptics } from '../../lib/haptics';
-
-import { services } from '../../lib/client';
-import { useSession } from '../../lib/session';
 import { Button, ButtonText } from '../../components/ui/button';
 import {
   Card,
@@ -16,6 +12,9 @@ import {
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { services } from '../../lib/client';
+import { useHaptics } from '../../lib/haptics';
+import { useSession } from '../../lib/session';
 
 export const Route = createFileRoute('/_auth/login')({
   component: LoginScreen,

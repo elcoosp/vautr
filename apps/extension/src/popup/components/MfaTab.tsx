@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import type { MfaStatus } from '@vautr/api-contract';
+import type { VautrMlpClient } from '@vautr/client-sdk';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -6,8 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import type { VautrMlpClient } from '@vautr/client-sdk';
-import type { MfaStatus } from '@vautr/api-contract';
 
 interface MfaTabProps {
   mlp: VautrMlpClient;
@@ -24,18 +24,18 @@ export function MfaTab({ mlp }: MfaTabProps) {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [error, setError] = useState('');
 
-  async function refresh(): Promise<void> {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
       const res = await mlp.mfaStatus();
       setStatus(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  }, [mlp]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function handleIssue(): Promise<void> {
     setError('');

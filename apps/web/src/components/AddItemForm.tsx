@@ -66,7 +66,6 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
             id="new-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            autoFocus
             required
             className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-text focus:border-accent"
             placeholder="e.g. Acme Bank"

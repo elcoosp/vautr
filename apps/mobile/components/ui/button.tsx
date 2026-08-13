@@ -1,8 +1,8 @@
-import { cva, type VariantProps } from 'class-variance-authority';
 import * as Slot from '@rn-primitives/slot';
+import { cva, type VariantProps } from 'class-variance-authority';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 import { forwardRef } from 'react';
-import { Pressable, Text, type View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import { cn } from '../../lib/utils';
 
@@ -89,5 +89,5 @@ const ButtonText = forwardRef<ComponentRef<typeof Text>, ButtonTextProps>(
   },
 );
 
-export { Button, ButtonText, buttonTextVariants, buttonVariants };
 export type { ButtonProps, ButtonTextProps };
+export { Button, ButtonText, buttonTextVariants, buttonVariants };

@@ -1,13 +1,14 @@
 /// <reference lib="webworker" />
-import * as browser from 'webextension-polyfill';
+
 import {
+  type AutofillResponse,
   createItemCiphertextStore,
   createStatelessCrypto,
   createSvkSessionStore,
-  statelessAutofill,
-  type AutofillResponse,
   type StorageArea,
+  statelessAutofill,
 } from '@vautr/client-sdk/extension';
+import * as browser from 'webextension-polyfill';
 
 /**
  * Stateless Autofill Service Worker (build-env-deploy §3.3).

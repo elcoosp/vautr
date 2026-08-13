@@ -14,7 +14,7 @@ async function getSecureStore(): Promise<SecureStoreModule> {
   return await import('expo-secure-store');
 }
 
-import { MobileApiClient } from './api';
+import type { MobileApiClient } from './api';
 import { createCryptoProvider, type VautrCryptoProvider } from './crypto/provider';
 
 /** Keychain keys (expo-secure-store). */
@@ -82,22 +82,22 @@ export function createMemoryTokenStore(): TokenStore {
   };
   return {
     async getToken() {
-      return data['token'] ?? null;
+      return data.token ?? null;
     },
     async setToken(token) {
-      data['token'] = token;
+      data.token = token;
     },
     async getKdfSalt() {
-      return data['salt'] ?? null;
+      return data.salt ?? null;
     },
     async setKdfSalt(salt) {
-      data['salt'] = salt;
+      data.salt = salt;
     },
     async getUsername() {
-      return data['username'] ?? null;
+      return data.username ?? null;
     },
     async setUsername(username) {
-      data['username'] = username;
+      data.username = username;
     },
   };
 }

@@ -1,11 +1,11 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useIsLocked } from '@vautr/ui-logic';
+import { Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { login, register } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lock } from 'lucide-react';
+import { login, register } from '@/lib/client';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,

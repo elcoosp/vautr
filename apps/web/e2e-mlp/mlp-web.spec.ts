@@ -1,5 +1,5 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { DatabaseSync } from 'node:sqlite';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
 /**
  * MLP Web vault e2e (Wave B1).

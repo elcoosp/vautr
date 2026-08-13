@@ -1,0 +1,28 @@
+# Load-test override for the Vautr server.
+#
+# Bind-mounts ./test/load/.loadtest to /data so the SQLite DB can be seeded
+# from the HOST (via seed_db.sh + host sqlite3) and then exercised by k6
+# (test/load/sync-pull.js). This avoids replaying the OPAQUE login flow inside
+# k6 and keeps the production docker-compose.yml untouched.
+#
+# Usage:
+#   cd test/load
+#   ./seed_db.sh                       # writes ../.loadtest/vautr.db (host)
+#   docker compose -f ../../docker-compose.yml -f docker-compose.loadtest.yml up -d
+#   VAUTR_BASE_URL=http://localhost:8080 VAUTR_TOKEN=loadtok \
+#     k6 run sync-pull.js
+#   docker compose -f ../../docker-compose.yml -f docker-compose.loadtest.yml down
+
+services:
+  server:
+    environment:
+      VAUTR_DB_URL: sqlite:/data/vautr.db
+      # Disable the per-IP rate limiter for the load test so we measure raw
+      # sync-pull throughput, not the 429 path. (VAUTR_RATE_LIMIT_MAX default 100.)
+      VAUTR_RATE_LIMIT_MAX: "1000000"
+    volumes:
+      # Resolved relative to the project root (the main docker-compose.yml dir),
+      # NOT this override file's dir. Seed it from the host with ./seed_db.sh.
+      - ./test/.loadtest:/data
+    # The host-seeded DB file must be writable by the non-root `vautr` user.
+    # seed_db.sh creates it world-writable; if you hand-create it, chmod 666.

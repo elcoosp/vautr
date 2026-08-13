@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+#
+# Vautr server — DEVELOPMENT image with hot reload (VTR-010 TDD #4).
+# Mounts the repo source and runs `cargo watch` so editing a Rust file
+# automatically recompiles + restarts the server. Builds on the same pinned
+# nightly toolchain as the production Dockerfile.
+
+FROM rust:1.94-bookworm AS dev
+
+# cargo-watch provides the hot-reload loop.
+RUN cargo install cargo-watch
+
+WORKDIR /build
+
+# Copy only manifests first for layer-cached dependency fetch.
+COPY Cargo.toml Cargo.lock ./
+COPY core/vautr-server/Cargo.toml core/vautr-server/Cargo.toml
+# The workspace may reference other members; pull the whole workspace manifest
+# set so `cargo` can resolve. (cheap: metadata only)
+COPY core/ core/
+COPY packages/ packages/
+
+WORKDIR /build/core/vautr-server
+
+# Warm the dependency cache (no source needed yet).
+RUN cargo fetch
+
+# Default: watch the server binary, restart on any change. Source is bind-mounted
+# at runtime, so the container rebuilds only when deps change.
+ENV VAUTR_DB_URL=sqlite:/data/vautr.db
+ENV RUST_LOG=debug
+
+EXPOSE 8080
+VOLUME ["/data"]
+
+CMD ["cargo", "watch", "-x", "run", "-p", "vautr-server"]

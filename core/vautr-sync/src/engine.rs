@@ -54,6 +54,20 @@ pub trait Transport: Send + Sync {
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<u8>), TransportError>> + Send>>;
 
+    /// The server-declared required second-factor method for this session, as
+    /// reported by `GET /account/status` (`second_factor_method`): `Some("webauthn")`,
+    /// `Some("totp")`, or `None` when no second factor is required. The orchestrator
+    /// consults this at MP-unlock time to drive the correct handshake (mlp-wave-plan §3 A4).
+    ///
+    /// Provided as a default returning `Ok(None)` so transports that do not model
+    /// a server status keep compiling; concrete HTTP/relay transports override it.
+    fn second_factor_method(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, TransportError>> + Send>> {
+        let _ = self;
+        Box::pin(async move { Ok(None) })
+    }
+
     /// Advance the global epoch gate before a crash-safe rotation push
     /// (api.md §5 `POST /account/rotate-key`). Returns the confirmed
     /// `min_enc_key_gen` (idempotent — server returns 200 if already at it).
@@ -62,6 +76,19 @@ pub trait Transport: Send + Sync {
         new_min_gen: u64,
         new_svk_blob: Vec<u8>,
     ) -> Pin<Box<dyn Future<Output = Result<u64, TransportError>> + Send>>;
+
+    /// Complete a TOTP second-factor challenge (mlp-wave-plan §3 A4,
+    /// `POST /mfa/totp/verify`). Required when the server reports a mandatory
+    /// TOTP second factor before MP unlock (enforce_mfa_required, mfa.rs).
+    ///
+    /// Provided as a default so existing transports keep compiling; concrete
+    /// HTTP/relay transports override it.
+    fn verify_totp(
+        &self,
+        _code: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TransportError>> + Send>> {
+        Box::pin(async move { Err(TransportError::Other("verify_totp not supported".into())) })
+    }
 }
 
 /// Transport-level error.

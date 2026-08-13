@@ -8,150 +8,150 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root';
-import { Route as AuthedRouteImport } from './routes/_authed';
-import { Route as LoginRouteImport } from './routes/login';
-import { Route as RegisterRouteImport } from './routes/register';
-import { Route as AuthedIndexRouteImport } from './routes/_authed/index';
-import { Route as AuthedDashboardRouteImport } from './routes/_authed/dashboard';
-import { Route as AuthedGeneratorRouteImport } from './routes/_authed/generator';
-import { Route as AuthedImportExportRouteImport } from './routes/_authed/import-export';
-import { Route as AuthedMachineAccountsRouteImport } from './routes/_authed/machine-accounts';
-import { Route as AuthedMfaRouteImport } from './routes/_authed/mfa';
-import { Route as AuthedSecretsRouteImport } from './routes/_authed/secrets';
-import { Route as AuthedSettingsRouteImport } from './routes/_authed/settings';
-import { Route as AuthedTokensRouteImport } from './routes/_authed/tokens';
-import { Route as AuthedVaultRouteImport } from './routes/_authed/vault';
-import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects/index';
-import { Route as AuthedProjectsUuidRouteImport } from './routes/_authed/projects/$uuid';
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as AuthedDashboardRouteImport } from './routes/_authed/dashboard'
+import { Route as AuthedGeneratorRouteImport } from './routes/_authed/generator'
+import { Route as AuthedImportExportRouteImport } from './routes/_authed/import-export'
+import { Route as AuthedMachineAccountsRouteImport } from './routes/_authed/machine-accounts'
+import { Route as AuthedMfaRouteImport } from './routes/_authed/mfa'
+import { Route as AuthedSecretsRouteImport } from './routes/_authed/secrets'
+import { Route as AuthedSettingsRouteImport } from './routes/_authed/settings'
+import { Route as AuthedTokensRouteImport } from './routes/_authed/tokens'
+import { Route as AuthedVaultRouteImport } from './routes/_authed/vault'
+import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects/index'
+import { Route as AuthedProjectsUuidRouteImport } from './routes/_authed/projects/$uuid'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedDashboardRoute = AuthedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedGeneratorRoute = AuthedGeneratorRouteImport.update({
   id: '/generator',
   path: '/generator',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedImportExportRoute = AuthedImportExportRouteImport.update({
   id: '/import-export',
   path: '/import-export',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedMachineAccountsRoute = AuthedMachineAccountsRouteImport.update({
   id: '/machine-accounts',
   path: '/machine-accounts',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedMfaRoute = AuthedMfaRouteImport.update({
   id: '/mfa',
   path: '/mfa',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedSecretsRoute = AuthedSecretsRouteImport.update({
   id: '/secrets',
   path: '/secrets',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedSettingsRoute = AuthedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedTokensRoute = AuthedTokensRouteImport.update({
   id: '/tokens',
   path: '/tokens',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedVaultRoute = AuthedVaultRouteImport.update({
   id: '/vault',
   path: '/vault',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedProjectsIndexRoute = AuthedProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 const AuthedProjectsUuidRoute = AuthedProjectsUuidRouteImport.update({
   id: '/projects/$uuid',
   path: '/projects/$uuid',
   getParentRoute: () => AuthedRoute,
-} as any);
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthedIndexRoute;
-  '/login': typeof LoginRoute;
-  '/register': typeof RegisterRoute;
-  '/dashboard': typeof AuthedDashboardRoute;
-  '/generator': typeof AuthedGeneratorRoute;
-  '/import-export': typeof AuthedImportExportRoute;
-  '/machine-accounts': typeof AuthedMachineAccountsRoute;
-  '/mfa': typeof AuthedMfaRoute;
-  '/secrets': typeof AuthedSecretsRoute;
-  '/settings': typeof AuthedSettingsRoute;
-  '/tokens': typeof AuthedTokensRoute;
-  '/vault': typeof AuthedVaultRoute;
-  '/projects/$uuid': typeof AuthedProjectsUuidRoute;
-  '/projects/': typeof AuthedProjectsIndexRoute;
+  '/': typeof AuthedIndexRoute
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/dashboard': typeof AuthedDashboardRoute
+  '/generator': typeof AuthedGeneratorRoute
+  '/import-export': typeof AuthedImportExportRoute
+  '/machine-accounts': typeof AuthedMachineAccountsRoute
+  '/mfa': typeof AuthedMfaRoute
+  '/secrets': typeof AuthedSecretsRoute
+  '/settings': typeof AuthedSettingsRoute
+  '/tokens': typeof AuthedTokensRoute
+  '/vault': typeof AuthedVaultRoute
+  '/projects/$uuid': typeof AuthedProjectsUuidRoute
+  '/projects/': typeof AuthedProjectsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/login': typeof LoginRoute;
-  '/register': typeof RegisterRoute;
-  '/dashboard': typeof AuthedDashboardRoute;
-  '/generator': typeof AuthedGeneratorRoute;
-  '/import-export': typeof AuthedImportExportRoute;
-  '/machine-accounts': typeof AuthedMachineAccountsRoute;
-  '/mfa': typeof AuthedMfaRoute;
-  '/secrets': typeof AuthedSecretsRoute;
-  '/settings': typeof AuthedSettingsRoute;
-  '/tokens': typeof AuthedTokensRoute;
-  '/vault': typeof AuthedVaultRoute;
-  '/': typeof AuthedIndexRoute;
-  '/projects/$uuid': typeof AuthedProjectsUuidRoute;
-  '/projects': typeof AuthedProjectsIndexRoute;
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/dashboard': typeof AuthedDashboardRoute
+  '/generator': typeof AuthedGeneratorRoute
+  '/import-export': typeof AuthedImportExportRoute
+  '/machine-accounts': typeof AuthedMachineAccountsRoute
+  '/mfa': typeof AuthedMfaRoute
+  '/secrets': typeof AuthedSecretsRoute
+  '/settings': typeof AuthedSettingsRoute
+  '/tokens': typeof AuthedTokensRoute
+  '/vault': typeof AuthedVaultRoute
+  '/': typeof AuthedIndexRoute
+  '/projects/$uuid': typeof AuthedProjectsUuidRoute
+  '/projects': typeof AuthedProjectsIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  '/_authed': typeof AuthedRouteWithChildren;
-  '/login': typeof LoginRoute;
-  '/register': typeof RegisterRoute;
-  '/_authed/dashboard': typeof AuthedDashboardRoute;
-  '/_authed/generator': typeof AuthedGeneratorRoute;
-  '/_authed/import-export': typeof AuthedImportExportRoute;
-  '/_authed/machine-accounts': typeof AuthedMachineAccountsRoute;
-  '/_authed/mfa': typeof AuthedMfaRoute;
-  '/_authed/secrets': typeof AuthedSecretsRoute;
-  '/_authed/settings': typeof AuthedSettingsRoute;
-  '/_authed/tokens': typeof AuthedTokensRoute;
-  '/_authed/vault': typeof AuthedVaultRoute;
-  '/_authed/': typeof AuthedIndexRoute;
-  '/_authed/projects/$uuid': typeof AuthedProjectsUuidRoute;
-  '/_authed/projects/': typeof AuthedProjectsIndexRoute;
+  __root__: typeof rootRouteImport
+  '/_authed': typeof AuthedRouteWithChildren
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/_authed/dashboard': typeof AuthedDashboardRoute
+  '/_authed/generator': typeof AuthedGeneratorRoute
+  '/_authed/import-export': typeof AuthedImportExportRoute
+  '/_authed/machine-accounts': typeof AuthedMachineAccountsRoute
+  '/_authed/mfa': typeof AuthedMfaRoute
+  '/_authed/secrets': typeof AuthedSecretsRoute
+  '/_authed/settings': typeof AuthedSettingsRoute
+  '/_authed/tokens': typeof AuthedTokensRoute
+  '/_authed/vault': typeof AuthedVaultRoute
+  '/_authed/': typeof AuthedIndexRoute
+  '/_authed/projects/$uuid': typeof AuthedProjectsUuidRoute
+  '/_authed/projects/': typeof AuthedProjectsIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
@@ -166,8 +166,8 @@ export interface FileRouteTypes {
     | '/tokens'
     | '/vault'
     | '/projects/$uuid'
-    | '/projects/';
-  fileRoutesByTo: FileRoutesByTo;
+    | '/projects/'
+  fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/register'
@@ -182,7 +182,7 @@ export interface FileRouteTypes {
     | '/vault'
     | '/'
     | '/projects/$uuid'
-    | '/projects';
+    | '/projects'
   id:
     | '__root__'
     | '/_authed'
@@ -199,138 +199,138 @@ export interface FileRouteTypes {
     | '/_authed/vault'
     | '/_authed/'
     | '/_authed/projects/$uuid'
-    | '/_authed/projects/';
-  fileRoutesById: FileRoutesById;
+    | '/_authed/projects/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthedRoute: typeof AuthedRouteWithChildren;
-  LoginRoute: typeof LoginRoute;
-  RegisterRoute: typeof RegisterRoute;
+  AuthedRoute: typeof AuthedRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  RegisterRoute: typeof RegisterRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
     '/_authed': {
-      id: '/_authed';
-      path: '';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthedRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
-      id: '/login';
-      path: '/login';
-      fullPath: '/login';
-      preLoaderRoute: typeof LoginRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
-      id: '/register';
-      path: '/register';
-      fullPath: '/register';
-      preLoaderRoute: typeof RegisterRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authed/': {
-      id: '/_authed/';
-      path: '/';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthedIndexRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AuthedIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/dashboard': {
-      id: '/_authed/dashboard';
-      path: '/dashboard';
-      fullPath: '/dashboard';
-      preLoaderRoute: typeof AuthedDashboardRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthedDashboardRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/generator': {
-      id: '/_authed/generator';
-      path: '/generator';
-      fullPath: '/generator';
-      preLoaderRoute: typeof AuthedGeneratorRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/generator'
+      path: '/generator'
+      fullPath: '/generator'
+      preLoaderRoute: typeof AuthedGeneratorRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/import-export': {
-      id: '/_authed/import-export';
-      path: '/import-export';
-      fullPath: '/import-export';
-      preLoaderRoute: typeof AuthedImportExportRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/import-export'
+      path: '/import-export'
+      fullPath: '/import-export'
+      preLoaderRoute: typeof AuthedImportExportRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/machine-accounts': {
-      id: '/_authed/machine-accounts';
-      path: '/machine-accounts';
-      fullPath: '/machine-accounts';
-      preLoaderRoute: typeof AuthedMachineAccountsRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/machine-accounts'
+      path: '/machine-accounts'
+      fullPath: '/machine-accounts'
+      preLoaderRoute: typeof AuthedMachineAccountsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/mfa': {
-      id: '/_authed/mfa';
-      path: '/mfa';
-      fullPath: '/mfa';
-      preLoaderRoute: typeof AuthedMfaRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/mfa'
+      path: '/mfa'
+      fullPath: '/mfa'
+      preLoaderRoute: typeof AuthedMfaRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/secrets': {
-      id: '/_authed/secrets';
-      path: '/secrets';
-      fullPath: '/secrets';
-      preLoaderRoute: typeof AuthedSecretsRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/secrets'
+      path: '/secrets'
+      fullPath: '/secrets'
+      preLoaderRoute: typeof AuthedSecretsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/settings': {
-      id: '/_authed/settings';
-      path: '/settings';
-      fullPath: '/settings';
-      preLoaderRoute: typeof AuthedSettingsRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthedSettingsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/tokens': {
-      id: '/_authed/tokens';
-      path: '/tokens';
-      fullPath: '/tokens';
-      preLoaderRoute: typeof AuthedTokensRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/tokens'
+      path: '/tokens'
+      fullPath: '/tokens'
+      preLoaderRoute: typeof AuthedTokensRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/vault': {
-      id: '/_authed/vault';
-      path: '/vault';
-      fullPath: '/vault';
-      preLoaderRoute: typeof AuthedVaultRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/vault'
+      path: '/vault'
+      fullPath: '/vault'
+      preLoaderRoute: typeof AuthedVaultRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/projects/': {
-      id: '/_authed/projects/';
-      path: '/projects';
-      fullPath: '/projects/';
-      preLoaderRoute: typeof AuthedProjectsIndexRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AuthedProjectsIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/projects/$uuid': {
-      id: '/_authed/projects/$uuid';
-      path: '/projects/$uuid';
-      fullPath: '/projects/$uuid';
-      preLoaderRoute: typeof AuthedProjectsUuidRouteImport;
-      parentRoute: typeof AuthedRoute;
-    };
+      id: '/_authed/projects/$uuid'
+      path: '/projects/$uuid'
+      fullPath: '/projects/$uuid'
+      preLoaderRoute: typeof AuthedProjectsUuidRouteImport
+      parentRoute: typeof AuthedRoute
+    }
   }
 }
 
 interface AuthedRouteChildren {
-  AuthedDashboardRoute: typeof AuthedDashboardRoute;
-  AuthedGeneratorRoute: typeof AuthedGeneratorRoute;
-  AuthedImportExportRoute: typeof AuthedImportExportRoute;
-  AuthedMachineAccountsRoute: typeof AuthedMachineAccountsRoute;
-  AuthedMfaRoute: typeof AuthedMfaRoute;
-  AuthedSecretsRoute: typeof AuthedSecretsRoute;
-  AuthedSettingsRoute: typeof AuthedSettingsRoute;
-  AuthedTokensRoute: typeof AuthedTokensRoute;
-  AuthedVaultRoute: typeof AuthedVaultRoute;
-  AuthedIndexRoute: typeof AuthedIndexRoute;
-  AuthedProjectsUuidRoute: typeof AuthedProjectsUuidRoute;
-  AuthedProjectsIndexRoute: typeof AuthedProjectsIndexRoute;
+  AuthedDashboardRoute: typeof AuthedDashboardRoute
+  AuthedGeneratorRoute: typeof AuthedGeneratorRoute
+  AuthedImportExportRoute: typeof AuthedImportExportRoute
+  AuthedMachineAccountsRoute: typeof AuthedMachineAccountsRoute
+  AuthedMfaRoute: typeof AuthedMfaRoute
+  AuthedSecretsRoute: typeof AuthedSecretsRoute
+  AuthedSettingsRoute: typeof AuthedSettingsRoute
+  AuthedTokensRoute: typeof AuthedTokensRoute
+  AuthedVaultRoute: typeof AuthedVaultRoute
+  AuthedIndexRoute: typeof AuthedIndexRoute
+  AuthedProjectsUuidRoute: typeof AuthedProjectsUuidRoute
+  AuthedProjectsIndexRoute: typeof AuthedProjectsIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
@@ -346,15 +346,16 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedProjectsUuidRoute: AuthedProjectsUuidRoute,
   AuthedProjectsIndexRoute: AuthedProjectsIndexRoute,
-};
+}
 
-const AuthedRouteWithChildren = AuthedRoute._addFileChildren(AuthedRouteChildren);
+const AuthedRouteWithChildren =
+  AuthedRoute._addFileChildren(AuthedRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()

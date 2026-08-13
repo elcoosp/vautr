@@ -129,12 +129,7 @@ async fn fresh_db() -> DatabaseConnection {
     db
 }
 
-async fn insert_item(
-    db: &DatabaseConnection,
-    uuid: Uuid,
-    gen: u64,
-    payload: Vec<u8>,
-) {
+async fn insert_item(db: &DatabaseConnection, uuid: Uuid, gen: u64, payload: Vec<u8>) {
     let txn = db.begin().await.expect("begin");
     let overview = item_overview::ActiveModel {
         uuid: Set(uuid.to_string()),
@@ -198,7 +193,9 @@ async fn phase_a_reveal_perform_release() {
 
     // Release zeroes the handle; a second perform fails (expired).
     client.release_secret(handle);
-    let res = client.perform_action(CoreAction::CopyToClipboard { handle }).await;
+    let res = client
+        .perform_action(CoreAction::CopyToClipboard { handle })
+        .await;
     assert!(res.is_err(), "expired handle must be rejected");
 }
 

@@ -23,7 +23,9 @@ pub enum VaultStateUpdate {
     KeyUpdateRequired,
     VaultLocked,
     /// A newer server version of a ValidIgnored item is available (core.md §3 UI indicator).
-    NewerVersionAvailable { uuid: Uuid },
+    NewerVersionAvailable {
+        uuid: Uuid,
+    },
     /// Mutation committed successfully. `TaskReceipt` is a monotonic u64.
     MutationSucceeded(u64),
     /// Mutation failed; UI re-inserts `original_state` (list only — never the secret).
@@ -111,10 +113,7 @@ mod tests {
         let mut rx = bus.subscribe();
         bus.publish(VaultStateUpdate::VaultLocked);
         bus.publish(VaultStateUpdate::SyncProgress(50));
-        assert!(matches!(
-            rx.try_recv(),
-            Ok(VaultStateUpdate::VaultLocked)
-        ));
+        assert!(matches!(rx.try_recv(), Ok(VaultStateUpdate::VaultLocked)));
         assert!(matches!(
             rx.try_recv(),
             Ok(VaultStateUpdate::SyncProgress(50))

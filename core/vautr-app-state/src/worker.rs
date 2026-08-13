@@ -76,9 +76,10 @@ impl PersistenceWorker {
 
         match self.commit_save(&cmd, &overview).await {
             Ok(()) => {
-                self.bus.publish(crate::event_bus::VaultStateUpdate::MutationSucceeded(
-                    receipt,
-                ));
+                self.bus
+                    .publish(crate::event_bus::VaultStateUpdate::MutationSucceeded(
+                        receipt,
+                    ));
                 self.bus
                     .publish(crate::event_bus::VaultStateUpdate::OverviewUpserted(
                         overview,
@@ -86,11 +87,12 @@ impl PersistenceWorker {
                 TaskOutcome::Committed(receipt)
             }
             Err(reason) => {
-                self.bus.publish(crate::event_bus::VaultStateUpdate::MutationFailed {
-                    receipt,
-                    error: reason,
-                    original_state: original.clone(),
-                });
+                self.bus
+                    .publish(crate::event_bus::VaultStateUpdate::MutationFailed {
+                        receipt,
+                        error: reason,
+                        original_state: original.clone(),
+                    });
                 TaskOutcome::Rejected {
                     receipt,
                     original_state: RevertibleState::Saved(cmd.item.clone()),
@@ -114,19 +116,23 @@ impl PersistenceWorker {
 
         match self.commit_delete(&cmd).await {
             Ok(()) => {
-                self.bus.publish(crate::event_bus::VaultStateUpdate::MutationSucceeded(
-                    receipt,
-                ));
                 self.bus
-                    .publish(crate::event_bus::VaultStateUpdate::OverviewDeleted(cmd.uuid));
+                    .publish(crate::event_bus::VaultStateUpdate::MutationSucceeded(
+                        receipt,
+                    ));
+                self.bus
+                    .publish(crate::event_bus::VaultStateUpdate::OverviewDeleted(
+                        cmd.uuid,
+                    ));
                 TaskOutcome::Committed(receipt)
             }
             Err(reason) => {
-                self.bus.publish(crate::event_bus::VaultStateUpdate::MutationFailed {
-                    receipt,
-                    error: reason,
-                    original_state: original.clone(),
-                });
+                self.bus
+                    .publish(crate::event_bus::VaultStateUpdate::MutationFailed {
+                        receipt,
+                        error: reason,
+                        original_state: original.clone(),
+                    });
                 TaskOutcome::Rejected {
                     receipt,
                     original_state: original,
@@ -143,9 +149,7 @@ impl PersistenceWorker {
         // (local_gen < min_enc_key_gen), ALL writes are rejected — even if the
         // epoch happens to match (core.md §1.3, REQ-AUTH-05).
         if matches!(mode, crate::epoch::VaultMode::KeyUpdateRequired) {
-            return Err(
-                "vault updated (KeyUpdateRequired): write rejected, reverting".into(),
-            );
+            return Err("vault updated (KeyUpdateRequired): write rejected, reverting".into());
         }
         // Safe states (ReadWrite / Migrating): proceed. On an epoch mismatch the
         // caller re-binds to the newly active SVK before committing (Context-Aware
@@ -156,7 +160,11 @@ impl PersistenceWorker {
         Ok(())
     }
 
-    async fn commit_save(&self, cmd: &SaveCommand, _overview: &DecryptedOverview) -> Result<(), String> {
+    async fn commit_save(
+        &self,
+        cmd: &SaveCommand,
+        _overview: &DecryptedOverview,
+    ) -> Result<(), String> {
         // Epoch gate. local_gen is the item's enc_key_gen (its key family).
         self.verify_epoch(cmd.sync_epoch, cmd.item.enc_key_gen)?;
         let item = &cmd.item;
@@ -167,7 +175,11 @@ impl PersistenceWorker {
             uuid: Set(ov.uuid.to_string()),
             version: Set(1), // increment handled by sync push; local first-write is v1
             enc_key_gen: Set(item.enc_key_gen as i64),
-            deleted_date: Set(if meta.trashed { Some(meta.updated_at) } else { None }),
+            deleted_date: Set(if meta.trashed {
+                Some(meta.updated_at)
+            } else {
+                None
+            }),
             overview_title: Set(ov.title.clone()),
             overview_subtitle: Set(ov.subtitle.clone()),
             overview_icon_key: Set(ov.icon_key.clone()),
@@ -229,7 +241,10 @@ mod tests {
         epoch.set_min_enc_key_gen(3);
 
         // Read-Only Gate: local_gen 2 lags min_gen 3 → KeyUpdateRequired.
-        assert_eq!(epoch.vault_mode(2), crate::epoch::VaultMode::KeyUpdateRequired);
+        assert_eq!(
+            epoch.vault_mode(2),
+            crate::epoch::VaultMode::KeyUpdateRequired
+        );
         // Under the gate, BOTH a stale-epoch and a live-epoch save are rejected
         // (core.md §1.3: Read-Only aborts regardless of epoch match).
         let stale = epoch.capture();

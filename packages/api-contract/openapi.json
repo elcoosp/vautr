@@ -15,11 +15,17 @@
     { "name": "recovery", "description": "Emergency recovery & account lifecycle" },
     { "name": "sharing", "description": "End-to-end encrypted sharing & PKI" },
     { "name": "files", "description": "Streaming file storage & presigned URLs" },
-    { "name": "projects", "description": "Projects, org roles, per-project permissions, user groups & offboarding" },
+    {
+      "name": "projects",
+      "description": "Projects, org roles, per-project permissions, user groups & offboarding"
+    },
     { "name": "machine-accounts", "description": "Non-human identities with fine-grained scopes" },
     { "name": "tokens", "description": "Access token issuance, expiry & revocation" },
     { "name": "secrets", "description": "Same-Project secrets manager" },
-    { "name": "mfa", "description": "Multi-factor authentication, WebAuthn & master-password policy" },
+    {
+      "name": "mfa",
+      "description": "Multi-factor authentication, WebAuthn & master-password policy"
+    },
     { "name": "backup", "description": "Automatic backups & one-click restore test" }
   ],
   "components": {
@@ -488,7 +494,10 @@
           "id": { "type": "string", "format": "uuid" },
           "name": { "type": "string" },
           "description": { "type": "string", "nullable": true },
-          "members": { "type": "array", "items": { "$ref": "#/components/schemas/UserGroupMember" } },
+          "members": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/UserGroupMember" }
+          },
           "created_at": { "type": "integer", "format": "int64" },
           "updated_at": { "type": "integer", "format": "int64" }
         }
@@ -541,7 +550,14 @@
       },
       "OffboardResponse": {
         "type": "object",
-        "required": ["status", "user_uuid", "revoked_projects", "revoked_memberships", "revoked_tokens", "revoked_at"],
+        "required": [
+          "status",
+          "user_uuid",
+          "revoked_projects",
+          "revoked_memberships",
+          "revoked_tokens",
+          "revoked_at"
+        ],
         "properties": {
           "status": { "type": "string", "example": "success" },
           "user_uuid": { "type": "string", "format": "uuid" },
@@ -589,7 +605,11 @@
           "name": { "type": "string", "minLength": 1, "maxLength": 128 },
           "description": { "type": "string", "maxLength": 512 },
           "project_uuid": { "type": "string", "format": "uuid" },
-          "scopes": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/AccessScope" }
+          },
           "expires_at": { "type": "integer", "format": "int64" }
         }
       },
@@ -636,7 +656,11 @@
           "name": { "type": "string", "minLength": 1, "maxLength": 128 },
           "machine_account_uuid": { "type": "string", "format": "uuid" },
           "project_uuid": { "type": "string", "format": "uuid" },
-          "scopes": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AccessScope" } },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/AccessScope" }
+          },
           "expires_at": { "type": "integer", "format": "int64" }
         }
       },
@@ -658,7 +682,15 @@
       },
       "Secret": {
         "type": "object",
-        "required": ["uuid", "project_uuid", "key", "version", "created_at", "updated_at", "created_by"],
+        "required": [
+          "uuid",
+          "project_uuid",
+          "key",
+          "version",
+          "created_at",
+          "updated_at",
+          "created_by"
+        ],
         "properties": {
           "uuid": { "type": "string", "format": "uuid" },
           "project_uuid": { "type": "string", "format": "uuid" },
@@ -683,14 +715,20 @@
         "properties": {
           "project_uuid": { "type": "string", "format": "uuid" },
           "key": { "type": "string", "minLength": 1, "maxLength": 256 },
-          "value_ciphertext": { "type": "string", "description": "Base64 AEAD ciphertext of the secret value." }
+          "value_ciphertext": {
+            "type": "string",
+            "description": "Base64 AEAD ciphertext of the secret value."
+          }
         }
       },
       "SecretUpdateRequest": {
         "type": "object",
         "properties": {
           "key": { "type": "string", "minLength": 1, "maxLength": 256 },
-          "value_ciphertext": { "type": "string", "description": "Base64 AEAD ciphertext of the secret value." }
+          "value_ciphertext": {
+            "type": "string",
+            "description": "Base64 AEAD ciphertext of the secret value."
+          }
         }
       },
       "SecretValue": {
@@ -711,7 +749,10 @@
         "required": ["required", "configured_methods"],
         "properties": {
           "required": { "type": "boolean" },
-          "configured_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } }
+          "configured_methods": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MfaMethod" }
+          }
         }
       },
       "TotpIssueResponse": {
@@ -737,7 +778,11 @@
         "required": ["status"],
         "properties": {
           "status": { "type": "string", "example": "success" },
-          "recovery_codes": { "type": "array", "items": { "type": "string" }, "description": "Issued once on first enrollment." }
+          "recovery_codes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Issued once on first enrollment."
+          }
         }
       },
       "WebAuthnEnrollStartRequest": {
@@ -760,7 +805,10 @@
         "required": ["enrollment_id", "attestation"],
         "properties": {
           "enrollment_id": { "type": "string", "format": "uuid" },
-          "attestation": { "type": "object", "description": "PublicKeyCredential JSON returned by the authenticator." }
+          "attestation": {
+            "type": "object",
+            "description": "PublicKeyCredential JSON returned by the authenticator."
+          }
         }
       },
       "MasterPasswordPolicy": {
@@ -779,7 +827,10 @@
         "required": ["required"],
         "properties": {
           "required": { "type": "boolean" },
-          "allowed_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } },
+          "allowed_methods": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MfaMethod" }
+          },
           "master_password_policy": { "$ref": "#/components/schemas/MasterPasswordPolicy" }
         }
       },
@@ -787,7 +838,10 @@
         "type": "object",
         "properties": {
           "required": { "type": "boolean" },
-          "allowed_methods": { "type": "array", "items": { "$ref": "#/components/schemas/MfaMethod" } },
+          "allowed_methods": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MfaMethod" }
+          },
           "master_password_policy": { "$ref": "#/components/schemas/MasterPasswordPolicy" }
         }
       },
@@ -801,7 +855,11 @@
           "last_backup_at": { "type": "integer", "format": "int64", "nullable": true },
           "last_backup_size_bytes": { "type": "integer", "format": "uint64", "nullable": true },
           "last_restore_test_at": { "type": "integer", "format": "int64", "nullable": true },
-          "last_restore_test_status": { "type": "string", "enum": ["passed", "failed", "pending", "none"], "nullable": true }
+          "last_restore_test_status": {
+            "type": "string",
+            "enum": ["passed", "failed", "pending", "none"],
+            "nullable": true
+          }
         }
       },
       "BackupExportRequest": {
@@ -825,7 +883,10 @@
         "type": "object",
         "properties": {
           "backup_id": { "type": "string", "format": "uuid" },
-          "archive_base64": { "type": "string", "description": "Raw backup archive for direct restore." }
+          "archive_base64": {
+            "type": "string",
+            "description": "Raw backup archive for direct restore."
+          }
         }
       },
       "BackupRestoreResponse": {
@@ -2099,7 +2160,9 @@
           "200": {
             "description": "Projects visible to the caller.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProjectListResponse" }
+              }
             }
           },
           "401": {
@@ -2117,7 +2180,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectCreateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectCreateRequest" }
+            }
           }
         },
         "responses": {
@@ -2191,7 +2256,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectUpdateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectUpdateRequest" }
+            }
           }
         },
         "responses": {
@@ -2266,7 +2333,9 @@
           "200": {
             "description": "Project members.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMemberListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProjectMemberListResponse" }
+              }
             }
           },
           "401": {
@@ -2298,7 +2367,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectAddMemberRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectAddMemberRequest" }
+            }
           }
         },
         "responses": {
@@ -2345,7 +2416,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ProjectUpdateMemberRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProjectUpdateMemberRequest" }
+            }
           }
         },
         "responses": {
@@ -2426,7 +2499,9 @@
           "200": {
             "description": "User groups for the project.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserGroupListResponse" }
+              }
             }
           },
           "401": {
@@ -2452,7 +2527,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupCreateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserGroupCreateRequest" }
+            }
           }
         },
         "responses": {
@@ -2493,7 +2570,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupUpdateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserGroupUpdateRequest" }
+            }
           }
         },
         "responses": {
@@ -2579,7 +2658,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UserGroupAddMemberRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserGroupAddMemberRequest" }
+            }
           }
         },
         "responses": {
@@ -2693,7 +2774,9 @@
           "200": {
             "description": "Machine accounts owned by the caller.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MachineAccountListResponse" }
+              }
             }
           },
           "401": {
@@ -2711,7 +2794,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountCreateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MachineAccountCreateRequest" }
+            }
           }
         },
         "responses": {
@@ -2785,7 +2870,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/MachineAccountUpdateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MachineAccountUpdateRequest" }
+            }
           }
         },
         "responses": {
@@ -2852,7 +2939,9 @@
           "200": {
             "description": "Access tokens issued to the caller.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessTokenListResponse" }
+              }
             }
           },
           "401": {
@@ -2870,14 +2959,18 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenCreateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AccessTokenCreateRequest" }
+            }
           }
         },
         "responses": {
           "201": {
             "description": "Token issued (full secret shown once).",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/AccessTokenCreateResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AccessTokenCreateResponse" }
+              }
             }
           },
           "401": {
@@ -2980,7 +3073,9 @@
           "200": {
             "description": "Secrets within the project (metadata only).",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/SecretListResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SecretListResponse" }
+              }
             }
           },
           "401": {
@@ -3230,7 +3325,9 @@
           "200": {
             "description": "TOTP verified; enrollment completed.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TotpVerifyResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TotpVerifyResponse" }
+              }
             }
           },
           "401": {
@@ -3250,14 +3347,18 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartRequest" }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "WebAuthn creation options.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WebAuthnEnrollStartResponse" }
+              }
             }
           },
           "401": {
@@ -3277,7 +3378,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/WebAuthnEnrollFinishRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WebAuthnEnrollFinishRequest" }
+            }
           }
         },
         "responses": {
@@ -3323,7 +3426,9 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/MfaPolicyUpdateRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MfaPolicyUpdateRequest" }
+            }
           }
         },
         "responses": {
@@ -3378,7 +3483,9 @@
           "200": {
             "description": "Backup archive exported.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/BackupExportResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BackupExportResponse" }
+              }
             }
           },
           "401": {
@@ -3398,14 +3505,18 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/BackupRestoreRequest" } }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BackupRestoreRequest" }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Restore test completed.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/BackupRestoreResponse" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BackupRestoreResponse" }
+              }
             }
           },
           "401": {

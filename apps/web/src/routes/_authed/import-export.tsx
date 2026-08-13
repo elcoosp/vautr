@@ -1,15 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router';
+import type { BackupStatus } from '@vautr/api-contract';
+import { ArrowLeftRight, Download, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { mlp, MlpApiError } from '@/lib/mlp';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { BackupStatus } from '@vautr/api-contract';
-import { ArrowLeftRight, Download, Upload } from 'lucide-react';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/import-export')({
   component: ImportExportPage,
@@ -118,8 +118,12 @@ function ImportExportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <label className="flex items-center gap-2 text-sm text-text">
-              <Checkbox checked={includeSecrets} onCheckedChange={(v) => setIncludeSecrets(!!v)} />
+            <label htmlFor="include-secrets" className="flex items-center gap-2 text-sm text-text">
+              <Checkbox
+                id="include-secrets"
+                checked={includeSecrets}
+                onCheckedChange={(v) => setIncludeSecrets(!!v)}
+              />
               Include secret values
             </label>
             <Button onClick={() => void onExport()} disabled={busy !== null}>

@@ -76,11 +76,7 @@ function credentialToJson(cred: BrowserCredential): Record<string, unknown> {
 export class WebauthnApi {
   constructor(private readonly baseUrl: string) {}
 
-  private async request<T>(
-    path: string,
-    sessionToken: string,
-    init: RequestInit = {},
-  ): Promise<T> {
+  private async request<T>(path: string, sessionToken: string, init: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${sessionToken}`,
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
@@ -163,10 +159,7 @@ export class WebauthnApi {
 
   /** List the session's registered credentials. */
   listCredentials(sessionToken: string): Promise<WebauthnCredentialList> {
-    return this.request<WebauthnCredentialList>(
-      '/webauthn/credentials',
-      sessionToken,
-    );
+    return this.request<WebauthnCredentialList>('/webauthn/credentials', sessionToken);
   }
 
   /** Remove a credential (disables the second factor for that key). */

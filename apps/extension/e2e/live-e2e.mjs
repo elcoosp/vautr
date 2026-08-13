@@ -50,7 +50,7 @@ async function api(method, path, body, token) {
     'Content-Type': 'application/json',
     'X-Request-ID': randomUUID(),
   };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const init = { method, headers };
   if (body !== undefined) init.body = JSON.stringify(body);
   const res = await fetch(`${BASE}${path}`, init);

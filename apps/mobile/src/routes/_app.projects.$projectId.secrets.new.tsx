@@ -1,13 +1,12 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-
-import { services } from '../../lib/client';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { useToast } from '../../components/ui/toast';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/projects/$projectId/secrets/new')({
   component: NewSecretScreen,

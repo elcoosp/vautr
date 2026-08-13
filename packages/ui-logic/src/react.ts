@@ -14,7 +14,10 @@ export function useOverviews(): readonly DecryptedOverview[] {
   // `useShallow` keeps the selector's snapshot referentially stable when the
   // underlying items map is unchanged, so `Object.values(...)` (a fresh array
   // on every call) does not trip React's `getSnapshot` caching check.
-  return useStore(vaultStore, useShallow((s) => Object.values(s.items)));
+  return useStore(
+    vaultStore,
+    useShallow((s) => Object.values(s.items)),
+  );
 }
 
 /** The overview for `uuid`, reactive. */

@@ -21,9 +21,9 @@ if (!(globalThis.crypto as any).randomUUID) {
   (globalThis.crypto as any).randomUUID = () => nodeCrypto.randomUUID();
 }
 
-import { VautrWebClient } from '../../packages/vautr-client-sdk/src/realClient';
 import { createStatelessCrypto } from '../../packages/vautr-client-sdk/src/extension';
-import { IndexedDbStore, fromBase64 } from '../../packages/vautr-client-sdk/src/storage';
+import { VautrWebClient } from '../../packages/vautr-client-sdk/src/realClient';
+import { fromBase64, IndexedDbStore } from '../../packages/vautr-client-sdk/src/storage';
 
 const BASE_URL = 'http://localhost:8080';
 
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
 
   // 7. Get the item payload from the store
   const item = await store.getItem(overview.uuid);
-  if (!item || !item.payload) {
+  if (!item?.payload) {
     throw new Error('Item not found or missing payload');
   }
   log(`  Item payload retrieved (${item.payload.length} chars base64).`);

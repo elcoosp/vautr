@@ -435,7 +435,7 @@ export class VautrWebClient {
       throw new Error('vault is locked');
     }
     const item = await this.store.getItem(uuid);
-    if (!item || !item.payload) {
+    if (!item?.payload) {
       throw new Error('item payload not available locally; sync first');
     }
     const plaintext = this.crypto.decryptItem(
@@ -465,6 +465,47 @@ export class VautrWebClient {
     const secret = active.secret;
     this.handles.delete(handle);
     return secret;
+  }
+
+  /**
+   * Encrypt a project secret value with the vault DEK (real AEAD, never
+   * `btoa`/`atob`). The `projectUuid` is bound as associated data so a
+   * ciphertext cannot be replayed into another project. Returns the base64
+   * envelope to store as `value_ciphertext`. The secret UUID is assigned by the
+   * server, so it is not available at encrypt time — the project scope is the
+   * stable, known-at-both-ends binding.
+   */
+  async encryptSecretValue(projectUuid: string, plaintext: string): Promise<string> {
+    const dek = this.dek;
+    if (!dek) {
+      throw new Error('vault is locked');
+    }
+    const payload = this.crypto.encryptItem(
+      projectUuid,
+      this.localKeyGen,
+      dek,
+      new TextEncoder().encode(plaintext),
+    );
+    return toBase64(payload);
+  }
+
+  /**
+   * Decrypt a stored secret `value_ciphertext` (base64) with the vault DEK (real
+   * AEAD). `projectUuid` must match the value used at encrypt time. Never
+   * decodes with `atob` — the blob is genuine AEAD ciphertext.
+   */
+  async decryptSecretValue(projectUuid: string, valueCiphertext: string): Promise<string> {
+    const dek = this.dek;
+    if (!dek) {
+      throw new Error('vault is locked');
+    }
+    const plaintext = this.crypto.decryptItem(
+      projectUuid,
+      this.localKeyGen,
+      dek,
+      fromBase64(valueCiphertext),
+    );
+    return new TextDecoder().decode(plaintext);
   }
 
   /** Delegate copy/autofill to the platform clipboard handler. */

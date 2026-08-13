@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import type { Secret } from '@vautr/api-contract';
+import type { VautrMlpClient } from '@vautr/client-sdk';
+import type { VautrWebClient } from '@vautr/client-sdk/real';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,34 +23,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import type { VautrMlpClient } from '@vautr/client-sdk';
-import type { Secret } from '@vautr/api-contract';
 import { usePopupStore } from '../store';
 
 interface SecretsTabProps {
   mlp: VautrMlpClient;
+  client: VautrWebClient;
 }
 
-/** Encode a plaintext secret value into the base64 envelope the server stores. */
-function encodeValue(value: string): string {
-  return btoa(value);
-}
-
-/** Decode a stored base64 envelope back to the plaintext value. */
-function decodeValue(ciphertext: string): string {
-  try {
-    return atob(ciphertext);
-  } catch {
-    return ciphertext;
-  }
-}
-
-export function SecretsTab({ mlp }: SecretsTabProps) {
+export function SecretsTab({ mlp, client }: SecretsTabProps) {
   const projects = usePopupStore((s) => s.projects);
   const secrets = usePopupStore((s) => s.secrets);
   const setSecrets = usePopupStore((s) => s.setSecrets);
   const upsertSecret = usePopupStore((s) => s.upsertSecret);
-  const removeSecret = usePopupStore((s) => s.removeSecret);
+  const _removeSecret = usePopupStore((s) => s.removeSecret);
   const setError = usePopupStore((s) => s.setError);
 
   const [projectUuid, setProjectUuid] = useState<string>('__none__');
@@ -63,7 +51,7 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
     [projects, projectUuid],
   );
 
-  async function refreshSecrets(): Promise<void> {
+  const refreshSecrets = useCallback(async (): Promise<void> => {
     if (projectUuid === '__none__') {
       setSecrets([]);
       return;
@@ -74,11 +62,11 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  }, [mlp, projectUuid, setSecrets, setError]);
 
   useEffect(() => {
     void refreshSecrets();
-  }, [projectUuid]);
+  }, [refreshSecrets]);
 
   async function handleCreate(): Promise<void> {
     if (projectUuid === '__none__' || !key || !value) {
@@ -86,10 +74,11 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
       return;
     }
     try {
+      const value_ciphertext = await client.encryptSecretValue(projectUuid, value);
       const secret = await mlp.createSecret({
         project_uuid: projectUuid,
         key,
-        value_ciphertext: encodeValue(value),
+        value_ciphertext,
       });
       upsertSecret(secret);
       setKey('');
@@ -122,7 +111,8 @@ export function SecretsTab({ mlp }: SecretsTabProps) {
     });
     try {
       const res = await mlp.getSecretValue(secret.uuid);
-      setRevealed((prev) => ({ ...prev, [secret.uuid]: decodeValue(res.value_ciphertext) }));
+      const plaintext = await client.decryptSecretValue(projectUuid, res.value_ciphertext);
+      setRevealed((prev) => ({ ...prev, [secret.uuid]: plaintext }));
       toast.success(`Revealed "${secret.key}".`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

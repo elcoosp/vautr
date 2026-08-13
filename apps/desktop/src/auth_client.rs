@@ -4,7 +4,7 @@
 //! Uses `vautr-auth::state` for the OPAQUE state machine, `reqwest` for HTTP,
 //! and `vautr-crypto` / `vautr-keyring` for key derivation and SVK wrapping.
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -89,30 +89,24 @@ impl AuthClient {
     ///
     /// Returns the KDF salt (must be persisted locally) and the 24-word recovery
     /// mnemonic (the user must store it safely).
-    pub async fn register(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<RegisterResult, String> {
+    pub async fn register(&self, username: &str, password: &str) -> Result<RegisterResult, String> {
         // ── Local key material (crypto.md §2) ──────────────────────────
         let kdf_salt = kdf::generate_kdf_salt();
-        let mk = kdf::derive_master_key(password, &kdf_salt)
-            .map_err(|e| format!("mk derive: {e}"))?;
-        let kek = key_tree::derive_kek(&mk)
-            .map_err(|e| format!("kek derive: {e}"))?;
+        let mk =
+            kdf::derive_master_key(password, &kdf_salt).map_err(|e| format!("mk derive: {e}"))?;
+        let kek = key_tree::derive_kek(&mk).map_err(|e| format!("kek derive: {e}"))?;
         let svk = key_tree::generate_svk();
         let svk_wrapped = wrap::wrap_svk(&kek, &svk);
 
         // Recovery Key (REQ-RECOVERY-02)
-        let mnemonic = recovery::generate_recovery_mnemonic()
-            .map_err(|e| format!("mnemonic: {e}"))?;
+        let mnemonic =
+            recovery::generate_recovery_mnemonic().map_err(|e| format!("mnemonic: {e}"))?;
         let mnemonic_bytes = recovery::decode_recovery_mnemonic(&mnemonic)
             .map_err(|e| format!("decode mnemonic: {e}"))?;
-        let kek_rk = recovery::derive_kek_rk(&mnemonic_bytes)
-            .map_err(|e| format!("kek_rk derive: {e}"))?;
-        let svk_rk_wrapped =
-            recovery::wrap_svk_with_rk(&svk, &kek_rk, &Uuid::nil())
-                .map_err(|e| format!("svk rk wrap: {e}"))?;
+        let kek_rk =
+            recovery::derive_kek_rk(&mnemonic_bytes).map_err(|e| format!("kek_rk derive: {e}"))?;
+        let svk_rk_wrapped = recovery::wrap_svk_with_rk(&svk, &kek_rk, &Uuid::nil())
+            .map_err(|e| format!("svk rk wrap: {e}"))?;
 
         // ── OPAQUE registration (api.md §3.1) ──────────────────────────
         let (cstate, creq) = state::registration_start(password);
@@ -134,12 +128,8 @@ impl AuthClient {
         let sresp = B64
             .decode(&start_resp.registration_response)
             .map_err(|e| format!("register/start b64 decode: {e}"))?;
-        let (upload, _export_key, _st) = state::registration_finish(
-            &cstate,
-            &sresp,
-            password,
-            username.as_bytes(),
-        );
+        let (upload, _export_key, _st) =
+            state::registration_finish(&cstate, &sresp, password, username.as_bytes());
 
         let _finish: RegisterFinishResp = self
             .client
@@ -194,12 +184,8 @@ impl AuthClient {
         let sresp = B64
             .decode(&start_resp.login_response)
             .map_err(|e| format!("login/start b64 decode: {e}"))?;
-        let (upload, _session_key, _st) = state::login_finish(
-            &cstate,
-            &sresp,
-            password,
-            username.as_bytes(),
-        );
+        let (upload, _session_key, _st) =
+            state::login_finish(&cstate, &sresp, password, username.as_bytes());
 
         let finish_resp: LoginFinishResp = self
             .client

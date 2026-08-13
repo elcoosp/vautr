@@ -124,12 +124,14 @@ export function entropyBits(password: string): number {
 }
 
 /** Classify a password's strength and flag weak / reused candidates. */
-export function analyzePassword(password: string, knownPasswords: readonly string[] = []): StrengthResult {
+export function analyzePassword(
+  password: string,
+  knownPasswords: readonly string[] = [],
+): StrengthResult {
   const entropyBitsValue = entropyBits(password);
   const isCommon = COMMON_PASSWORDS.has(password.toLowerCase());
   const isReused =
-    password.length > 0 &&
-    knownPasswords.some((p) => p.length > 0 && p === password);
+    password.length > 0 && knownPasswords.some((p) => p.length > 0 && p === password);
   const suggestions: string[] = [];
   if (password.length < 12) suggestions.push('Use at least 12 characters.');
   if (!/[a-z]/.test(password)) suggestions.push('Add lowercase letters.');

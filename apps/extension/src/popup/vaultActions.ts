@@ -1,6 +1,6 @@
 import type { DecryptedOverview } from '@vautr/client-sdk';
-import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { createItemCiphertextStore } from '@vautr/client-sdk/extension';
+import type { VautrWebClient } from '@vautr/client-sdk/real';
 import * as browser from 'webextension-polyfill';
 import { localArea, sessionArea } from '../lib/extensionStorage';
 
@@ -59,7 +59,7 @@ export async function revealSecret(client: VautrWebClient, uuid: string): Promis
  * focused field.
  */
 export async function autofillItem(
-  client: VautrWebClient,
+  _client: VautrWebClient,
   uuid: string,
 ): Promise<{ ok: boolean; message: string }> {
   await cacheAllCiphertexts();
@@ -67,7 +67,7 @@ export async function autofillItem(
     type: AUTOFILL_REQUEST,
     uuid,
   })) as { ok: boolean; filled?: boolean; error?: string } | undefined;
-  if (response && response.ok) {
+  if (response?.ok) {
     return {
       ok: true,
       message: response.filled ? 'Autofilled.' : 'Decrypted; no focused field.',

@@ -1,13 +1,12 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { Plus } from 'lucide-react-native';
-
-import { services } from '../../lib/client';
-import type { Project } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import type { Project } from '../../lib/api';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/')({
   component: ProjectsListScreen,

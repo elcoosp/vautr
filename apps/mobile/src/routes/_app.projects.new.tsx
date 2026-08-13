@@ -1,11 +1,15 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-
-import { services } from '../../lib/client';
-import type { ProjectType } from '../../lib/api';
 import { Button, ButtonText } from '../../components/ui/button';
-import { Card } from '../../components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import {
@@ -16,6 +20,8 @@ import {
   SelectValue,
 } from '../../components/ui/select';
 import { useToast } from '../../components/ui/toast';
+import type { ProjectType } from '../../lib/api';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/projects/new')({
   component: NewProjectScreen,
@@ -54,52 +60,66 @@ function NewProjectScreen() {
 
   return (
     <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">New project</Text>
-      <Card className="p-4 gap-4">
-        <View className="gap-1.5">
-          <Label htmlFor="project-name">Name</Label>
-          <Input id="project-name" value={name} onChangeText={setName} placeholder="Engineering" />
-        </View>
-        <View className="gap-1.5">
-          <Label htmlFor="project-desc">Description</Label>
-          <Input
-            id="project-desc"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Optional"
-          />
-        </View>
-        <View className="gap-1.5">
-          <Label>Type</Label>
-          <Select
-            value={{ value: type, label: type }}
-            onValueChange={(option) => {
-              if (option) setType(option.value as ProjectType);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="personal" label="personal">
-                Personal
-              </SelectItem>
-              <SelectItem value="shared" label="shared">
-                Shared
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </View>
+      <Card>
+        <CardHeader>
+          <CardTitle>New project</CardTitle>
+          <CardDescription>Create a space to store passwords and secrets.</CardDescription>
+        </CardHeader>
+        <CardContent className="gap-4">
+          <View className="gap-1.5">
+            <Label htmlFor="project-name">Name</Label>
+            <Input
+              id="project-name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Engineering"
+            />
+          </View>
+          <View className="gap-1.5">
+            <Label htmlFor="project-desc">Description</Label>
+            <Input
+              id="project-desc"
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Optional"
+            />
+          </View>
+          <View className="gap-1.5">
+            <Label>Type</Label>
+            <Select
+              value={{ value: type, label: type }}
+              onValueChange={(option) => {
+                if (option) setType(option.value as ProjectType);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="personal" label="personal">
+                  Personal
+                </SelectItem>
+                <SelectItem value="shared" label="shared">
+                  Shared
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </View>
 
-        {error ? (
-          <Text accessibilityRole="alert" className="text-sm text-destructive">
-            {error}
-          </Text>
-        ) : null}
-
-        <Button disabled={busy} onPress={() => void create()}>
-          <ButtonText>{busy ? 'Creating…' : 'Create project'}</ButtonText>
-        </Button>
+          {error ? (
+            <Text accessibilityRole="alert" className="text-sm text-destructive">
+              {error}
+            </Text>
+          ) : null}
+        </CardContent>
+        <CardFooter className="gap-2">
+          <Button disabled={busy} onPress={() => void create()}>
+            <ButtonText>{busy ? 'Creating…' : 'Create project'}</ButtonText>
+          </Button>
+          <Button variant="ghost" disabled={busy} onPress={() => router.navigate({ to: '/' })}>
+            <ButtonText>Cancel</ButtonText>
+          </Button>
+        </CardFooter>
       </Card>
     </View>
   );

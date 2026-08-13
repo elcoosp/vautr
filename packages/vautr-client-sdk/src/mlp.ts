@@ -12,9 +12,7 @@
  * server denies the read.
  */
 
-import { ApiClient } from './api';
 import type {
-  AccessToken,
   AccessTokenCreateRequest,
   AccessTokenCreateResponse,
   AccessTokenListResponse,
@@ -45,6 +43,7 @@ import type {
   WebAuthnEnrollFinishRequest,
   WebAuthnEnrollStartResponse,
 } from '@vautr/api-contract';
+import { ApiClient } from './api';
 
 /**
  * Typed client for the MLP org-model endpoints. Constructed with an `ApiClient`
@@ -91,7 +90,11 @@ export class VautrMlpClient {
     userUuid: string,
     request: ProjectUpdateMemberRequest,
   ): Promise<ProjectMember> {
-    return this.api.request<ProjectMember>('PATCH', `/projects/${uuid}/members/${userUuid}`, request);
+    return this.api.request<ProjectMember>(
+      'PATCH',
+      `/projects/${uuid}/members/${userUuid}`,
+      request,
+    );
   }
 
   removeProjectMember(uuid: string, userUuid: string): Promise<StatusResponse> {
@@ -139,7 +142,10 @@ export class VautrMlpClient {
     return this.api.request<MachineAccount>('POST', '/machine-accounts', request);
   }
 
-  updateMachineAccount(uuid: string, request: MachineAccountUpdateRequest): Promise<MachineAccount> {
+  updateMachineAccount(
+    uuid: string,
+    request: MachineAccountUpdateRequest,
+  ): Promise<MachineAccount> {
     return this.api.request<MachineAccount>('PATCH', `/machine-accounts/${uuid}`, request);
   }
 

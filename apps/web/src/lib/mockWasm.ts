@@ -26,6 +26,7 @@ export interface OpaqueLoginFinish {
 
 /** Surface parity with the real module (data.md §1 rule 4). */
 export class WebClient {
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: stored for API parity with the real wasm glue; assigned via set_action_handler
   private handler: ActionHandler | null = null;
 
   set_action_handler(handler: ActionHandler): void {

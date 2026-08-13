@@ -39,18 +39,16 @@ impl VaultConfig {
     pub fn save(&self) -> Result<(), String> {
         let path = config_path();
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("create config dir: {e}"))?;
+            std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
         }
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("serialize config: {e}"))?;
-        std::fs::write(&path, json)
-            .map_err(|e| format!("write config: {e}"))
+        let json =
+            serde_json::to_string_pretty(self).map_err(|e| format!("serialize config: {e}"))?;
+        std::fs::write(&path, json).map_err(|e| format!("write config: {e}"))
     }
 
     /// Decode the stored base64 KDF salt to bytes.
     pub fn kdf_salt_bytes(&self) -> Result<[u8; 32], String> {
-        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD as B64};
         let bytes = B64
             .decode(&self.kdf_salt_b64)
             .map_err(|e| format!("decode kdf_salt: {e}"))?;
@@ -63,12 +61,85 @@ impl VaultConfig {
     }
 }
 
+/// Default session-token path: `$HOME/.vautr/session.json`.
+/// Holds the bearer token from a prior OPAQUE login so the desktop can offer
+/// a one-click "Restore session" on next launch (avoids re-running OPAQUE).
+/// NOTE: the token is a bearer credential; it is stored as-is (base64-wrapped
+/// for JSON safety). A production build should seal this with an OS keychain
+/// or a machine-bound key — tracked separately from this parity work.
+fn session_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home)
+        .join(".vautr")
+        .join("session.json")
+}
+
+/// Everything needed to re-establish a session without re-running OPAQUE:
+/// the bearer `token`, the server-wrapped SVK, and the minimum encryption
+/// generation. The password is still required to derive the DEK client-side.
+#[derive(Clone, Debug)]
+pub struct PersistedSession {
+    pub token: String,
+    pub wrapped_svk_b64: String,
+    pub min_enc_key_gen: u64,
+}
+
+/// Persist a session (token + wrapped SVK + min gen) as base64-wrapped JSON.
+/// Returns `false` if the parent dir cannot be created or the write fails.
+pub fn save_session(session: &PersistedSession) -> bool {
+    use base64::{Engine, engine::general_purpose::STANDARD as B64};
+    let wrapped = serde_json::json!({
+        "token_b64": B64.encode(session.token.as_bytes()),
+        "wrapped_svk_b64": session.wrapped_svk_b64,
+        "min_enc_key_gen": session.min_enc_key_gen,
+    });
+    let path = session_path();
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&wrapped).unwrap_or_default(),
+    )
+    .is_ok()
+}
+
+/// Load a persisted session, or `None` if absent/unreadable.
+pub fn load_session() -> Option<PersistedSession> {
+    use base64::{Engine, engine::general_purpose::STANDARD as B64};
+    let data = std::fs::read_to_string(session_path()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&data).ok()?;
+    let token = {
+        let b64 = v.get("token_b64")?.as_str()?;
+        let bytes = B64.decode(b64).ok()?;
+        String::from_utf8(bytes).ok()?
+    };
+    let wrapped_svk_b64 = v.get("wrapped_svk_b64")?.as_str()?.to_string();
+    let min_enc_key_gen = v.get("min_enc_key_gen")?.as_u64()?;
+    Some(PersistedSession {
+        token,
+        wrapped_svk_b64,
+        min_enc_key_gen,
+    })
+}
+
+/// Remove any persisted session (called on explicit logout/lock).
+pub fn clear_session() {
+    let _ = std::fs::remove_file(session_path());
+}
+
 /// Default config directory: `$HOME/.vautr/`.
 fn config_path() -> std::path::PathBuf {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".into());
-    std::path::PathBuf::from(home).join(".vautr").join("config.json")
+    std::path::PathBuf::from(home)
+        .join(".vautr")
+        .join("config.json")
 }
 
 /// Default vault DB path: `$HOME/.vautr/vault.db`.
@@ -104,11 +175,12 @@ impl LoginScreenState {
         let config = VaultConfig::load();
         Self {
             base_url: base_url.to_string(),
-            username: config.as_ref().map(|c| c.username.clone()).unwrap_or_default(),
-            password: String::new(),
-            kdf_salt: config
+            username: config
                 .as_ref()
-                .and_then(|c| c.kdf_salt_bytes().ok()),
+                .map(|c| c.username.clone())
+                .unwrap_or_default(),
+            password: String::new(),
+            kdf_salt: config.as_ref().and_then(|c| c.kdf_salt_bytes().ok()),
             recovery_mnemonic: None,
             status: String::new(),
             on_unlock: None,
@@ -244,8 +316,7 @@ pub async fn build_client(
 
     // Ensure the parent directory exists.
     if let Some(parent) = std::path::Path::new(db_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create db dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create db dir: {e}"))?;
     }
 
     let db_url = format!("sqlite://{}?mode=rwc", db_path);

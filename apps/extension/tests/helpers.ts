@@ -1,5 +1,5 @@
-import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BrowserContext, Page, Worker } from '@playwright/test';
 import { chromium, expect } from '@playwright/test';

@@ -1,14 +1,13 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { Eye, EyeOff } from 'lucide-react-native';
-
-import { services } from '../../lib/client';
-import type { Project, Secret } from '../../lib/api';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { useToast } from '../../components/ui/toast';
+import type { Project, Secret } from '../../lib/api';
+import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/secrets')({
   component: SecretsScreen,
@@ -25,6 +24,7 @@ function SecretsScreen() {
   const [entries, setEntries] = useState<SecretsEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [denied, setDenied] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -65,8 +65,13 @@ function SecretsScreen() {
   }
 
   const reveal = async (entry: SecretsEntry) => {
-    if (revealed[entry.secret.uuid]) {
+    if (revealed[entry.secret.uuid] || denied[entry.secret.uuid]) {
       setRevealed((current) => {
+        const next = { ...current };
+        delete next[entry.secret.uuid];
+        return next;
+      });
+      setDenied((current) => {
         const next = { ...current };
         delete next[entry.secret.uuid];
         return next;
@@ -74,9 +79,20 @@ function SecretsScreen() {
       return;
     }
     try {
-      const value = await services.api.revealSecret(entry.secret.uuid);
-      setRevealed((current) => ({ ...current, [entry.secret.uuid]: value.value_ciphertext }));
+      // Mobile is HTTP-only: the server returns the *ciphertext*, not plaintext.
+      // Client-side decryption needs the vautr-wasm DEK, which the mobile app
+      // does not ship, so reveal shows a locked state rather than fake-decrypt.
+      await services.api.revealSecret(entry.secret.uuid);
+      setDenied((current) => ({
+        ...current,
+        [entry.secret.uuid]:
+          'Encrypted on this device — open Vautr desktop or web to view the secret.',
+      }));
     } catch (err) {
+      setDenied((current) => ({
+        ...current,
+        [entry.secret.uuid]: err instanceof Error ? err.message : 'Reveal denied.',
+      }));
       toast.show({
         title: 'Reveal denied',
         description: err instanceof Error ? err.message : 'You lack the secrets:reveal permission.',
@@ -106,13 +122,13 @@ function SecretsScreen() {
                   <Text className="mt-0.5 text-xs text-muted-foreground">
                     {entry.project.name} · v{entry.secret.version}
                   </Text>
-                  {revealed[entry.secret.uuid] ? (
-                    <Text className="mt-1 font-mono text-xs text-foreground" selectable>
-                      {revealed[entry.secret.uuid]}
+                  {denied[entry.secret.uuid] ? (
+                    <Text className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                      {denied[entry.secret.uuid]}
                     </Text>
                   ) : null}
                 </View>
-                {revealed[entry.secret.uuid] ? (
+                {denied[entry.secret.uuid] ? (
                   <EyeOff size={18} className="text-muted-foreground" />
                 ) : (
                   <Eye size={18} className="text-muted-foreground" />

@@ -8,6 +8,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 use vautr_sync::engine::{PulledOverview, PushOutcome, Transport, TransportError};
 
+use crate::project_transport::{ProjectSecretSummary, ProjectSummary};
+
 /// Client transport over HTTP. Holds a shared `reqwest::Client`, the base URL,
 /// and the bearer session token.
 pub struct HttpTransport {
@@ -37,10 +39,7 @@ impl HttpTransport {
 
     /// Read the current token (best-effort; falls back to empty on contention).
     fn auth(&self) -> String {
-        self.token
-            .try_lock()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.token.try_lock().map(|g| g.clone()).unwrap_or_default()
     }
 }
 
@@ -122,6 +121,8 @@ struct ServerState {
 struct AccountStatusResp {
     min_enc_key_gen: i64,
     svk_ciphertext_blob: String,
+    #[serde(default)]
+    second_factor_method: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -149,7 +150,8 @@ impl Transport for HttpTransport {
     fn pull(
         &self,
         cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>), TransportError>> + Send>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>), TransportError>> + Send>>
+    {
         let client = self.client.clone();
         let base = self.base.clone();
         let token = self.auth();
@@ -219,7 +221,8 @@ impl Transport for HttpTransport {
                     let b64 = r.payload.ok_or_else(|| {
                         TransportError::Other("payload_delivered without payload".into())
                     })?;
-                    B64.decode(&b64).map_err(|e| TransportError::Other(e.to_string()))
+                    B64.decode(&b64)
+                        .map_err(|e| TransportError::Other(e.to_string()))
                 }
                 _ => Err(TransportError::Other("payload not available".into())),
             }
@@ -265,7 +268,9 @@ impl Transport for HttpTransport {
                     "success" => PushOutcome::Applied,
                     "epoch_too_old" => PushOutcome::EpochTooOld,
                     _ => PushOutcome::Conflict(
-                        r.current_server_state.map(|s| s.version as u64).unwrap_or(0),
+                        r.current_server_state
+                            .map(|s| s.version as u64)
+                            .unwrap_or(0),
                     ),
                 })
                 .collect())
@@ -299,6 +304,30 @@ impl Transport for HttpTransport {
         })
     }
 
+    fn second_factor_method(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, TransportError>> + Send>> {
+        let client = self.client.clone();
+        let base = self.base.clone();
+        let token = self.auth();
+        Box::pin(async move {
+            let resp = client
+                .get(format!("{base}/account/status", base = base))
+                .bearer_auth(token)
+                .send()
+                .await
+                .map_err(|e| TransportError::Other(e.to_string()))?;
+            if !resp.status().is_success() {
+                return Err(http_err(resp.status().as_u16()));
+            }
+            let body: AccountStatusResp = resp
+                .json()
+                .await
+                .map_err(|e| TransportError::Other(e.to_string()))?;
+            Ok(body.second_factor_method)
+        })
+    }
+
     fn rotate_key(
         &self,
         new_min_gen: u64,
@@ -328,4 +357,91 @@ impl Transport for HttpTransport {
             Ok(body.min_enc_key_gen as u64)
         })
     }
+
+    fn verify_totp(
+        &self,
+        code: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TransportError>> + Send>> {
+        let client = self.client.clone();
+        let base = self.base.clone();
+        let token = self.auth();
+        let code = code.to_string();
+        Box::pin(async move {
+            let resp = client
+                .post(format!("{base}/mfa/totp/verify", base = base))
+                .bearer_auth(token)
+                .json(&serde_json::json!({ "code": code }))
+                .send()
+                .await
+                .map_err(|e| TransportError::Other(e.to_string()))?;
+            if !resp.status().is_success() {
+                return Err(http_err(resp.status().as_u16()));
+            }
+            Ok(())
+        })
+    }
+}
+
+// --- Projects transport (mlp-wave-plan §3 A1) -----------------------------
+
+impl crate::project_transport::ProjectTransport for HttpTransport {
+    fn list_projects(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ProjectSummary>, String>> + Send>> {
+        let client = self.client.clone();
+        let base = self.base.clone();
+        let token = self.auth();
+        Box::pin(async move {
+            let resp = client
+                .get(format!("{base}/projects", base = base))
+                .bearer_auth(token)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!("projects list failed: {}", resp.status().as_u16()));
+            }
+            let body: ProjectsListResp = resp.json().await.map_err(|e| e.to_string())?;
+            Ok(body.projects)
+        })
+    }
+
+    fn list_project_secrets(
+        &self,
+        project_uuid: Uuid,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<ProjectSecretSummary>, String>> + Send>> {
+        let client = self.client.clone();
+        let base = self.base.clone();
+        let token = self.auth();
+        Box::pin(async move {
+            let resp = client
+                .get(format!(
+                    "{base}/projects/{id}/secrets",
+                    base = base,
+                    id = project_uuid
+                ))
+                .bearer_auth(token)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !resp.status().is_success() {
+                return Err(format!(
+                    "projects list secrets failed: {}",
+                    resp.status().as_u16()
+                ));
+            }
+            let body: SecretListResp = resp.json().await.map_err(|e| e.to_string())?;
+            Ok(body.secrets)
+        })
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ProjectsListResp {
+    projects: Vec<ProjectSummary>,
+}
+
+#[derive(serde::Deserialize)]
+struct SecretListResp {
+    secrets: Vec<ProjectSecretSummary>,
 }

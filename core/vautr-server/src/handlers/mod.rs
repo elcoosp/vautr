@@ -99,13 +99,26 @@ pub fn build_router(state: AppState) -> Router {
         // surface: /health, /health/ready, /metrics).
         .route("/health", get(health::liveness))
         .route("/health/ready", get(health::readiness))
-        .route("/metrics", get(health::metrics));
+        .route("/metrics", get(health::metrics))
+        // OpenAPI 3 contract (VTR-010 TDD #2): served from the embedded spec.
+        .route("/openapi.json", get(openapi_json));
     // WebAuthn (FIDO2) optional second factor (VTR-052), feature-gated.
     #[cfg(feature = "webauthn")]
     {
         router = router.merge(webauthn::routes());
     }
     router.with_state(state)
+}
+
+/// Serve the embedded OpenAPI 3 contract at `GET /openapi.json` (VTR-010 TDD #2).
+/// The bytes come from [`crate::OPENAPI_SPEC`], embedded at compile time from
+/// `packages/api-contract/openapi.json`.
+async fn openapi_json() -> Response {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        crate::OPENAPI_SPEC,
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -223,5 +236,20 @@ where
             return Err(ApiError::unauthorized());
         };
         Ok(Bearer(token.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openapi_spec_is_valid_json() {
+        // VTR-010 TDD #2: the embedded contract must be well-formed JSON so the
+        // server's `GET /openapi.json` handler returns a parseable document.
+        let parsed: serde_json::Value =
+            serde_json::from_str(crate::OPENAPI_SPEC).expect("embedded openapi.json must be valid JSON");
+        assert!(parsed.get("openapi").is_some(), "spec must declare an openapi version");
+        assert!(parsed.get("paths").is_some(), "spec must define paths");
     }
 }

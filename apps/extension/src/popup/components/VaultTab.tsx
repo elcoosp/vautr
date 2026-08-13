@@ -1,3 +1,5 @@
+import { assessPassword, isReusedPassword, strengthLabel } from '@vautr/client-sdk';
+import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -13,8 +15,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { VautrWebClient } from '@vautr/client-sdk/real';
-import { assessPassword, isReusedPassword, strengthLabel } from '@vautr/client-sdk';
 import { usePopupStore } from '../store';
 
 interface VaultTabProps {
@@ -67,7 +67,7 @@ export function VaultTab({ client }: VaultTabProps) {
     }
   }
 
-  async function handleAutofill(uuid: string, title: string): Promise<void> {
+  async function handleAutofill(uuid: string, _title: string): Promise<void> {
     try {
       const { autofillItem } = await import('../vaultActions');
       const res = await autofillItem(client, uuid);

@@ -38,6 +38,7 @@ vautr-import    = { path = "core/vautr-import" }
 vautr-sharing   = { path = "core/vautr-sharing" }
 vautr-telemetry = { path = "core/vautr-telemetry" }
 vautr-backup    = { path = "core/vautr-backup" }
+vautr-export    = { path = "core/vautr-export" }
 vautr-cli       = { path = "apps/cli" }
 
 # --- common third-party ---

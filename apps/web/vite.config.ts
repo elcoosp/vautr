@@ -1,10 +1,19 @@
 import { fileURLToPath, URL } from 'node:url';
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
 import tailwindcss from '@tailwindcss/vite';
+import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Bind a deterministic IPv4 address/port so tooling that probes
+  // http://127.0.0.1:5173 (e.g. `hermes verify`) can reach the dev server.
+  // By default Vite binds `localhost`, which on macOS resolves to IPv6 `::1`
+  // first and is unreachable over IPv4.
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+  },
   plugins: [TanStackRouterVite(), react(), tailwindcss()],
   resolve: {
     alias: {

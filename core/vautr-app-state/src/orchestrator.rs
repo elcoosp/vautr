@@ -20,20 +20,19 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use vautr_auth::error::AuthError;
-use vautr_crypto::{aead, key_tree};
 use vautr_crypto::sharing::{SharingKeyPair, SharingPublicKey};
-use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
-use vautr_sync::dashmap::{DashMapEntryState, LocalBlacklist};
-use vautr_sync::engine::{Engine, PulledOverview, Transport};
+use vautr_crypto::{aead, key_tree};
 use vautr_db::entity::{item_overview, item_payload};
+use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
 use vautr_import::{ImportReport, RawImportItem, VaultKeys};
 use vautr_sharing::{
     accept_share as kem_accept, add_group_member as kem_add_member,
     create_group as kem_create_group, remove_group_member as kem_remove_member,
     rotate_group_sik as kem_rotate_group, share_item as kem_share,
-    share_to_group as kem_share_group, IncomingShare, ShareBundle, ShareGroupKey,
-    WrappedGroupKey,
+    share_to_group as kem_share_group, IncomingShare, ShareBundle, ShareGroupKey, WrappedGroupKey,
 };
+use vautr_sync::dashmap::{DashMapEntryState, LocalBlacklist};
+use vautr_sync::engine::{Engine, PulledOverview, Transport};
 
 use base64::Engine as _;
 
@@ -42,6 +41,7 @@ use crate::event_bus::{EventBus, VaultStateUpdate};
 use crate::file_transfer::{FileTransferWorker, FileTransportHandle};
 use crate::handles::{CoreAction, PlatformAdapter, SecretStore};
 use crate::offline::{OfflineQueue, QueuedMutation};
+use crate::project_transport::{ProjectSecretSummary, ProjectSummary, ProjectTransportHandle};
 use crate::sharing::{ShareGroupStore, ShareTransportHandle};
 use crate::worker::{DeleteCommand, PersistenceWorker, SaveCommand, TaskOutcome};
 
@@ -50,6 +50,18 @@ pub type TransportHandle = Arc<dyn Transport>;
 
 /// A decrypted secret handle (opaque u64) for the Safety Reaper (client.md §3).
 pub type SecretHandle = u64;
+
+/// The kind of second factor an account may require before Master-Password
+/// unlock completes (VTR-052 WebAuthn + mandatory-MFA TOTP). The server
+/// enforces the policy; the client models it here so `unlock_with_password`
+/// can refuse to complete until the factor is satisfied.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SecondFactorMethod {
+    /// FIDO2 / WebAuthn assertion (VTR-052).
+    WebAuthn,
+    /// TOTP (RFC 6238) code, verified via `/mfa/totp/verify` (mandatory-MFA).
+    Totp,
+}
 
 /// The unified client. Thin orchestrator over the Rust core crates.
 pub struct VautrClient {
@@ -88,19 +100,25 @@ pub struct VautrClient {
     groups: ShareGroupStore,
     /// File blob-store relay. Set via `connect_files`.
     file_transport: Arc<tokio::sync::RwLock<Option<FileTransportHandle>>>,
+    /// Projects transport (project list + project-scoped secret metadata).
+    /// Set via `connect_projects`. The server enforces membership + reveal
+    /// scopes; the client only ever sees server-returned metadata.
+    project_transport: Arc<tokio::sync::RwLock<Option<ProjectTransportHandle>>>,
     /// Set when the vault was unlocked via the RK; forces MP+RK rotation.
     recovery_pending: Arc<AtomicBool>,
     /// Derived RK auth credential held while a recovery is pending (§2.3).
     recovery_creds: Arc<tokio::sync::Mutex<Option<crate::recovery::RecoveryCredentials>>>,
     /// Offline mutation queue (VTR-047).
     offline: OfflineQueue,
-    // --- Wave: WebAuthn second factor (VTR-052) ---
-    /// Whether the account requires a WebAuthn second factor before MP unlock
-    /// completes. Set from the `/account/status` response; the server withholds
-    /// the wrapped SVK until the assertion is verified.
-    second_factor_required: Arc<AtomicBool>,
-    /// Whether the current login has satisfied the second factor (a successful
-    /// `/webauthn/assert/verify` round-trip).
+    // --- WebAuthn / TOTP second factor (VTR-052 + mandatory MFA) ----------
+    /// The required second factor for this login, if any. `None` means no
+    /// second factor is required; `Some(method)` means the account must
+    /// complete that method's challenge before MP unlock (server withholds the
+    /// wrapped SVK until the factor is satisfied). Set from the server's
+    /// `/account/status` (`second_factor_method`) or `/mfa/status`.
+    second_factor: Arc<tokio::sync::Mutex<Option<SecondFactorMethod>>>,
+    /// Whether the current login has satisfied the required second factor (a
+    /// successful `/webauthn/assert/verify` or `/mfa/totp/verify` round-trip).
     second_factor_verified: Arc<AtomicBool>,
 }
 
@@ -131,10 +149,11 @@ impl VautrClient {
             sharing_keypair: Arc::new(tokio::sync::RwLock::new(None)),
             groups: ShareGroupStore::new(),
             file_transport: Arc::new(tokio::sync::RwLock::new(None)),
+            project_transport: Arc::new(tokio::sync::RwLock::new(None)),
             recovery_pending: Arc::new(AtomicBool::new(false)),
             recovery_creds: Arc::new(tokio::sync::Mutex::new(None)),
             offline: OfflineQueue::new(),
-            second_factor_required: Arc::new(AtomicBool::new(false)),
+            second_factor: Arc::new(tokio::sync::Mutex::new(None)),
             second_factor_verified: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -204,13 +223,30 @@ impl VautrClient {
         server_user_id: Uuid,
         local_gen: u64,
     ) -> Result<(), String> {
-        // VTR-052: when the account requires a WebAuthn second factor, refuse to
-        // complete MP unlock until the client has verified an assertion. This
-        // surfaces `AuthError::SecondFactorRequired` to the caller; the server
-        // independently withholds the wrapped SVK via `/account/status`.
-        if self.second_factor_required.load(Ordering::SeqCst)
-            && !self.second_factor_verified.load(Ordering::SeqCst)
-        {
+        // A4 (mlp-wave-plan §3): discover the server-declared required second
+        // factor before evaluating the unlock gate. We only override the in-memory
+        // state when the transport returns an authoritative `Some(...)`; a `None`
+        // (or an unsupported transport) leaves any existing state untouched so
+        // test/CLI flows that set it manually are not clobbered. The gate below
+        // then refuses MP unlock until the factor is verified, mirroring the
+        // server's independent enforcement via `/account/status`.
+        if let Some(transport) = self.transport.read().await.clone() {
+            if let Ok(Some(method)) = transport.second_factor_method().await {
+                let parsed = match method.as_str() {
+                    "webauthn" => Some(SecondFactorMethod::WebAuthn),
+                    "totp" => Some(SecondFactorMethod::Totp),
+                    _ => None,
+                };
+                self.set_second_factor_method(parsed).await;
+            }
+        }
+        // VTR-052 + mandatory-MFA: when the account requires a second factor
+        // (WebAuthn or TOTP), refuse to complete MP unlock until the client has
+        // verified it. This surfaces `AuthError::SecondFactorRequired` to the
+        // caller; the server independently withholds the wrapped SVK via
+        // `/account/status` (`second_factor_method`).
+        let sf_required = self.second_factor.lock().await.is_some();
+        if sf_required && !self.second_factor_verified.load(Ordering::SeqCst) {
             return Err(AuthError::SecondFactorRequired.to_string());
         }
         let mk = vautr_crypto::kdf::derive_master_key(&mp, kdf_salt)
@@ -249,25 +285,40 @@ impl VautrClient {
         self.locked.store(false, Ordering::SeqCst);
     }
 
-    // --- WebAuthn second factor (VTR-052) ----------------------------------
+    // --- WebAuthn / TOTP second factor (VTR-052 + mandatory MFA) ----------
 
-    /// Record whether the account requires a WebAuthn second factor before MP
-    /// unlock completes. Set from the server's `/account/status` response
-    /// (`second_factor_required`).
-    pub fn set_second_factor_required(&self, required: bool) {
-        self.second_factor_required.store(required, Ordering::SeqCst);
-        if !required {
+    /// The kind of second factor the account requires before MP unlock.
+    pub async fn set_second_factor_method(&self, method: Option<SecondFactorMethod>) {
+        *self.second_factor.lock().await = method;
+        if method.is_none() {
             // A cleared requirement also resets any stale "verified" marker.
             self.second_factor_verified.store(false, Ordering::SeqCst);
         }
     }
 
-    /// Whether the account requires a WebAuthn second factor this login.
-    pub fn second_factor_required(&self) -> bool {
-        self.second_factor_required.load(Ordering::SeqCst)
+    /// Backwards-compatible setter: `true` maps to a required WebAuthn factor,
+    /// `false` clears any required factor. Prefer [`set_second_factor_method`].
+    pub async fn set_second_factor_required(&self, required: bool) {
+        self.set_second_factor_method(if required {
+            Some(SecondFactorMethod::WebAuthn)
+        } else {
+            None
+        })
+        .await;
     }
 
-    /// Whether the current login has already satisfied the second factor.
+    /// Whether the account requires a second factor this login.
+    pub async fn second_factor_required(&self) -> bool {
+        self.second_factor.lock().await.is_some()
+    }
+
+    /// The required second-factor method, if any.
+    pub async fn second_factor_method(&self) -> Option<SecondFactorMethod> {
+        self.second_factor.lock().await.clone()
+    }
+
+    /// Whether the current login has already satisfied the second factor (a
+    /// successful `/webauthn/assert/verify` or `/mfa/totp/verify`).
     pub fn second_factor_verified(&self) -> bool {
         self.second_factor_verified.load(Ordering::SeqCst)
     }
@@ -278,9 +329,24 @@ impl VautrClient {
         self.second_factor_verified.store(true, Ordering::SeqCst);
     }
 
+    /// Complete a TOTP second-factor challenge (mandatory-MFA seam). Calls the
+    /// transport's `/mfa/totp/verify`; on success the second factor is marked
+    /// verified and MP unlock is un-gated. Errors if the transport rejects the
+    /// code or no sync transport is connected.
+    pub async fn verify_totp(&self, code: &str) -> Result<(), String> {
+        let transport = self.transport.read().await.clone();
+        let transport = transport.ok_or_else(|| "sync not connected".to_string())?;
+        transport
+            .verify_totp(code)
+            .await
+            .map_err(|e| format!("totp verify: {e}"))?;
+        self.second_factor_verified.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
     /// Reset the second-factor state (e.g. on lock or a fresh login).
-    pub fn reset_second_factor(&self) {
-        self.second_factor_required.store(false, Ordering::SeqCst);
+    pub async fn reset_second_factor(&self) {
+        *self.second_factor.lock().await = None;
         self.second_factor_verified.store(false, Ordering::SeqCst);
     }
 
@@ -289,7 +355,7 @@ impl VautrClient {
         *self.svk.lock().await = None;
         *self.dek.lock().await = None;
         self.locked.store(true, Ordering::SeqCst);
-        self.reset_second_factor();
+        self.reset_second_factor().await;
         self.bus.publish(VaultStateUpdate::VaultLocked);
     }
 
@@ -335,8 +401,8 @@ impl VautrClient {
         let dek = dek.as_ref().ok_or_else(|| "vault locked".to_string())?;
         let pt = aead::decrypt(dek, &uuid, enc_key_gen as u64, &payload)
             .map_err(|_| "secret decrypt failed".to_string())?;
-        let secret: DecryptedSecret = serde_json::from_slice(&pt)
-            .map_err(|e| format!("secret parse: {e}"))?;
+        let secret: DecryptedSecret =
+            serde_json::from_slice(&pt).map_err(|e| format!("secret parse: {e}"))?;
         // Reveal only the primary password (the secret string the UI copies).
         let bytes = Zeroizing::new(secret.password.as_bytes().to_vec());
         Ok(self.handles.reveal(bytes))
@@ -431,8 +497,8 @@ impl VautrClient {
         self.bus.publish(VaultStateUpdate::SyncStarted);
         let mut progress = 0u8;
 
-        let (next_cursor, overviews) = engine.pull().await
-            .map_err(|e| format!("sync pull: {e}"))?;
+        let (next_cursor, overviews) =
+            engine.pull().await.map_err(|e| format!("sync pull: {e}"))?;
         self.cursor.store(next_cursor, Ordering::SeqCst);
 
         // Epoch gate: if the server's min_gen is ahead of our local key gen,
@@ -478,12 +544,20 @@ impl VautrClient {
     }
 
     /// Upsert a synced item's overview + payload at the server's version.
-    async fn persist_synced_item(&self, ov: &PulledOverview, payload: Vec<u8>) -> Result<(), String> {
+    async fn persist_synced_item(
+        &self,
+        ov: &PulledOverview,
+        payload: Vec<u8>,
+    ) -> Result<(), String> {
         let overview_am = item_overview::ActiveModel {
             uuid: Set(ov.uuid.to_string()),
             version: Set(ov.version as i64),
             enc_key_gen: Set(ov.enc_key_gen as i64),
-            deleted_date: Set(if ov.deleted { Some(ov.version as i64) } else { None }),
+            deleted_date: Set(if ov.deleted {
+                Some(ov.version as i64)
+            } else {
+                None
+            }),
             overview_title: Set(String::new()),
             overview_subtitle: Set(String::new()),
             overview_icon_key: Set(String::new()),
@@ -604,16 +678,10 @@ impl VautrClient {
                     uuid: Set(uuid.to_string()),
                     payload: Set(new_payload.clone()),
                 };
-                let txn = self.db.begin().await
-                    .map_err(|e| format!("begin: {e}"))?;
-                vautr_db::txn::save_item_txn(
-                    &txn,
-                    overview_am,
-                    payload_am,
-                    &uuid.to_string(),
-                )
-                .await
-                .map_err(|e| format!("persist re-encrypt: {e}"))?;
+                let txn = self.db.begin().await.map_err(|e| format!("begin: {e}"))?;
+                vautr_db::txn::save_item_txn(&txn, overview_am, payload_am, &uuid.to_string())
+                    .await
+                    .map_err(|e| format!("persist re-encrypt: {e}"))?;
                 txn.commit().await.map_err(|e| format!("commit: {e}"))?;
                 push_items.push((*uuid, *gen as u64, confirmed_gen, Some(new_payload)));
             }
@@ -632,7 +700,8 @@ impl VautrClient {
         self.local_gen.store(confirmed_gen, Ordering::SeqCst);
         self.epoch.set_min_enc_key_gen(confirmed_gen);
         *self.svk.lock().await = Some(new_svk.clone());
-        *self.dek.lock().await = Some(key_tree::derive_dek(&new_svk).map_err(|e| format!("dek: {e}"))?);
+        *self.dek.lock().await =
+            Some(key_tree::derive_dek(&new_svk).map_err(|e| format!("dek: {e}"))?);
         self.bus.publish(VaultStateUpdate::SyncCompleted);
         Ok(())
     }
@@ -706,6 +775,32 @@ impl VautrClient {
         *self.file_transport.write().await = Some(transport);
     }
 
+    /// Install the projects transport (project list + project-scoped secret
+    /// metadata; the server enforces membership + reveal scopes, mlp-wave-plan
+    /// §3 A1). The client never decrypts server-stored ciphertext.
+    pub async fn connect_projects(&self, transport: ProjectTransportHandle) {
+        *self.project_transport.write().await = Some(transport);
+    }
+
+    /// `GET /projects` — list the projects visible to the caller.
+    pub async fn list_projects(&self) -> Result<Vec<ProjectSummary>, String> {
+        let t = self.project_transport.read().await.clone();
+        let t = t.ok_or_else(|| "projects transport not connected".to_string())?;
+        t.list_projects().await
+    }
+
+    /// `GET /projects/{uuid}/secrets` — list secret *metadata* within a project.
+    /// The server enforces project access (CanView) and never returns the
+    /// `value_ciphertext` here (reveal is a separate gated call).
+    pub async fn list_project_secrets(
+        &self,
+        project_uuid: Uuid,
+    ) -> Result<Vec<ProjectSecretSummary>, String> {
+        let t = self.project_transport.read().await.clone();
+        let t = t.ok_or_else(|| "projects transport not connected".to_string())?;
+        t.list_project_secrets(project_uuid).await
+    }
+
     /// True while the vault was unlocked via the RK and a forced MP+RK rotation
     /// is still pending (emergency-recovery-account.md §2.3).
     pub fn recovery_pending(&self) -> bool {
@@ -745,14 +840,19 @@ impl VautrClient {
     /// Import a competitor export file (SVK → OEK/DEK), ingest into the local
     /// DB via the bulk fast-path, seed the server, and emit a single
     /// `ImportCompleted(report)` event.
-    pub async fn import_file(&self, path: &str, progress: impl Fn(u8)) -> Result<ImportReport, String> {
+    pub async fn import_file(
+        &self,
+        path: &str,
+        progress: impl Fn(u8),
+    ) -> Result<ImportReport, String> {
         let svk = self.require_svk().await?;
         let keys = VaultKeys::from_svk(&svk).map_err(|e| e.to_string())?;
         let report = vautr_import::import_file(path, &self.db, &keys, progress)
             .await
             .map_err(|e| e.to_string())?;
         self.seed().await?;
-        self.bus.publish(VaultStateUpdate::ImportCompleted(report.clone()));
+        self.bus
+            .publish(VaultStateUpdate::ImportCompleted(report.clone()));
         Ok(report)
     }
 
@@ -769,8 +869,71 @@ impl VautrClient {
             .await
             .map_err(|e| e.to_string())?;
         self.seed().await?;
-        self.bus.publish(VaultStateUpdate::ImportCompleted(report.clone()));
+        self.bus
+            .publish(VaultStateUpdate::ImportCompleted(report.clone()));
         Ok(report)
+    }
+
+    /// Offline, streaming plaintext export to CSV or JSON (VTR-058).
+    ///
+    /// Fully offline: no network calls. For each local item it decrypts the
+    /// secret in-place (revealing + releasing immediately, per client.md §3),
+    /// builds an [`vautr_export::ExportRow`], and hands the row to the streaming
+    /// writer. The export is **blocked** when the vault is locked or in a
+    /// Read-Only gate (requires re-authentication) — reported as an
+    /// `EpochMismatch` failure.
+    pub async fn export_vault(
+        &self,
+        format: vautr_export::ExportFormat,
+        path: &str,
+        cancel: &std::sync::atomic::AtomicBool,
+        progress: impl Fn(u64, u64),
+    ) -> Result<vautr_export::ExportReport, String> {
+        // Gate: locked or Read-Only epoch ⇒ block (TDD #4: EpochMismatch).
+        if self.is_locked() {
+            return Err("export blocked: vault locked or in read-only gate (EpochMismatch)".into());
+        }
+        let local_gen = self.current_key_gen();
+        if self.epoch.is_read_only(local_gen) {
+            return Err("export blocked: vault locked or in read-only gate (EpochMismatch)".into());
+        }
+
+        let dek = self.dek.lock().await;
+        let dek = dek.as_ref().ok_or_else(|| "vault locked".to_string())?;
+
+        let rows_raw = self.list_local_items().await?;
+        let mut rows = Vec::with_capacity(rows_raw.len());
+        for (uuid, _version, gen, payload) in &rows_raw {
+            let overview = self
+                .get_overview(*uuid)
+                .await
+                .map_err(|e| format!("export overview {uuid}: {e}"))?;
+            let pt = aead::decrypt(dek, uuid, *gen, payload)
+                .map_err(|_| format!("export decrypt {uuid}: secret decrypt failed"))?;
+            let secret: DecryptedSecret = serde_json::from_slice(&pt)
+                .map_err(|e| format!("export secret parse {uuid}: {e}"))?;
+
+            let totp = secret.totp.as_ref().map(|t| vautr_export::TotpExport {
+                algorithm: format!("{:?}", t.algorithm),
+                digits: t.digits,
+                period: t.period,
+                secret_base32: t.secret_base32.clone(),
+            });
+            rows.push(vautr_export::ExportRow {
+                uuid: *uuid,
+                title: overview.title.clone(),
+                username: overview.subtitle.clone(),
+                password: secret.password.clone(),
+                urls: overview.urls.clone(),
+                notes: secret.notes.clone(),
+                totp,
+            });
+            // `pt`/`secret` drop here, zeroizing the plaintext.
+        }
+        drop(dek);
+
+        vautr_export::export_rows(rows, format, path, cancel, progress)
+            .map_err(|e| format!("export write: {e}"))
     }
 
     /// Seed the server with all locally-persisted items via `push_batch`
@@ -819,11 +982,8 @@ impl VautrClient {
         }
         let sql = "SELECT o.uuid, o.version, o.enc_key_gen, p.payload \
                    FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid";
-        let stmt = sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Sqlite,
-            sql,
-            [],
-        );
+        let stmt =
+            sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
         let rows = Row::find_by_statement(stmt)
             .all(&self.db)
             .await
@@ -861,15 +1021,16 @@ impl VautrClient {
             .await
             .ok_or_else(|| "no server user id".to_string())?;
         let pk = share_t.fetch_public_key(recipient_uuid).await?;
-        let bundle =
-            kem_share(sender, recipient_uuid, item_uuid, &pk, plaintext).map_err(|e| e.to_string())?;
+        let bundle = kem_share(sender, recipient_uuid, item_uuid, &pk, plaintext)
+            .map_err(|e| e.to_string())?;
         share_t.post_share(&bundle).await?;
         // Deliver the DEM ciphertext separately (§5).
         let payload = base64::engine::general_purpose::STANDARD
             .decode(&bundle.encrypted_payload)
             .map_err(|e| format!("decode payload: {e}"))?;
         share_t.post_share_payload(bundle.share_id, payload).await?;
-        self.bus.publish(VaultStateUpdate::ShareSent(bundle.share_id));
+        self.bus
+            .publish(VaultStateUpdate::ShareSent(bundle.share_id));
         Ok(bundle)
     }
 
@@ -894,7 +1055,8 @@ impl VautrClient {
             .clone()
             .ok_or_else(|| "no sharing keypair installed".to_string())?;
         let pt = kem_accept(&kp, incoming).map_err(|e| e.to_string())?;
-        self.bus.publish(VaultStateUpdate::ShareReceived(incoming.share_id));
+        self.bus
+            .publish(VaultStateUpdate::ShareReceived(incoming.share_id));
         Ok(pt)
     }
 
@@ -938,10 +1100,12 @@ impl VautrClient {
             .await
             .clone()
             .ok_or_else(|| "sharing not connected".to_string())?;
-        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let key = self
+            .groups
+            .get(&group_id)
+            .ok_or_else(|| "no such group".to_string())?;
         let pk = share_t.fetch_public_key(member_uuid).await?;
-        let wrapped =
-            kem_add_member(key.as_ref(), member_uuid, &pk).map_err(|e| e.to_string())?;
+        let wrapped = kem_add_member(key.as_ref(), member_uuid, &pk).map_err(|e| e.to_string())?;
         share_t.store_group_wrapped_key(&wrapped).await?;
         Ok(wrapped)
     }
@@ -959,13 +1123,17 @@ impl VautrClient {
             .await
             .clone()
             .ok_or_else(|| "sharing not connected".to_string())?;
-        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let key = self
+            .groups
+            .get(&group_id)
+            .ok_or_else(|| "no such group".to_string())?;
         let admin_uuid = key.group.admin_uuid;
         let pk = share_t.fetch_public_key(admin_uuid).await?;
-        let rotation =
-            kem_remove_member(key.as_ref(), member_uuid, &[(admin_uuid, pk)])
-                .map_err(|e| e.to_string())?;
-        share_t.replace_group_wrapped_keys(rotation.rewrapped).await?;
+        let rotation = kem_remove_member(key.as_ref(), member_uuid, &[(admin_uuid, pk)])
+            .map_err(|e| e.to_string())?;
+        share_t
+            .replace_group_wrapped_keys(rotation.rewrapped)
+            .await?;
         self.groups.replace(rotation.new_key);
         Ok(())
     }
@@ -978,12 +1146,17 @@ impl VautrClient {
             .await
             .clone()
             .ok_or_else(|| "sharing not connected".to_string())?;
-        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let key = self
+            .groups
+            .get(&group_id)
+            .ok_or_else(|| "no such group".to_string())?;
         let admin_uuid = key.group.admin_uuid;
         let pk = share_t.fetch_public_key(admin_uuid).await?;
         let rotation =
             kem_rotate_group(&key.group, &[(admin_uuid, pk)]).map_err(|e| e.to_string())?;
-        share_t.replace_group_wrapped_keys(rotation.rewrapped).await?;
+        share_t
+            .replace_group_wrapped_keys(rotation.rewrapped)
+            .await?;
         self.groups.replace(rotation.new_key);
         Ok(())
     }
@@ -995,7 +1168,10 @@ impl VautrClient {
         item_uuid: Uuid,
         plaintext: &[u8],
     ) -> Result<Vec<u8>, String> {
-        let key = self.groups.get(&group_id).ok_or_else(|| "no such group".to_string())?;
+        let key = self
+            .groups
+            .get(&group_id)
+            .ok_or_else(|| "no such group".to_string())?;
         kem_share_group(key.as_ref(), &item_uuid, plaintext).map_err(|e| e.to_string())
     }
 
@@ -1025,7 +1201,9 @@ impl VautrClient {
         }
         let svk = self.require_svk().await?;
         let worker = self.file_worker().await?;
-        worker.upload_bytes(&svk, plaintext, content_type, last_modified).await
+        worker
+            .upload_bytes(&svk, plaintext, content_type, last_modified)
+            .await
     }
 
     /// Download + decrypt an attachment by manifest.
@@ -1126,11 +1304,10 @@ impl VautrClient {
         let new_rk = crate::recovery::generate_recovery_key();
         let mnemonic = vautr_crypto::recovery::decode_recovery_mnemonic(&new_rk)
             .map_err(|e| format!("decode rk: {e}"))?;
-        let kek_rk = vautr_crypto::recovery::derive_kek_rk(&mnemonic)
-            .map_err(|e| format!("kek_rk: {e}"))?;
-        let _wrapped_rk =
-            vautr_crypto::recovery::wrap_svk_with_rk(&svk, &kek_rk, &user_id)
-                .map_err(|e| format!("wrap rk: {e}"))?;
+        let kek_rk =
+            vautr_crypto::recovery::derive_kek_rk(&mnemonic).map_err(|e| format!("kek_rk: {e}"))?;
+        let _wrapped_rk = vautr_crypto::recovery::wrap_svk_with_rk(&svk, &kek_rk, &user_id)
+            .map_err(|e| format!("wrap rk: {e}"))?;
         let creds = crate::recovery::derive_recovery_credentials(&new_rk)
             .ok_or_else(|| "derive creds".to_string())?;
 
@@ -1153,7 +1330,12 @@ impl VautrClient {
         if self.is_locked() {
             return Err("vault locked".into());
         }
-        let dek = self.dek.lock().await.clone().ok_or_else(|| "vault locked".to_string())?;
+        let dek = self
+            .dek
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| "vault locked".to_string())?;
         let rows = vautr_db::query::list_enc_key_gens(&self.db).await?;
         let mut items = Vec::with_capacity(rows.len());
         for (uuid, gen, payload) in rows {
@@ -1194,14 +1376,16 @@ impl VautrClient {
     /// Queue a save for later push when offline. Returns the queue length.
     pub async fn offline_save(&self, item: DomainModel, payload: Vec<u8>) -> u64 {
         let n = self.offline.push(QueuedMutation::Save { item, payload });
-        self.bus.publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
+        self.bus
+            .publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
         n as u64
     }
 
     /// Queue a delete for later push when offline. Returns the queue length.
     pub async fn offline_delete(&self, uuid: Uuid) -> u64 {
         let n = self.offline.push(QueuedMutation::Delete { uuid });
-        self.bus.publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
+        self.bus
+            .publish(VaultStateUpdate::OfflineMutationQueued(n as u64));
         n as u64
     }
 
@@ -1232,7 +1416,8 @@ impl VautrClient {
     /// payload; the persisted DashMap is flushed at the next sync boundary.
     pub fn reaper_quarantine(&self, uuid: Uuid, server_version: u64, toxic: bool) {
         self.mark_ignored(uuid, server_version as i64, toxic);
-        self.bus.publish(VaultStateUpdate::NewerVersionAvailable { uuid });
+        self.bus
+            .publish(VaultStateUpdate::NewerVersionAvailable { uuid });
     }
 
     /// Persist the DashMap now (crash safety) rather than waiting for the next

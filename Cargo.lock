@@ -10050,6 +10050,7 @@ dependencies = [
  "vautr-crypto",
  "vautr-db",
  "vautr-domain",
+ "vautr-export",
  "vautr-files",
  "vautr-import",
  "vautr-keyring",
@@ -10166,6 +10167,7 @@ dependencies = [
 name = "vautr-desktop"
 version = "0.1.0"
 dependencies = [
+ "async-io",
  "base64 0.22.1",
  "chrono",
  "gpui",
@@ -10197,6 +10199,19 @@ dependencies = [
  "thiserror 2.0.20",
  "uuid",
  "vautr-crypto",
+ "zeroize",
+]
+
+[[package]]
+name = "vautr-export"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
  "zeroize",
 ]
 
@@ -10346,6 +10361,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "uuid",
 ]

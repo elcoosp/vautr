@@ -22,6 +22,9 @@ use zeroize::Zeroizing;
 use vautr_app_state::event_bus::VaultStateUpdate;
 use vautr_app_state::file_transfer::FileTransport;
 use vautr_app_state::handles::{CoreAction, PlatformAdapter};
+use vautr_app_state::project_transport::{
+    InMemoryProjectRelay, ProjectSecretSummary, ProjectSummary,
+};
 use vautr_app_state::sharing::{generate_vault_sharing_keypair, InMemoryShareRelay};
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, key_tree};
@@ -39,6 +42,9 @@ struct ServerState {
     items: HashMap<Uuid, (u64, u64, Vec<u8>)>, // uuid -> (version, enc_key_gen, payload)
     min_gen: u64,
     svk_blob: Vec<u8>,
+    /// Server-declared required second-factor method, surfaced via
+    /// `second_factor_method()` (mirrors `/account/status`).
+    second_factor_method: Option<String>,
 }
 
 #[derive(Clone)]
@@ -127,6 +133,29 @@ impl Transport for RoundTripTransport {
             Ok(new_min_gen)
         })
     }
+
+    fn verify_totp(
+        &self,
+        code: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TransportError>> + Send>> {
+        let code = code.to_string();
+        Box::pin(async move {
+            // Test TOTP validator: the well-known code "000000" is accepted; any
+            // other code simulates a server 401 (invalid TOTP).
+            if code == "000000" {
+                Ok(())
+            } else {
+                Err(TransportError::Http(401))
+            }
+        })
+    }
+
+    fn second_factor_method(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, TransportError>> + Send>> {
+        let st = self.state.clone();
+        Box::pin(async move { Ok(st.lock().unwrap().second_factor_method.clone()) })
+    }
 }
 
 // --- In-memory file store ---------------------------------------------------
@@ -164,7 +193,11 @@ impl FileTransport for InMemoryFileStore {
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> {
         let state = self.state.clone();
         Box::pin(async move {
-            state.lock().unwrap().chunks.insert((file_uuid, index), ciphertext);
+            state
+                .lock()
+                .unwrap()
+                .chunks
+                .insert((file_uuid, index), ciphertext);
             Ok(())
         })
     }
@@ -244,8 +277,7 @@ impl PlatformAdapter for MockAdapter {
     fn service_action(&self, action: CoreAction, secret: &[u8]) -> Result<(), String> {
         match action {
             CoreAction::CopyToClipboard { .. } | CoreAction::Autofill { .. } => {
-                *self.copied.lock().unwrap() =
-                    Some(String::from_utf8_lossy(secret).into_owned());
+                *self.copied.lock().unwrap() = Some(String::from_utf8_lossy(secret).into_owned());
                 Ok(())
             }
         }
@@ -262,12 +294,16 @@ async fn e2e_push_pull_roundtrip() {
     let svk = key_tree::generate_svk();
 
     a.connect_sync_with_transport(
-        Arc::new(RoundTripTransport { state: shared.clone() }),
+        Arc::new(RoundTripTransport {
+            state: shared.clone(),
+        }),
         Uuid::new_v4(),
     )
     .await;
     b.connect_sync_with_transport(
-        Arc::new(RoundTripTransport { state: shared.clone() }),
+        Arc::new(RoundTripTransport {
+            state: shared.clone(),
+        }),
         Uuid::new_v4(),
     )
     .await;
@@ -310,7 +346,9 @@ async fn e2e_import_then_seed() {
     let client = VautrClient::new(fresh_db().await);
     client
         .connect_sync_with_transport(
-            Arc::new(RoundTripTransport { state: shared.clone() }),
+            Arc::new(RoundTripTransport {
+                state: shared.clone(),
+            }),
             Uuid::new_v4(),
         )
         .await;
@@ -376,7 +414,10 @@ async fn e2e_share_accept_roundtrip() {
         "B must see the share in its inbox"
     );
 
-    let incoming = inbox.into_iter().find(|s| s.share_id == bundle.share_id).unwrap();
+    let incoming = inbox
+        .into_iter()
+        .find(|s| s.share_id == bundle.share_id)
+        .unwrap();
     let decrypted = b.accept_share(&incoming).await.expect("B accepts");
     assert_eq!(decrypted, plaintext, "B recovers the shared plaintext");
 
@@ -403,7 +444,12 @@ async fn e2e_file_upload_download() {
         .await
         .expect("upload");
     assert_eq!(manifest.total_size, payload.len() as u64);
-    assert!(store.state.lock().unwrap().completed.contains(&manifest.file_uuid));
+    assert!(store
+        .state
+        .lock()
+        .unwrap()
+        .completed
+        .contains(&manifest.file_uuid));
 
     let roundtrip = client.download_file(&manifest).await.expect("download");
     assert_eq!(roundtrip, payload, "downloaded bytes match upload");
@@ -422,14 +468,8 @@ async fn e2e_recovery_rotate() {
 
     // Onboarding proof-of-possession gate (§3.2): words 4, 12, 20.
     let words: Vec<&str> = rk.split_whitespace().collect();
-    assert!(setup.verify_recovery_key_possession(
-        &rk,
-        &[words[3], words[11], words[19]]
-    ));
-    assert!(!setup.verify_recovery_key_possession(
-        &rk,
-        &["incorrect", "incorrect", "incorrect"]
-    ));
+    assert!(setup.verify_recovery_key_possession(&rk, &[words[3], words[11], words[19]]));
+    assert!(!setup.verify_recovery_key_possession(&rk, &["incorrect", "incorrect", "incorrect"]));
 
     // Wrap the SVK under the RK (what onboarding would persist server-side).
     let mnemonic = vautr_crypto::recovery::decode_recovery_mnemonic(&rk).unwrap();
@@ -447,12 +487,18 @@ async fn e2e_recovery_rotate() {
     assert!(recovered.recovery_pending(), "forced rotation is pending");
 
     // RK proof-of-possession signature for the server challenge.
-    let sig = recovered.recovery_sign_challenge(b"server-nonce").await.expect("sign");
+    let sig = recovered
+        .recovery_sign_challenge(b"server-nonce")
+        .await
+        .expect("sign");
     assert!(!sig.is_empty());
 
     // Complete the forced MP+RK rotation; gate clears and a new RK is issued.
     let new_rk = recovered
-        .complete_recovery(Zeroizing::new("new-master-password".to_string()), &[0u8; 32])
+        .complete_recovery(
+            Zeroizing::new("new-master-password".to_string()),
+            &[0u8; 32],
+        )
         .await
         .expect("complete recovery");
     assert!(!new_rk.is_empty());
@@ -467,7 +513,9 @@ async fn e2e_offline_queue_flush() {
     let client = VautrClient::new(fresh_db().await);
     client
         .connect_sync_with_transport(
-            Arc::new(RoundTripTransport { state: shared.clone() }),
+            Arc::new(RoundTripTransport {
+                state: shared.clone(),
+            }),
             Uuid::new_v4(),
         )
         .await;
@@ -484,11 +532,298 @@ async fn e2e_offline_queue_flush() {
     let n = client.offline_save(item, env).await;
     assert_eq!(n, 1);
     assert_eq!(client.offline_queue_len(), 1);
-    assert!(shared.lock().unwrap().items.is_empty(), "nothing pushed yet");
+    assert!(
+        shared.lock().unwrap().items.is_empty(),
+        "nothing pushed yet"
+    );
 
     // Flush applies + pushes.
     let flushed = client.flush_offline_queue().await.expect("flush");
     assert_eq!(flushed, 1);
     assert_eq!(client.offline_queue_len(), 0);
     assert_eq!(shared.lock().unwrap().items.len(), 1);
+}
+
+// --- E2E: mandatory-TOTP second factor gates MP unlock (Wave C A4) ----------
+
+#[tokio::test]
+async fn e2e_mandatory_totp_gates_unlock() {
+    let shared = Arc::new(Mutex::new(ServerState::default()));
+    let client = VautrClient::new(fresh_db().await);
+
+    // Server reports a required TOTP second factor via `/account/status`.
+    client
+        .connect_sync_with_transport(
+            Arc::new(RoundTripTransport {
+                state: shared.clone(),
+            }),
+            Uuid::new_v4(),
+        )
+        .await;
+    client
+        .set_second_factor_method(Some(vautr_app_state::SecondFactorMethod::Totp))
+        .await;
+    assert!(client.second_factor_required().await);
+    assert_eq!(
+        client.second_factor_method().await,
+        Some(vautr_app_state::SecondFactorMethod::Totp)
+    );
+
+    // Build a master-password-derived wrapped SVK to drive `unlock_with_password`.
+    let mp = Zeroizing::new("correct horse battery staple".to_string());
+    let salt: [u8; 32] = [7u8; 32];
+    let mk = vautr_crypto::kdf::derive_master_key(&mp, &salt).unwrap();
+    let kek = key_tree::derive_kek(&mk).unwrap();
+    let svk = key_tree::generate_svk();
+    let user_id = Uuid::new_v4();
+    let wrapped_svk = aead::encrypt(&kek, &user_id, 0, &svk[..]).unwrap();
+
+    // Unlock must be refused while the second factor is unverified.
+    let err = client
+        .unlock_with_password(mp.clone(), &salt, &wrapped_svk, user_id, 1)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_lowercase().contains("second factor required"),
+        "unlock refused before TOTP: {err}"
+    );
+    assert!(client.is_locked());
+
+    // An incorrect code is rejected by the transport.
+    let bad = client.verify_totp("111111").await;
+    assert!(bad.is_err(), "wrong TOTP code must be rejected");
+
+    // The correct code satisfies the factor and un-gates unlock.
+    client
+        .verify_totp("000000")
+        .await
+        .expect("valid TOTP accepted");
+    assert!(client.second_factor_verified());
+    client
+        .unlock_with_password(mp.clone(), &salt, &wrapped_svk, user_id, 1)
+        .await
+        .expect("unlock succeeds after TOTP");
+    assert!(!client.is_locked());
+}
+
+// --- E2E: unlock auto-discovers TOTP from /account/status (Wave C A4) -------
+
+#[tokio::test]
+async fn e2e_unlock_discovers_totp_from_status() {
+    let shared = Arc::new(Mutex::new(ServerState::default()));
+    // Server declares a mandatory TOTP factor via `second_factor_method()`.
+    shared.lock().unwrap().second_factor_method = Some("totp".to_string());
+
+    let client = VautrClient::new(fresh_db().await);
+    client
+        .connect_sync_with_transport(
+            Arc::new(RoundTripTransport {
+                state: shared.clone(),
+            }),
+            Uuid::new_v4(),
+        )
+        .await;
+
+    // Build a wrapped SVK (mirrors e2e_mandatory_totp_gates_unlock).
+    let mp = Zeroizing::new("correct horse battery staple".to_string());
+    let salt: [u8; 32] = [7u8; 32];
+    let mk = vautr_crypto::kdf::derive_master_key(&mp, &salt).unwrap();
+    let kek = key_tree::derive_kek(&mk).unwrap();
+    let svk = key_tree::generate_svk();
+    let user_id = Uuid::new_v4();
+    let wrapped_svk = aead::encrypt(&kek, &user_id, 0, &svk[..]).unwrap();
+
+    // No manual set_second_factor_method call — the method must be learned from
+    // the transport during unlock, then gate the unlock.
+    assert!(!client.second_factor_required().await, "not yet discovered");
+
+    let err = client
+        .unlock_with_password(mp.clone(), &salt, &wrapped_svk, user_id, 1)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_lowercase().contains("second factor required"),
+        "unlock refused after auto-discovery: {err}"
+    );
+    assert!(
+        client.second_factor_required().await,
+        "method auto-discovered"
+    );
+    assert_eq!(
+        client.second_factor_method().await,
+        Some(vautr_app_state::SecondFactorMethod::Totp)
+    );
+
+    // A valid TOTP code un-gates and completes unlock.
+    client
+        .verify_totp("000000")
+        .await
+        .expect("valid TOTP accepted");
+    client
+        .unlock_with_password(mp.clone(), &salt, &wrapped_svk, user_id, 1)
+        .await
+        .expect("unlock succeeds after TOTP");
+    assert!(!client.is_locked());
+}
+
+// --- E2E: project-scoped secret listing via the projects transport (A1) ----
+
+#[tokio::test]
+async fn e2e_project_scoped_secrets() {
+    let relay = InMemoryProjectRelay::default();
+    let p1 = Uuid::new_v4();
+    let p2 = Uuid::new_v4();
+    relay.add_project(ProjectSummary {
+        uuid: p1.to_string(),
+        name: "Infra".into(),
+        description: Some("servers".into()),
+        kind: "shared".into(),
+        role: "owner".into(),
+        permission: Some("can_manage".into()),
+        created_at: 1_700_000_000_000,
+        updated_at: 1_700_000_000_000,
+    });
+    relay.add_project(ProjectSummary {
+        uuid: p2.to_string(),
+        name: "Personal".into(),
+        description: None,
+        kind: "personal".into(),
+        role: "owner".into(),
+        permission: None,
+        created_at: 1_700_000_000_001,
+        updated_at: 1_700_000_000_001,
+    });
+    relay.add_secret(
+        p1,
+        ProjectSecretSummary {
+            uuid: Uuid::new_v4().to_string(),
+            project_uuid: p1.to_string(),
+            key: "DATABASE_URL".into(),
+            version: 1,
+            created_by: Uuid::new_v4().to_string(),
+            last_accessed_at: None,
+            created_at: 1_700_000_000_002,
+            updated_at: 1_700_000_000_002,
+        },
+    );
+    // p2 has no secrets.
+
+    let client = VautrClient::new(fresh_db().await);
+    client.connect_projects(Arc::new(relay.clone())).await;
+
+    // list_projects returns both projects the relay knows about.
+    let projects = client.list_projects().await.expect("list projects");
+    assert_eq!(projects.len(), 2);
+    let by_name: std::collections::HashMap<_, _> = projects
+        .iter()
+        .map(|p| (p.name.as_str(), p.kind.as_str()))
+        .collect();
+    assert_eq!(by_name.get("Infra"), Some(&"shared"));
+    assert_eq!(by_name.get("Personal"), Some(&"personal"));
+
+    // list_project_secrets is scoped: p1 has one secret, p2 has none.
+    let p1_secrets = client
+        .list_project_secrets(p1)
+        .await
+        .expect("list p1 secrets");
+    assert_eq!(p1_secrets.len(), 1);
+    assert_eq!(p1_secrets[0].key, "DATABASE_URL");
+
+    let p2_secrets = client
+        .list_project_secrets(p2)
+        .await
+        .expect("list p2 secrets");
+    assert!(p2_secrets.is_empty(), "p2 must be empty");
+
+    // Without a connected transport the call is a clear error, not a panic.
+    let client2 = VautrClient::new(fresh_db().await);
+    assert!(client2.list_projects().await.is_err());
+}
+
+// --- E2E: VTR-058 offline export (CSV/JSON) + gate -------------------------
+
+#[tokio::test]
+async fn e2e_export_vault_csv_and_gate() {
+    use std::sync::atomic::AtomicBool;
+
+    let client = VautrClient::new(fresh_db().await);
+    let svk = key_tree::generate_svk();
+    client.unlock_with_raw_key(svk.clone(), 1).await;
+    assert!(!client.is_locked());
+
+    // Save two items with full secrets (incl. notes + TOTP).
+    for i in 0..2u64 {
+        let uuid = Uuid::new_v4();
+        let mut item = sample_item(uuid, &format!("secret-{i}"));
+        item.secret.notes = Zeroizing::new(format!("notes-{i}"));
+        item.secret.totp = Some(vautr_domain::TotpSecret {
+            algorithm: vautr_domain::TotpAlgorithm::Sha1,
+            digits: 6,
+            period: 30,
+            secret_base32: Zeroizing::new("JBSWY3DPEHPK3PXP".into()),
+        });
+        let dek = key_tree::derive_dek(&svk).unwrap();
+        let pt = serde_json::to_vec(&item.secret).unwrap();
+        let env = aead::encrypt(&dek, &uuid, 1, &pt).unwrap();
+        client.save_item(item, env).await;
+    }
+
+    let no_cancel = AtomicBool::new(false);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().to_str().unwrap().to_string();
+
+    // Export to CSV succeeds while unlocked.
+    let report = client
+        .export_vault(
+            vautr_export::ExportFormat::Csv,
+            &path,
+            &no_cancel,
+            |_, _| {},
+        )
+        .await
+        .expect("csv export");
+    assert_eq!(report.items_exported, 2);
+    assert!(report.bytes_written > 0);
+
+    // The file is human-readable CSV with a header + 2 rows.
+    let content = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<&str> = content.lines().collect();
+    assert_eq!(lines.len(), 3, "header + 2 data rows");
+    assert!(content.contains("secret-0") && content.contains("notes-1"));
+    assert!(content.contains("JBSWY3DPEHPK3PXP"), "totp secret exported");
+
+    // Export to JSON also works.
+    let tmp_json = tempfile::NamedTempFile::new().unwrap();
+    let json_path = tmp_json.path().to_str().unwrap().to_string();
+    let report_json = client
+        .export_vault(
+            vautr_export::ExportFormat::Json,
+            &json_path,
+            &no_cancel,
+            |_, _| {},
+        )
+        .await
+        .expect("json export");
+    assert_eq!(report_json.items_exported, 2);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_path).unwrap()).unwrap();
+    assert!(parsed.is_array());
+    assert_eq!(parsed.as_array().unwrap().len(), 2);
+
+    // TDD #4: once locked, export is blocked with an EpochMismatch error.
+    client.lock().await;
+    assert!(client.is_locked());
+    let err = client
+        .export_vault(
+            vautr_export::ExportFormat::Csv,
+            &path,
+            &no_cancel,
+            |_, _| {},
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("EpochMismatch"),
+        "locked vault must fail export with EpochMismatch, got: {err}"
+    );
 }

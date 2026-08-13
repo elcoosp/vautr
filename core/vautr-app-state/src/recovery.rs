@@ -67,10 +67,7 @@ pub fn derive_recovery_credentials(mnemonic: &str) -> Option<RecoveryCredentials
 /// into the probe positions), returns `true` only if every supplied word matches
 /// its expected position. The caller asks for the words at `POSSESSION_PROBE_INDICES`
 /// (word 4, 12, 20).
-pub fn verify_recovery_key_possession(
-    mnemonic: &str,
-    supplied: &[&str],
-) -> bool {
+pub fn verify_recovery_key_possession(mnemonic: &str, supplied: &[&str]) -> bool {
     let Ok(m) = decode_recovery_mnemonic(mnemonic) else {
         return false;
     };
@@ -83,7 +80,10 @@ pub fn verify_recovery_key_possession(
         .zip(supplied.iter())
         .all(|(pos, given)| {
             // `pos` is 1-based; probe position maps to 0-based index.
-            words.get(pos - 1).map(|w| w.eq_ignore_ascii_case(given)).unwrap_or(false)
+            words
+                .get(pos - 1)
+                .map(|w| w.eq_ignore_ascii_case(given))
+                .unwrap_or(false)
         })
 }
 
@@ -92,10 +92,7 @@ pub fn verify_recovery_key_possession(
 /// `sign_nonce` signs the server challenge nonce with the RK Ed25519 key (proof
 /// of possession, §2.3 step 2). The transport round-trips are driven by the
 /// orchestrator against its transport; this function is the crypto gate.
-pub fn sign_nonce(
-    creds: &RecoveryCredentials,
-    nonce: &[u8],
-) -> String {
+pub fn sign_nonce(creds: &RecoveryCredentials, nonce: &[u8]) -> String {
     use ed25519_dalek::Signer;
     let sig = creds.signing_key.sign(nonce);
     base64::engine::general_purpose::STANDARD.encode(sig.to_bytes())
@@ -109,10 +106,9 @@ mod tests {
         // Valid 24-word BIP-39 mnemonic (trezor test vector) with a checksum
         // that `bip39` accepts: 23x "abandon" + "art".
         [
-            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
-            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
-            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
-            "abandon", "abandon", "abandon", "abandon", "abandon", "art",
+            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
+            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
+            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "art",
         ]
         .join(" ")
     }
@@ -120,12 +116,11 @@ mod tests {
     #[test]
     fn possession_gate_accepts_correct_words() {
         let mn = sample_mnemonic();
-        let words: Vec<&str> = decode_recovery_mnemonic(&mn)
-            .unwrap()
-            .words()
+        let words: Vec<&str> = decode_recovery_mnemonic(&mn).unwrap().words().collect();
+        let supplied: Vec<&str> = POSSESSION_PROBE_INDICES
+            .iter()
+            .map(|p| words[*p - 1])
             .collect();
-        let supplied: Vec<&str> =
-            POSSESSION_PROBE_INDICES.iter().map(|p| words[*p - 1]).collect();
         assert!(verify_recovery_key_possession(&mn, &supplied));
     }
 
@@ -133,7 +128,10 @@ mod tests {
     fn possession_gate_rejects_wrong_words() {
         let mn = sample_mnemonic();
         // Wrong word at the first probe position.
-        assert!(!verify_recovery_key_possession(&mn, &["wrongword", "x", "y"]));
+        assert!(!verify_recovery_key_possession(
+            &mn,
+            &["wrongword", "x", "y"]
+        ));
         // Wrong arity.
         assert!(!verify_recovery_key_possession(&mn, &["a", "b"]));
     }

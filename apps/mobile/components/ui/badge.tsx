@@ -49,5 +49,5 @@ const Badge = forwardRef<ComponentRef<typeof Text>, BadgeProps>(
   },
 );
 
-export { Badge, badgeTextVariants, badgeVariants };
 export type { BadgeProps };
+export { Badge, badgeTextVariants, badgeVariants };

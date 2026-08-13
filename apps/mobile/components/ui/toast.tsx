@@ -1,4 +1,5 @@
 import * as ToastPrimitive from '@rn-primitives/toast';
+import { X } from 'lucide-react-native';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 import {
   createContext,
@@ -10,8 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 
 import { cn } from '../../lib/utils';
 
@@ -100,7 +100,7 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number)
     }, TOAST_AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast.id]);
+  }, [toast.id, onDismiss]);
 
   return (
     <ToastPrimitive.Root

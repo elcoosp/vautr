@@ -6,6 +6,11 @@
 
 import type {
   AccessScope,
+  AccessToken,
+  accountStatusResponse,
+  BackupExportRequest,
+  BackupExportResponse,
+  BackupStatus,
   MachineAccount,
   MfaMethod,
   MfaStatus,
@@ -18,13 +23,17 @@ import type {
   SecretValue,
   TotpIssueResponse,
   TotpVerifyResponse,
-  accountStatusResponse,
 } from '@vautr/api-contract';
 
 import { HttpClient } from './http';
 
 export type {
   AccessScope,
+  AccessToken,
+  accountStatusResponse,
+  BackupExportRequest,
+  BackupExportResponse,
+  BackupStatus,
   MachineAccount,
   MfaMethod,
   MfaStatus,
@@ -37,7 +46,6 @@ export type {
   SecretValue,
   TotpIssueResponse,
   TotpVerifyResponse,
-  accountStatusResponse,
 };
 
 /** OPAQUE handshake wire types (api.md §3). */
@@ -230,7 +238,14 @@ export class MobileApiClient {
     return this.http.request<TotpVerifyResponse>('POST', '/mfa/totp/verify', input);
   }
 
-  // ── Machine accounts & tokens (Wave A2) ───────────────────────────────
+  // ── Backup / import-export (Wave A5) ───────────────────────────────────
+  async getBackupStatus(): Promise<BackupStatus> {
+    return this.http.request<BackupStatus>('GET', '/backup');
+  }
+  async exportBackup(input?: BackupExportRequest): Promise<BackupExportResponse> {
+    return this.http.request<BackupExportResponse>('POST', '/backup/export', input ?? {});
+  }
+
   async listMachineAccounts(): Promise<MachineAccount[]> {
     const res = await this.http.request<{ machine_accounts: MachineAccount[] }>(
       'GET',

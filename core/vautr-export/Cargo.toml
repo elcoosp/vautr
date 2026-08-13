@@ -1,0 +1,20 @@
+[package]
+name = "vautr-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Offline, streaming plaintext export (CSV/JSON) for Vautr vaults (VTR-058)"
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+csv = "1.3"
+
+[dev-dependencies]
+tempfile = "3"

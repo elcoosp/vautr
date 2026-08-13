@@ -49,7 +49,10 @@ async fn full_auth_add_reveal_roundtrip() {
         .await
         .expect("registration should succeed");
     assert_eq!(reg.kdf_salt.len(), 32);
-    assert!(!reg.recovery_mnemonic.is_empty(), "mnemonic must not be empty");
+    assert!(
+        !reg.recovery_mnemonic.is_empty(),
+        "mnemonic must not be empty"
+    );
 
     // ── Login (OPAQUE handshake + fetch wrapped SVK) ───────────────────
     let login = auth
@@ -84,7 +87,13 @@ async fn full_auth_add_reveal_roundtrip() {
 
     let local_gen = login.min_enc_key_gen.max(1);
     client
-        .unlock_with_password(mp, &reg.kdf_salt, &login.wrapped_svk, Uuid::nil(), local_gen)
+        .unlock_with_password(
+            mp,
+            &reg.kdf_salt,
+            &login.wrapped_svk,
+            Uuid::nil(),
+            local_gen,
+        )
         .await
         .expect("unlock_with_password should succeed");
 
@@ -166,11 +175,7 @@ async fn full_auth_add_reveal_roundtrip() {
 }
 
 /// Derive the local DEK from the login material, matching the desktop unlock.
-fn derive_dek(
-    password: &str,
-    kdf_salt: &[u8; 32],
-    wrapped_svk: &[u8],
-) -> Zeroizing<[u8; 32]> {
+fn derive_dek(password: &str, kdf_salt: &[u8; 32], wrapped_svk: &[u8]) -> Zeroizing<[u8; 32]> {
     let mp = Zeroizing::new(password.to_string());
     let mk = kdf::derive_master_key(&mp, kdf_salt).expect("MK derive");
     let kek = key_tree::derive_kek(&mk).expect("KEK derive");
@@ -236,12 +241,7 @@ async fn projects_and_secrets_roundtrip() {
     let ct = aead::encrypt_with_nonce(&dek, &nonce, &ad, plaintext.as_bytes())
         .expect("encrypt secret value");
     let secret = api
-        .create_secret(
-            &token,
-            &project.uuid,
-            key,
-            &api_client::b64_encode(&ct),
-        )
+        .create_secret(&token, &project.uuid, key, &api_client::b64_encode(&ct))
         .await
         .expect("create secret should succeed");
     assert_eq!(secret.key, key);

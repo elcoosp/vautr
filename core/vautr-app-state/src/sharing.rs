@@ -30,7 +30,10 @@ pub trait ShareTransport: Send + Sync {
         user_uuid: Uuid,
     ) -> Pin<Box<dyn Future<Output = Result<SharingPublicKey, String>> + Send>>;
     /// Relay a 1:1 share (KEM envelope) to the recipient's inbox (§5).
-    fn post_share(&self, bundle: &ShareBundle) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+    fn post_share(
+        &self,
+        bundle: &ShareBundle,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
     /// Deliver the DEM ciphertext for a share (§5 "Upload Shared Payload").
     fn post_share_payload(
         &self,
@@ -38,9 +41,14 @@ pub trait ShareTransport: Send + Sync {
         payload: Vec<u8>,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
     /// Fetch the recipient's inbox of pending shares (KEM + payload) (§5).
-    fn fetch_inbox(&self) -> Pin<Box<dyn Future<Output = Result<Vec<IncomingShare>, String>> + Send>>;
+    fn fetch_inbox(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<IncomingShare>, String>> + Send>>;
     /// Revoke a share and its payload (§5 "Revoke Share (1:1)").
-    fn revoke_share(&self, share_id: Uuid) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+    fn revoke_share(
+        &self,
+        share_id: Uuid,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
     /// Persist a wrapped Group SIK for a member (§6.2).
     fn store_group_wrapped_key(
         &self,
@@ -123,7 +131,9 @@ impl ShareTransport for InMemoryShareRelay {
         })
     }
 
-    fn fetch_inbox(&self) -> Pin<Box<dyn Future<Output = Result<Vec<IncomingShare>, String>> + Send>> {
+    fn fetch_inbox(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<IncomingShare>, String>> + Send>> {
         let state = self.state.clone();
         Box::pin(async move {
             // Merged view: every share's payload is attached from the payload map
@@ -134,8 +144,7 @@ impl ShareTransport for InMemoryShareRelay {
                 for s in shares {
                     let mut s = s.clone();
                     if let Some(p) = g.payloads.get(&s.share_id) {
-                        s.encrypted_payload =
-                            base64::engine::general_purpose::STANDARD.encode(p);
+                        s.encrypted_payload = base64::engine::general_purpose::STANDARD.encode(p);
                     }
                     out.push(s);
                 }
@@ -184,8 +193,7 @@ impl ShareTransport for InMemoryShareRelay {
             let mut g = state.lock().unwrap();
             let group_id = wrapped.first().map(|w| w.group_id);
             if let Some(gid) = group_id {
-                g.group_wrapped
-                    .retain(|(g, _), _| *g != gid);
+                g.group_wrapped.retain(|(g, _), _| *g != gid);
             }
             for w in wrapped {
                 g.group_wrapped.insert((w.group_id, w.member_uuid), w);

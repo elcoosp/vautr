@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import type { Project, Secret } from '@vautr/api-contract';
+import { Eye, EyeOff, Lock } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { mlp, MlpApiError } from '@/lib/mlp';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -11,9 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import type { Project, Secret } from '@vautr/api-contract';
-import { Eye, EyeOff, Lock } from 'lucide-react';
+import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/secrets')({
   component: SecretsManagerPage,

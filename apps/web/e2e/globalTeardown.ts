@@ -1,7 +1,7 @@
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
 
 /**
  * Stops the Vautr server spawned by `globalSetup` (see e2e/globalSetup.ts).

@@ -1,24 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { VautrWebClient } from '@vautr/client-sdk/real';
 import type { VautrMlpClient } from '@vautr/client-sdk';
-import { usePopupStore } from './store';
+import { createClipboardHandler } from '@vautr/client-sdk';
+import type { VautrWebClient } from '@vautr/client-sdk/real';
+import { CircleCheck, Eye, Folder, HardDrive, Lock, Settings2 } from 'lucide-react';
+import { useCallback, useEffect, useRef } from 'react';
+import * as browser from 'webextension-polyfill';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getApiUrl } from '../lib/apiUrl';
 import { AuthView } from './components/AuthView';
-import { VaultTab } from './components/VaultTab';
-import { ProjectsTab } from './components/ProjectsTab';
-import { SecretsTab } from './components/SecretsTab';
 import { GeneratorTab } from './components/GeneratorTab';
 import { MfaTab } from './components/MfaTab';
-import { disposePopupClient, getPopupMlpClient, getPopupClient } from './popupClient';
+import { ProjectsTab } from './components/ProjectsTab';
+import { SecretsTab } from './components/SecretsTab';
+import { VaultTab } from './components/VaultTab';
+import { disposePopupClient, getPopupClient, getPopupMlpClient } from './popupClient';
+import { usePopupStore } from './store';
 
 const TABS = [
-  { id: 'vault', label: 'Vault' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'secrets', label: 'Secrets' },
-  { id: 'generator', label: 'Generator' },
-  { id: 'mfa', label: 'MFA' },
+  { id: 'projects', label: 'Projects', icon: Folder },
+  { id: 'vault', label: 'Vault', icon: Eye },
+  { id: 'generator', label: 'Generator', icon: Settings2 },
+  { id: 'secrets', label: 'Secrets', icon: HardDrive },
+  { id: 'mfa', label: 'MFA & security', icon: CircleCheck },
 ];
 
 export function App() {
@@ -26,7 +29,7 @@ export function App() {
   const username = usePopupStore((s) => s.username);
   const error = usePopupStore((s) => s.error);
   const setUsername = usePopupStore((s) => s.setUsername);
-  const setItems = usePopupStore((s) => s.setItems);
+  const _setItems = usePopupStore((s) => s.setItems);
   const upsertItem = usePopupStore((s) => s.upsertItem);
   const removeItem = usePopupStore((s) => s.removeItem);
   const setError = usePopupStore((s) => s.setError);
@@ -67,6 +70,7 @@ export function App() {
     setStatus('unlocked');
     const client = await getPopupClient();
     clientRef.current = client;
+    client.setClipboardHandler(createClipboardHandler());
     client.subscribe(onVaultUpdate as never);
     await refreshAll();
   }
@@ -108,9 +112,12 @@ export function App() {
   const mlp = mlpRef.current;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col dark">
       <header className="flex items-center justify-between border-b px-4 py-2">
         <div className="flex items-center gap-2">
+          <span className="grid size-8 place-items-center rounded-lg bg-accent/15 text-accent">
+            <Lock className="size-4" aria-hidden="true" />
+          </span>
           <span className="text-base font-semibold">Vautr</span>
           {username ? <span className="text-xs text-muted-foreground">{username}</span> : null}
         </div>
@@ -122,7 +129,12 @@ export function App() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
         <TabsList className="mx-4 mt-3 grid w-auto grid-cols-5">
           {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="text-xs">
+            <TabsTrigger
+              key={t.id}
+              value={t.id}
+              className="flex flex-col items-center gap-0.5 py-1.5 text-[10px]"
+            >
+              <t.icon className="size-4" aria-hidden="true" />
               {t.label}
             </TabsTrigger>
           ))}
@@ -140,7 +152,7 @@ export function App() {
             {mlp ? <ProjectsTab mlp={mlp} /> : null}
           </TabsContent>
           <TabsContent value="secrets" className="mt-0">
-            {mlp ? <SecretsTab mlp={mlp} /> : null}
+            {mlp && client ? <SecretsTab mlp={mlp} client={client} /> : null}
           </TabsContent>
           <TabsContent value="generator" className="mt-0">
             <GeneratorTab />
@@ -150,7 +162,19 @@ export function App() {
           </TabsContent>
         </div>
       </Tabs>
-      <Separator />
+      <footer className="flex items-center justify-between border-t px-4 py-2 text-xs">
+        <span className="text-muted-foreground">Vault on this device</span>
+        <button
+          type="button"
+          className="rounded text-accent underline-offset-2 hover:underline focus-visible:outline-1 focus-visible:outline-ring"
+          onClick={async () => {
+            const url = await getApiUrl();
+            await browser.tabs.create({ url });
+          }}
+        >
+          Open full app
+        </button>
+      </footer>
     </div>
   );
 }

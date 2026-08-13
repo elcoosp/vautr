@@ -1,10 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { execSync } from 'node:child_process';
+import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 
 /**
  * E2E setup for the WebAuthn (FIDO2) second-factor spec (VTR-052).

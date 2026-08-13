@@ -1,6 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ToastProvider } from '../../components/ui/toast';
 

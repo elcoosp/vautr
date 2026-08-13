@@ -1,15 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
-import { Switch, Text, View } from 'react-native';
-import { RefreshCw } from 'lucide-react-native';
-
 import {
-  DEFAULT_GENERATOR_OPTIONS,
   analyzePassword,
-  generatePassword,
+  DEFAULT_GENERATOR_OPTIONS,
   type GeneratorOptions,
+  generatePassword,
   type StrengthResult,
 } from '@vautr/ui-logic';
+import { RefreshCw } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
+import { Switch, Text, View } from 'react-native';
 
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';

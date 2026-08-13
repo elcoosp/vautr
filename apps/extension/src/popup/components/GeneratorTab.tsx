@@ -1,3 +1,10 @@
+import {
+  assessPassword,
+  type GeneratorOptions,
+  generatePassword,
+  isReusedPassword,
+  strengthLabel,
+} from '@vautr/client-sdk';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -7,13 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import {
-  assessPassword,
-  generatePassword,
-  isReusedPassword,
-  strengthLabel,
-  type GeneratorOptions,
-} from '@vautr/client-sdk';
 import { usePopupStore } from '../store';
 
 export function GeneratorTab() {

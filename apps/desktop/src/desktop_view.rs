@@ -6,16 +6,19 @@
 //! roles, members, and Secrets UI). Uses gpui-component widgets throughout:
 //! Button, Input/InputState, h_flex/v_flex.
 
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use gpui::*;
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use gpui::prelude::FluentBuilder;
+use gpui::*;
 use gpui_component::{
+    Icon, IconName,
     button::{Button, ButtonVariants},
+    h_flex,
     input::{Input, InputState},
-    h_flex, v_flex, Icon, IconName,
+    v_flex,
 };
 use rand::RngCore;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -25,6 +28,7 @@ use crate::auth_client::AuthClient;
 use crate::project_state::{DetailTab, ProjectsState};
 use crate::state::{self, VaultConfig, VaultManagerState};
 use crate::theme;
+use crate::ui_states::{empty_state, error_callout, loading_state, skeleton_list, success_callout};
 use vautr_app_state::VautrClient;
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
@@ -64,6 +68,61 @@ const SCOPES: [&str; 7] = [
 ];
 
 /// The root desktop view.
+/// Typed state machine for the login/register/restore form, replacing the
+/// previous ad-hoc `String` status. Each variant carries an optional message.
+#[derive(Clone, Debug, PartialEq)]
+enum FormState {
+    /// Nothing in flight.
+    Idle,
+    /// A request is in flight; the message describes what (e.g. "Logging in...").
+    Submitting(String),
+    /// The last action failed; the message explains why.
+    Error(String),
+    /// The last action succeeded.
+    Success,
+}
+
+impl FormState {
+    /// Human-readable message to render, or empty when idle/success.
+    fn message(&self) -> String {
+        match self {
+            FormState::Idle | FormState::Success => String::new(),
+            FormState::Submitting(m) | FormState::Error(m) => m.clone(),
+        }
+    }
+
+    /// Whether the form is currently error-styled.
+    fn is_error(&self) -> bool {
+        matches!(self, FormState::Error(_))
+    }
+
+    /// Whether a request is currently in flight.
+    fn busy(&self) -> bool {
+        matches!(self, FormState::Submitting(_))
+    }
+}
+
+/// Severity of a transient toast (mirrors web/mobile/extension `toast`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToastKind {
+    Success,
+    Error,
+    Info,
+    Loading,
+}
+
+/// A transient, auto-dismissing notification shown at the bottom of the app,
+/// providing one consistent feedback channel across every section (parity
+/// with the web/mobile/extension `toast` system).
+#[derive(Clone, Debug)]
+struct Toast {
+    id: u64,
+    kind: ToastKind,
+    message: String,
+    /// Auto-dismiss after this many seconds (0 = sticky until dismissed).
+    ttl_secs: u64,
+}
+
 pub struct DesktopView {
     focus_handle: FocusHandle,
 
@@ -74,7 +133,8 @@ pub struct DesktopView {
     _subscriptions: Vec<Subscription>,
 
     // ── Login form extra ─────────────────────────────────────────────────
-    login_status: String,
+    /// Typed form-state machine for the login/register/restore form.
+    login_state: FormState,
     login_mode: LoginMode,
     server_url: String,
 
@@ -88,6 +148,27 @@ pub struct DesktopView {
     active_handle: Option<vautr_app_state::orchestrator::SecretHandle>,
     /// Whether the inline "Add item" form is shown in the Vault section.
     vault_adding: bool,
+    /// UUID of the vault item pending a delete confirmation (None = no confirm open).
+    pending_delete: Option<Uuid>,
+    /// UUID (as string) of the selected project pending a delete confirmation.
+    pending_delete_project: Option<String>,
+    /// UUID of the secret pending a delete confirmation.
+    pending_delete_secret: Option<String>,
+    /// User UUID pending an offboard (revoke-all) confirmation.
+    pending_offboard: Option<String>,
+    /// When true, the "create project" dialog is open.
+    pending_create_project: bool,
+    /// Transient text the user must type to confirm an irreversible org-level action.
+    confirm_text_input: Entity<InputState>,
+
+    // ── Auto-lock + session restore ─────────────────────────────────────
+    /// Instant of the last user activity; drives the idle auto-lock timer.
+    last_activity: Instant,
+    /// Idle timeout before auto-lock. `None` disables auto-lock.
+    auto_lock_seconds: Option<u64>,
+    /// Persisted session from a prior launch (if present, the login screen
+    /// offers a one-click "Restore session" that reuses it).
+    restore_session: Option<state::PersistedSession>,
 
     // ── Projects / Secrets state ────────────────────────────────────────
     /// The bearer session token from OPAQUE login, used for the Projects/Secrets API.
@@ -113,6 +194,9 @@ pub struct DesktopView {
     mfa_enrolled: Option<api_client::TotpIssueDto>,
     mfa_code_input: Entity<InputState>,
     mfa_text: String,
+    /// Recovery codes returned when (re)verifying TOTP enrollment. Shown once
+    /// with the canonical "save these now" warning, then cleared on next render.
+    mfa_recovery_codes: Option<Vec<String>>,
 
     // ── Settings section (canonical screen) ─────────────────────────────
     machines: Vec<api_client::MachineAccountDto>,
@@ -124,6 +208,10 @@ pub struct DesktopView {
     // ── Dashboard section ───────────────────────────────────────────────
     backup: Option<api_client::BackupStatusDto>,
     dashboard_loading: bool,
+
+    // ── Toast system (single transient-feedback channel; §8 parity) ──────
+    toasts: Vec<Toast>,
+    next_toast_id: u64,
 
     // ── Secrets overview section ────────────────────────────────────────
     secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
@@ -152,14 +240,9 @@ impl DesktopView {
             .map(|c| c.username.clone())
             .unwrap_or_default();
 
-        let username_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("you@example.com")
-        });
-        let password_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("••••••••")
-        });
+        let username_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("you@example.com"));
+        let password_input = cx.new(|cx| InputState::new(window, cx).placeholder("••••••••"));
 
         // Pre-fill the stored username.
         if !stored_username.is_empty() {
@@ -168,40 +251,89 @@ impl DesktopView {
             });
         }
 
-        let project_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Project name"));
-        let project_desc_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Description (optional)")
-        });
-        let member_user_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("User UUID or email")
-        });
-        let secret_key_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Secret key, e.g. DATABASE_URL")
-        });
-        let secret_value_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Secret value")
-        });
-        let offboard_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("User UUID to revoke all access")
-        });
-        let mfa_code_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("000000")
-        });
+        let project_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Project name"));
+        let project_desc_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Description (optional)"));
+        let member_user_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("User UUID or email"));
+        let secret_key_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Secret key, e.g. DATABASE_URL"));
+        let secret_value_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Secret value"));
+        let offboard_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("User UUID to revoke all access"));
+        let mfa_code_input = cx.new(|cx| InputState::new(window, cx).placeholder("000000"));
+        let confirm_text_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Type to confirm"));
         let settings_name_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Machine account name, e.g. ci-deploy")
         });
-        let import_archive_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Paste base64 archive here…")
-        });
+        let import_archive_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Paste base64 archive here…"));
 
         let _subscriptions = vec![];
+
+        // Escape closes any open modal (add-item or delete confirmation).
+        let entity = cx.entity();
+        window.on_key_event(move |event: &gpui::KeyDownEvent, _phase, window, cx| {
+            if event.keystroke.key.as_str() == "escape" {
+                cx.update_entity::<DesktopView, _>(&entity, |this, cx| {
+                    if this.vault_adding
+                        || this.pending_delete.is_some()
+                        || this.pending_delete_project.is_some()
+                        || this.pending_delete_secret.is_some()
+                        || this.pending_offboard.is_some()
+                        || this.pending_create_project
+                    {
+                        this.vault_adding = false;
+                        this.pending_delete = None;
+                        this.pending_delete_project = None;
+                        this.pending_delete_secret = None;
+                        this.pending_offboard = None;
+                        this.pending_create_project = false;
+                        this.confirm_text_input
+                            .update(cx, |s, cx| s.set_value("", window, cx));
+                        cx.notify();
+                    }
+                });
+            }
+        });
+
+        // Any key press counts as activity and resets the idle auto-lock clock.
+        let activity_entity = cx.entity();
+        window.on_key_event(move |_event: &gpui::KeyDownEvent, _phase, _window, cx| {
+            cx.update_entity::<DesktopView, _>(&activity_entity, |this, _cx| {
+                this.last_activity = Instant::now();
+            });
+        });
+
+        // Idle auto-lock ticker: every few seconds, if unlocked and idle past
+        // `auto_lock_seconds`, lock the vault (zeroize DEK/SVK + clear state).
+        let lock_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            loop {
+                async_io::Timer::after(Duration::from_secs(5)).await;
+                let target = lock_entity.clone();
+                cx.update_entity::<DesktopView, _>(&target, |this, cx| {
+                    if let Some(sec) = this.auto_lock_seconds {
+                        if this.is_unlocked()
+                            && this.last_activity.elapsed() >= Duration::from_secs(sec)
+                        {
+                            this.do_lock(cx);
+                        }
+                    }
+                });
+            }
+        })
+        .detach();
 
         Self {
             focus_handle: cx.focus_handle(),
             username_input,
             password_input,
             _subscriptions,
-            login_status: String::new(),
+            login_state: FormState::Idle,
             login_mode: LoginMode::Login,
             server_url: base_url(),
             vault: VaultManagerState::new(),
@@ -210,6 +342,15 @@ impl DesktopView {
             revealed: None,
             active_handle: None,
             vault_adding: false,
+            pending_delete: None,
+            pending_delete_project: None,
+            pending_delete_secret: None,
+            pending_offboard: None,
+            pending_create_project: false,
+            confirm_text_input,
+            last_activity: Instant::now(),
+            auto_lock_seconds: Some(300),
+            restore_session: state::load_session(),
             token: None,
             projects: ProjectsState::new(),
             section: Section::Vault,
@@ -225,6 +366,7 @@ impl DesktopView {
             mfa_enrolled: None,
             mfa_code_input,
             mfa_text: String::new(),
+            mfa_recovery_codes: None,
             machines: Vec::new(),
             tokens: Vec::new(),
             settings_name_input,
@@ -232,6 +374,8 @@ impl DesktopView {
             settings_text: String::new(),
             backup: None,
             dashboard_loading: false,
+            toasts: Vec::new(),
+            next_toast_id: 0,
             secrets_rows: Vec::new(),
             secrets_loading: false,
             secrets_error: None,
@@ -269,12 +413,12 @@ impl DesktopView {
         let server_url = self.server_url.clone();
 
         if username.is_empty() || password.is_empty() {
-            self.login_status = "Username and password are required.".into();
+            self.login_state = FormState::Error("Username and password are required.".into());
             cx.notify();
             return;
         }
 
-        self.login_status = "Registering...".into();
+        self.login_state = FormState::Submitting("Registering…".into());
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -289,15 +433,14 @@ impl DesktopView {
                         kdf_salt_b64: B64.encode(&reg.kdf_salt),
                     };
                     let _ = cfg.save();
-                    this.login_status = format!(
-                        "Registration successful! You can now log in.\n\
-                         Recovery key (SAVE THIS): {}",
+                    this.login_state = FormState::Error(format!(
+                        "Registered. Recovery key (save this): {}",
                         reg.recovery_mnemonic
-                    );
+                    ));
                     cx.notify();
                 }
                 Err(e) => {
-                    this.login_status = format!("Registration failed: {e}");
+                    this.login_state = FormState::Error(format!("Registration failed: {e}"));
                     cx.notify();
                 }
             })
@@ -312,7 +455,7 @@ impl DesktopView {
         let server_url = self.server_url.clone();
 
         if username.is_empty() || password.is_empty() {
-            self.login_status = "Username and password are required.".into();
+            self.login_state = FormState::Error("Username and password are required.".into());
             cx.notify();
             return;
         }
@@ -320,14 +463,14 @@ impl DesktopView {
         let kdf_salt = match VaultConfig::load().and_then(|c| c.kdf_salt_bytes().ok()) {
             Some(s) => s,
             None => {
-                self.login_status =
-                    "No local KDF salt found. Please register first.".into();
+                self.login_state =
+                    FormState::Error("No local KDF salt found. Please register first.".into());
                 cx.notify();
                 return;
             }
         };
 
-        self.login_status = "Logging in...".into();
+        self.login_state = FormState::Submitting("Logging in…".into());
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -337,7 +480,7 @@ impl DesktopView {
                 Ok(l) => l,
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("Login failed: {e}");
+                        this.login_state = FormState::Error(format!("Login failed: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -346,26 +489,25 @@ impl DesktopView {
             };
 
             let db_path = state::db_path();
-            let client = match state::build_client(&db_path, &server_url, &login.session_token)
-                .await
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_status = format!("Vault setup failed: {e}");
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
+            let client =
+                match state::build_client(&db_path, &server_url, &login.session_token).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        this.update(cx, |this, cx| {
+                            this.login_state = FormState::Error(format!("Vault setup failed: {e}"));
+                            cx.notify();
+                        })
+                        .ok();
+                        return;
+                    }
+                };
 
             let mp = Zeroizing::new(password);
             let mk = match kdf::derive_master_key(&mp, &kdf_salt) {
                 Ok(m) => m,
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("MK derive: {e}");
+                        this.login_state = FormState::Error(format!("MK derive: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -376,7 +518,7 @@ impl DesktopView {
                 Ok(k) => k,
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("KEK derive: {e}");
+                        this.login_state = FormState::Error(format!("KEK derive: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -397,7 +539,7 @@ impl DesktopView {
                 Ok(d) => d,
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("DEK derive: {e}");
+                        this.login_state = FormState::Error(format!("DEK derive: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -413,7 +555,7 @@ impl DesktopView {
                 Ok(()) => {}
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("Unlock failed: {e}");
+                        this.login_state = FormState::Error(format!("Unlock failed: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -425,7 +567,7 @@ impl DesktopView {
                 Ok(items) => items,
                 Err(e) => {
                     this.update(cx, |this, cx| {
-                        this.login_status = format!("Search failed: {e}");
+                        this.login_state = FormState::Error(format!("Search failed: {e}"));
                         cx.notify();
                     })
                     .ok();
@@ -436,15 +578,251 @@ impl DesktopView {
             this.update(cx, |this, cx| {
                 this.client = Some(client);
                 this.dek = Some(dek);
-                this.token = Some(login.session_token);
+                this.token = Some(login.session_token.clone());
+                let _ = state::save_session(&state::PersistedSession {
+                    token: login.session_token.clone(),
+                    wrapped_svk_b64: B64.encode(&login.wrapped_svk),
+                    min_enc_key_gen: login.min_enc_key_gen,
+                });
+                this.last_activity = Instant::now();
                 this.vault.set_items(items);
                 this.section = Section::Vault;
-                this.login_status.clear();
+                this.login_state = FormState::Success;
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Restore a persisted session: reuse the saved token + wrapped SVK and
+    /// derive the DEK from the entered password. Skips the OPAQUE network login
+    /// (the session is still server-valid), so only the password is required.
+    fn do_restore(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(session) = self.restore_session.clone() else {
+            self.login_state = FormState::Error("No saved session to restore.".into());
+            cx.notify();
+            return;
+        };
+        let password = self.password(cx);
+        if password.is_empty() {
+            self.login_state =
+                FormState::Error("Enter your password to unlock the saved session.".into());
+            cx.notify();
+            return;
+        }
+        let server_url = self.server_url.clone();
+        let kdf_salt = match VaultConfig::load().and_then(|c| c.kdf_salt_bytes().ok()) {
+            Some(s) => s,
+            None => {
+                self.login_state =
+                    FormState::Error("No local KDF salt found. Please log in again.".into());
+                cx.notify();
+                return;
+            }
+        };
+        let wrapped_svk = match B64.decode(&session.wrapped_svk_b64) {
+            Ok(b) => b,
+            Err(_) => {
+                self.login_state =
+                    FormState::Error("Saved session is corrupt. Please log in again.".into());
+                cx.notify();
+                return;
+            }
+        };
+
+        self.login_state = FormState::Submitting("Restoring session…".into());
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let db_path = state::db_path();
+            let client = match state::build_client(&db_path, &server_url, &session.token).await {
+                Ok(c) => c,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.login_state = FormState::Error(format!("Vault setup failed: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+
+            let mp = Zeroizing::new(password);
+
+            let dek: Zeroizing<[u8; 32]> = match (|| -> Result<Zeroizing<[u8; 32]>, String> {
+                if wrapped_svk.len() != 32 {
+                    return Err("malformed SVK".into());
+                }
+                let mut svk = Zeroizing::new([0u8; 32]);
+                svk.copy_from_slice(&wrapped_svk);
+                key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
+            })() {
+                Ok(d) => d,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.login_state = FormState::Error(format!("DEK derive: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+
+            let local_gen = session.min_enc_key_gen.max(1);
+            if let Err(e) = client
+                .unlock_with_password(mp, &kdf_salt, &wrapped_svk, Uuid::nil(), local_gen)
+                .await
+            {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("Unlock failed: {e}"));
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
+
+            let items = match client.search("").await {
+                Ok(items) => items,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.login_state = FormState::Error(format!("Search failed: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+
+            this.update(cx, |this, cx| {
+                this.client = Some(client);
+                this.dek = Some(dek);
+                this.token = Some(session.token.clone());
+                this.last_activity = Instant::now();
+                this.restore_session = None;
+                this.vault.set_items(items);
+                this.section = Section::Vault;
+                this.login_state = FormState::Success;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    // ── Toast system (§8: single transient-feedback channel) ────────────
+
+    /// Push a transient toast. `ttl_secs == 0` means it stays until dismissed.
+    fn push_toast(
+        &mut self,
+        kind: ToastKind,
+        message: impl Into<String>,
+        ttl_secs: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let id = self.next_toast_id;
+        self.next_toast_id = self.next_toast_id.wrapping_add(1);
+        self.toasts.push(Toast {
+            id,
+            kind,
+            message: message.into(),
+            ttl_secs,
+        });
+        if ttl_secs > 0 {
+            let entity = cx.entity();
+            cx.spawn(async move |_this, cx| {
+                async_io::Timer::after(Duration::from_secs(ttl_secs)).await;
+                cx.update_entity::<DesktopView, _>(&entity, |this, cx| {
+                    this.toasts.retain(|t| t.id != id);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    /// Convenience helpers mirroring `toast.success/error/info` on web/mobile/extension.
+    fn toast_success(&mut self, msg: impl Into<String>, cx: &mut Context<Self>) {
+        self.push_toast(ToastKind::Success, msg, 4, cx);
+    }
+    fn toast_error(&mut self, msg: impl Into<String>, cx: &mut Context<Self>) {
+        self.push_toast(ToastKind::Error, msg, 6, cx);
+    }
+    fn toast_info(&mut self, msg: impl Into<String>, cx: &mut Context<Self>) {
+        self.push_toast(ToastKind::Info, msg, 4, cx);
+    }
+
+    /// Dismiss a toast by id (clicked the ✕, or auto-expired).
+    fn dismiss_toast(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.toasts.retain(|t| t.id != id);
+        cx.notify();
+    }
+
+    fn render_toasts(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let toasts = self.toasts.clone();
+        div()
+            .absolute()
+            .bottom_4()
+            .right_4()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .items_end()
+            .children(toasts.into_iter().map(|t| {
+                let bg = match t.kind {
+                    ToastKind::Success => theme::SURFACE,
+                    ToastKind::Error => Rgba {
+                        r: 0.4,
+                        g: 0.1,
+                        b: 0.12,
+                        a: 1.0,
+                    },
+                    ToastKind::Info => theme::BORDER,
+                    ToastKind::Loading => theme::SURFACE,
+                };
+                let fg = match t.kind {
+                    ToastKind::Error => Rgba {
+                        r: 1.0,
+                        g: 0.8,
+                        b: 0.82,
+                        a: 1.0,
+                    },
+                    _ => theme::TEXT,
+                };
+                div()
+                    .id(SharedString::from(format!("toast-{}", t.id)))
+                    .bg(bg)
+                    .text_color(fg)
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .px_3()
+                    .py_2()
+                    .shadow_lg()
+                    .max_w(px(320.))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().text_sm().child(t.message.clone()))
+                    .child(
+                        Button::new(SharedString::from(format!("toast-close-{}", t.id)))
+                            .ghost()
+                            .text_xs()
+                            .label("✕")
+                            .on_click(cx.listener(
+                                move |this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.dismiss_toast(t.id, cx);
+                                },
+                            )),
+                    )
+                    .with_animation(
+                        SharedString::from(format!("toast-anim-{}", t.id)),
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    )
+            }))
     }
 
     // ── Vault actions ──────────────────────────────────────────────────
@@ -499,7 +877,10 @@ impl DesktopView {
         .detach();
     }
 
-    fn do_delete(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    /// Open the delete-confirmation modal for the currently selected vault item.
+    /// The actual deletion only happens after the user confirms
+    /// (`confirm_delete`), closing the gap where Delete fired immediately.
+    fn request_delete(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let uuid = match self.vault.selected_overview().map(|o| o.uuid) {
             Some(u) => u,
             None => {
@@ -508,6 +889,12 @@ impl DesktopView {
                 return;
             }
         };
+        self.pending_delete = Some(uuid);
+        cx.notify();
+    }
+
+    /// Perform the delete for a confirmed UUID.
+    fn do_delete(&mut self, uuid: Uuid, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(client) = self.client.clone() else {
             self.vault.show_error("vault is locked");
             cx.notify();
@@ -520,6 +907,7 @@ impl DesktopView {
             this.update(cx, |this, cx| match outcome {
                 vautr_app_state::worker::TaskOutcome::Committed(_) => {
                     this.vault.dismiss_error();
+                    this.pending_delete = None;
                     cx.notify();
                     let c = this.client.clone();
                     cx.spawn(async move |this, cx| {
@@ -595,7 +983,8 @@ impl DesktopView {
             return;
         };
         let Some(dek) = self.dek.clone() else {
-            self.vault.show_error("vault is locked; cannot encrypt item");
+            self.vault
+                .show_error("vault is locked; cannot encrypt item");
             cx.notify();
             return;
         };
@@ -700,6 +1089,8 @@ impl DesktopView {
         self.client = None;
         self.dek = None;
         self.token = None;
+        state::clear_session();
+        self.toast_info("Vault locked", cx);
         self.projects = ProjectsState::new();
         self.section = Section::Vault;
         self.reveal_target_uuid = None;
@@ -732,7 +1123,8 @@ impl DesktopView {
                 }
                 Err(e) => {
                     this.projects.loading = false;
-                    this.projects.show_error(format!("Failed to load projects: {e}"));
+                    this.projects
+                        .show_error(format!("Failed to load projects: {e}"));
                     cx.notify();
                 }
             })
@@ -794,7 +1186,7 @@ impl DesktopView {
             return;
         }
         let api = self.api();
-        self.projects.set_status("Creating project...");
+        self.projects.set_status("Creating project…");
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -849,7 +1241,8 @@ impl DesktopView {
                     }
                 }
                 Err(e) => {
-                    this.projects.show_error(format!("Failed to reload projects: {e}"));
+                    this.projects
+                        .show_error(format!("Failed to reload projects: {e}"));
                     cx.notify();
                 }
             })
@@ -858,13 +1251,22 @@ impl DesktopView {
         .detach();
     }
 
-    fn do_delete_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(token) = self.token.clone() else {
-            return;
-        };
+    /// Open the delete-confirmation modal for the selected project.
+    fn request_delete_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(uuid) = self.projects.selected_project_uuid() else {
             self.projects.show_error("no project selected");
             cx.notify();
+            return;
+        };
+        self.pending_delete_project = Some(uuid);
+        self.confirm_text_input
+            .update(cx, |s, cx| s.set_value("", _window, cx));
+        cx.notify();
+    }
+
+    /// Perform the project delete for a confirmed UUID.
+    fn do_delete_project(&mut self, uuid: String, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
             return;
         };
         let name = self
@@ -873,7 +1275,8 @@ impl DesktopView {
             .map(|p| p.name.clone())
             .unwrap_or_default();
         let api = self.api();
-        self.projects.set_status(format!("Deleting project '{}'...", name));
+        self.projects
+            .set_status(format!("Deleting project '{}'…", name));
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -881,8 +1284,10 @@ impl DesktopView {
             let result = api.delete_project(&token, &uuid).await;
             this.update(cx, |this, cx| match result {
                 Ok(()) => {
-                    this.projects.set_status(format!("Deleted project '{}'.", name));
+                    this.projects
+                        .set_status(format!("Deleted project '{}'.", name));
                     this.projects.dismiss_error();
+                    this.pending_delete_project = None;
                     cx.notify();
                     this.do_refresh_projects_impl(cx);
                 }
@@ -914,7 +1319,8 @@ impl DesktopView {
             return;
         }
         let api = self.api();
-        self.projects.set_status(format!("Adding member {user_uuid}..."));
+        self.projects
+            .set_status(format!("Adding member {user_uuid}…"));
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -924,7 +1330,10 @@ impl DesktopView {
                 .await;
             this.update(cx, |this, cx| match result {
                 Ok(m) => {
-                    let who = m.display_name.clone().unwrap_or_else(|| m.user_uuid.clone());
+                    let who = m
+                        .display_name
+                        .clone()
+                        .unwrap_or_else(|| m.user_uuid.clone());
                     this.projects
                         .set_status(format!("Added {who} as {} ({})", m.role, m.permission));
                     this.projects.dismiss_error();
@@ -991,7 +1400,8 @@ impl DesktopView {
                     this.reload_members(cx);
                 }
                 Err(e) => {
-                    this.projects.show_error(format!("Update permission failed: {e}"));
+                    this.projects
+                        .show_error(format!("Update permission failed: {e}"));
                     cx.notify();
                 }
             })
@@ -1024,7 +1434,8 @@ impl DesktopView {
                     this.reload_members(cx);
                 }
                 Err(e) => {
-                    this.projects.show_error(format!("Remove member failed: {e}"));
+                    this.projects
+                        .show_error(format!("Remove member failed: {e}"));
                     cx.notify();
                 }
             })
@@ -1043,7 +1454,8 @@ impl DesktopView {
             return;
         };
         let Some(dek) = self.dek.clone() else {
-            self.projects.show_error("vault is locked; cannot encrypt secret");
+            self.projects
+                .show_error("vault is locked; cannot encrypt secret");
             cx.notify();
             return;
         };
@@ -1055,7 +1467,8 @@ impl DesktopView {
             return;
         }
         let api = self.api();
-        self.projects.set_status(format!("Creating secret '{key}'..."));
+        self.projects
+            .set_status(format!("Creating secret '{key}'…"));
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1065,8 +1478,7 @@ impl DesktopView {
             let ad = api_client::secret_ad(&project_uuid, key.trim());
             let mut nonce = [0u8; aead::NONCE_LEN];
             rand::rngs::OsRng.fill_bytes(&mut nonce);
-            let ciphertext =
-                aead::encrypt_with_nonce(&dek, &nonce, &ad, value.trim().as_bytes());
+            let ciphertext = aead::encrypt_with_nonce(&dek, &nonce, &ad, value.trim().as_bytes());
             let ciphertext = match ciphertext {
                 Ok(c) => c,
                 Err(e) => {
@@ -1084,14 +1496,17 @@ impl DesktopView {
                 .await;
             this.update(cx, |this, cx| match result {
                 Ok(secret) => {
-                    this.projects
-                        .set_status(format!("Created secret '{}' (v{}).", secret.key, secret.version));
+                    this.projects.set_status(format!(
+                        "Created secret '{}' (v{}).",
+                        secret.key, secret.version
+                    ));
                     this.projects.dismiss_error();
                     cx.notify();
                     this.reload_secrets(cx);
                 }
                 Err(e) => {
-                    this.projects.show_error(format!("Create secret failed: {e}"));
+                    this.projects
+                        .show_error(format!("Create secret failed: {e}"));
                     cx.notify();
                 }
             })
@@ -1130,7 +1545,8 @@ impl DesktopView {
             return;
         };
         let Some(dek) = self.dek.clone() else {
-            self.projects.show_error("vault is locked; cannot decrypt secret");
+            self.projects
+                .show_error("vault is locked; cannot decrypt secret");
             cx.notify();
             return;
         };
@@ -1140,7 +1556,7 @@ impl DesktopView {
             return;
         };
         let api = self.api();
-        self.projects.set_status("Revealing secret...");
+        self.projects.set_status("Revealing secret…");
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1160,14 +1576,14 @@ impl DesktopView {
                     match aead::decrypt_with_ad(&dek, &ad, &ct) {
                         Ok(plain) => match String::from_utf8(plain) {
                             Ok(s) => {
-                                this.projects
-                                    .reveal_secret(value.key.clone(), s);
+                                this.projects.reveal_secret(value.key.clone(), s);
                                 this.projects.set_status("Secret revealed.");
                                 this.projects.dismiss_error();
                                 cx.notify();
                             }
                             Err(e) => {
-                                this.projects.show_error(format!("Secret is not UTF-8: {e}"));
+                                this.projects
+                                    .show_error(format!("Secret is not UTF-8: {e}"));
                                 cx.notify();
                             }
                         },
@@ -1187,7 +1603,18 @@ impl DesktopView {
         .detach();
     }
 
-    fn do_delete_secret(&mut self, _window: &mut Window, cx: &mut Context<Self>, uuid: String) {
+    /// Open the delete-confirmation modal for a secret.
+    fn request_delete_secret(
+        &mut self,
+        uuid: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_delete_secret = Some(uuid);
+        cx.notify();
+    }
+
+    fn do_delete_secret(&mut self, uuid: String, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(token) = self.token.clone() else {
             return;
         };
@@ -1199,11 +1626,13 @@ impl DesktopView {
                 Ok(()) => {
                     this.projects.set_status("Secret deleted.");
                     this.projects.dismiss_error();
+                    this.pending_delete_secret = None;
                     cx.notify();
                     this.reload_secrets(cx);
                 }
                 Err(e) => {
-                    this.projects.show_error(format!("Delete secret failed: {e}"));
+                    this.projects
+                        .show_error(format!("Delete secret failed: {e}"));
                     cx.notify();
                 }
             })
@@ -1212,23 +1641,37 @@ impl DesktopView {
         .detach();
     }
 
-    fn do_offboard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let Some(token) = self.token.clone() else {
-            return;
-        };
+    /// Open the offboard (revoke-all) confirmation modal.
+    fn request_offboard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let user_uuid = self.offboard_input.read(cx).value().to_string();
         if user_uuid.trim().is_empty() {
-            self.projects.show_error("User UUID is required to offboard.");
+            self.projects
+                .show_error("User UUID is required to offboard.");
             cx.notify();
             return;
         }
+        self.pending_offboard = Some(user_uuid.trim().to_string());
+        self.confirm_text_input
+            .update(cx, |s, cx| s.set_value("", _window, cx));
+        let handle = self.confirm_text_input.read(cx).focus_handle(cx);
+        _window.focus(&handle, cx);
+        cx.notify();
+    }
+
+    /// Perform the offboard (revoke all access) for a confirmed user UUID.
+    fn do_offboard(&mut self, user_uuid: String, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
         let api = self.api();
-        self.projects.set_status("Revoking all access...");
+        self.projects.set_status("Revoking all access…");
         cx.notify();
 
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
-            let result = api.offboard(&token, user_uuid.trim(), Some("desktop offboard")).await;
+            let result = api
+                .offboard(&token, user_uuid.trim(), Some("desktop offboard"))
+                .await;
             this.update(cx, |this, cx| match result {
                 Ok(o) => {
                     this.projects.offboard_result = Some(format!(
@@ -1237,6 +1680,7 @@ impl DesktopView {
                     ));
                     this.projects.set_status("Offboarding complete.");
                     this.projects.dismiss_error();
+                    this.pending_offboard = None;
                     cx.notify();
                 }
                 Err(e) => {
@@ -1287,7 +1731,7 @@ impl DesktopView {
             return;
         };
         let api = self.api();
-        self.mfa_text = "Starting TOTP enrollment...".into();
+        self.mfa_text = "Starting TOTP enrollment…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
@@ -1312,10 +1756,7 @@ impl DesktopView {
         let Some(token) = self.token.clone() else {
             return;
         };
-        let enrollment_id = self
-            .mfa_enrolled
-            .as_ref()
-            .map(|e| e.enrollment_id.clone());
+        let enrollment_id = self.mfa_enrolled.as_ref().map(|e| e.enrollment_id.clone());
         let code = self.mfa_code_input.read(cx).value().to_string();
         if code.trim().len() < 6 {
             self.mfa_text = "Enter a valid 6-digit code.".into();
@@ -1323,7 +1764,7 @@ impl DesktopView {
             return;
         }
         let api = self.api();
-        self.mfa_text = "Verifying...".into();
+        self.mfa_text = "Verifying…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
@@ -1332,8 +1773,10 @@ impl DesktopView {
                 .await;
             this.update(cx, |this, cx| match result {
                 Ok(verified) => {
-                    this.mfa_text = format!("TOTP verified: {}", verified.status);
+                    this.mfa_text = format!("TOTP verified: {}.", verified.status);
                     this.mfa_enrolled = None;
+                    this.mfa_recovery_codes = verified.recovery_codes.clone();
+                    this.mfa_status = None; // refresh below
                     cx.notify();
                     let api = this.api();
                     let token = this.token.clone();
@@ -1400,7 +1843,7 @@ impl DesktopView {
         }
         let scopes: Vec<String> = self.settings_scopes.iter().cloned().collect();
         let api = self.api();
-        self.settings_text = "Creating machine account...".into();
+        self.settings_text = "Creating machine account…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
@@ -1577,10 +2020,9 @@ impl DesktopView {
                 match result {
                     Ok(value) => {
                         let ad = api_client::secret_ad(&project.uuid, &value.key);
-                        let plain = api_client::b64_decode(&value.value_ciphertext)
-                            .and_then(|ct| {
-                                aead::decrypt_with_ad(&dek, &ad, &ct)
-                                    .map_err(|e| e.to_string())
+                        let plain =
+                            api_client::b64_decode(&value.value_ciphertext).and_then(|ct| {
+                                aead::decrypt_with_ad(&dek, &ad, &ct).map_err(|e| e.to_string())
                             });
                         match plain {
                             Ok(plain) => match String::from_utf8(plain) {
@@ -1589,8 +2031,7 @@ impl DesktopView {
                                     this.secrets_error = None;
                                 }
                                 Err(e) => {
-                                    this.secrets_error =
-                                        Some(format!("Secret is not UTF-8: {e}"));
+                                    this.secrets_error = Some(format!("Secret is not UTF-8: {e}"));
                                 }
                             },
                             Err(e) => {
@@ -1639,7 +2080,9 @@ impl DesktopView {
         let api = self.api();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
-            let result = api.update_machine_account_status(&token, &uuid, &status).await;
+            let result = api
+                .update_machine_account_status(&token, &uuid, &status)
+                .await;
             this.update(cx, |this, cx| match result {
                 Ok(_) => {
                     this.settings_text = format!("Machine account {status}.");
@@ -1695,7 +2138,7 @@ impl DesktopView {
         self.settings_name_input.update(cx, |st, cx| {
             st.set_value("", window, cx);
         });
-        self.settings_text = "Creating token...".into();
+        self.settings_text = "Creating token…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
@@ -1704,8 +2147,10 @@ impl DesktopView {
             this.update(cx, |this, cx| match result {
                 Ok(created) => {
                     this.issued_token = Some(created.token);
-                    this.settings_text =
-                        format!("Created token '{}'. Save the raw value now.", created.token_id);
+                    this.settings_text = format!(
+                        "Created token '{}'. Save the raw value now.",
+                        created.token_id
+                    );
                     this.do_refresh_settings_to(cx);
                 }
                 Err(e) => {
@@ -1769,7 +2214,7 @@ impl DesktopView {
         let include = self.include_secrets;
         let api = self.api();
         self.import_busy = true;
-        self.import_text = "Exporting backup...".into();
+        self.import_text = "Exporting backup…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
@@ -1807,7 +2252,7 @@ impl DesktopView {
         }
         let api = self.api();
         self.import_busy = true;
-        self.import_text = "Restoring...".into();
+        self.import_text = "Restoring…".into();
         self.import_archive_input.update(cx, |st, cx| {
             st.set_value("", window, cx);
         });
@@ -1819,14 +2264,16 @@ impl DesktopView {
                 this.import_busy = false;
                 match result {
                     Ok(res) => {
-                        this.import_text = format!(
-                            "Restore {}: {} records.",
-                            res.status, res.restored_records
-                        );
+                        let msg =
+                            format!("Restore {}: {} records.", res.status, res.restored_records);
+                        this.import_text = msg.clone();
+                        this.toast_success(msg, cx);
                         cx.notify();
                     }
                     Err(e) => {
-                        this.import_text = format!("Restore failed: {e}");
+                        let msg = format!("Restore failed: {e}");
+                        this.import_text = msg.clone();
+                        this.toast_error(msg, cx);
                         cx.notify();
                     }
                 }
@@ -1855,18 +2302,9 @@ impl Render for DesktopView {
 impl DesktopView {
     fn render_login(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let mode = self.login_mode;
-        let status = self.login_status.clone();
-        let has_error = !status.is_empty()
-            && (status.contains("failed")
-                || status.contains("required")
-                || status.contains("No local")
-                || status.contains("Invalid")
-                || status.contains("error"));
-        let busy = status.contains("...")
-            || status.contains("Logging")
-            || status.contains("Registering")
-            || status.contains("Unlocking")
-            || status.contains("Creating");
+        let status = self.login_state.message();
+        let has_error = self.login_state.is_error();
+        let busy = self.login_state.busy();
 
         let subtitle = match mode {
             LoginMode::Login => "Unlock your vault to view saved items.",
@@ -1956,34 +2394,38 @@ impl DesktopView {
                             .child(password),
                     )
                     // Status / error.
-                    .child(
-                        div()
-                            .when(!status.is_empty(), |this| {
-                                this.text_sm()
-                                    .when(has_error, |this| {
-                                        this.text_color(theme::DANGER)
-                                    })
-                                    .when(!has_error, |this| {
-                                        this.text_color(theme::TEXT_MUTED)
-                                    })
-                                    .child(status)
-                            }),
-                    )
+                    .child(div().when(!status.is_empty(), |this| {
+                        this.text_sm()
+                            .when(has_error, |this| this.text_color(theme::DANGER))
+                            .when(!has_error, |this| this.text_color(theme::TEXT_MUTED))
+                            .child(status)
+                    }))
                     // Full-width primary CTA.
                     .child(
                         Button::new("login-submit")
                             .primary()
                             .w_full()
                             .label(submit_label)
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, window, cx| {
-                                    match this.login_mode {
-                                        LoginMode::Login => this.do_login(window, cx),
-                                        LoginMode::Register => this.do_register(window, cx),
-                                    }
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                match this.login_mode {
+                                    LoginMode::Login => this.do_login(window, cx),
+                                    LoginMode::Register => this.do_register(window, cx),
+                                }
+                            })),
                     )
+                    // One-click restore of a persisted session (reuses the saved
+                    // token + wrapped SVK; only the password is required).
+                    .when(self.restore_session.is_some(), |this| {
+                        this.child(
+                            Button::new("restore-session-btn")
+                                .secondary()
+                                .w_full()
+                                .label("Restore saved session")
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_restore(window, cx);
+                                })),
+                        )
+                    })
                     // Toggle link at the bottom.
                     .child(
                         div()
@@ -2011,7 +2453,7 @@ impl DesktopView {
                                                         LoginMode::Login => LoginMode::Register,
                                                         LoginMode::Register => LoginMode::Login,
                                                     };
-                                                    this.login_status.clear();
+                                                    this.login_state = FormState::Idle;
                                                     cx.notify();
                                                 },
                                             )),
@@ -2043,13 +2485,15 @@ impl DesktopView {
             .font_weight(FontWeight::MEDIUM)
             .items_center()
             .justify_center()
-            .when(active, |d| d.bg(theme::ACCENT).text_color(theme::ACCENT_INK))
+            .when(active, |d| {
+                d.bg(theme::ACCENT).text_color(theme::ACCENT_INK)
+            })
             .when(!active, |d| d.text_color(theme::TEXT_MUTED))
             .cursor_pointer()
             .child(label)
             .on_click(cx.listener(move |this, _, _window, cx| {
                 this.login_mode = which;
-                this.login_status.clear();
+                this.login_state = FormState::Idle;
                 cx.notify();
             }))
             .into_any_element()
@@ -2071,17 +2515,35 @@ impl DesktopView {
             Section::Settings => self.render_settings(cx).into_any_element(),
         };
 
-        h_flex()
+        div()
+            .relative()
             .size_full()
             .bg(theme::BG)
-            .child(self.render_sidebar(cx))
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .child(content),
+                h_flex()
+                    .size_full()
+                    .child(self.render_sidebar(cx))
+                    .child(div().flex_1().min_w_0().h_full().child(content)),
             )
+            .when(self.vault_adding, |this| {
+                this.child(self.render_add_item_modal(cx))
+            })
+            .when(self.pending_delete.is_some(), |this| {
+                this.child(self.render_delete_confirm_modal(cx))
+            })
+            .when(self.pending_delete_project.is_some(), |this| {
+                this.child(self.render_delete_project_modal(cx))
+            })
+            .when(self.pending_delete_secret.is_some(), |this| {
+                this.child(self.render_delete_secret_modal(cx))
+            })
+            .when(self.pending_offboard.is_some(), |this| {
+                this.child(self.render_offboard_modal(cx))
+            })
+            .when(self.pending_create_project, |this| {
+                this.child(self.render_create_project_modal(cx))
+            })
+            .child(self.render_toasts(cx))
     }
 
     /// The left navigation sidebar, mirroring the web `_authed` layout: a
@@ -2105,7 +2567,11 @@ impl DesktopView {
         let mut nav_rows: Vec<AnyElement> = Vec::new();
         for (sec, label, icon) in items {
             let active = section == sec;
-            let ink = if active { theme::TEXT } else { theme::TEXT_MUTED };
+            let ink = if active {
+                theme::TEXT
+            } else {
+                theme::TEXT_MUTED
+            };
             let row = div()
                 .id(SharedString::from(format!("nav-{label}")))
                 .flex()
@@ -2311,130 +2777,66 @@ impl DesktopView {
         let error = self.vault.error_message.clone().unwrap_or_default();
         let has_error = !error.is_empty();
 
-        let mut page = self
-            .page()
-            .child(self.page_header(
-                "Vault",
-                "Your encrypted secrets, unlocked locally.",
-            ))
-            .child(
-                self.card("Items", "Select an item to view or reveal its secret.")
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("add-btn")
-                                    .primary()
-                                    .label("Add item")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, _window, cx| {
-                                            this.vault_adding = !this.vault_adding;
-                                            this.vault.dismiss_error();
-                                            cx.notify();
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("sync-btn")
-                                    .label("Sync")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_sync(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("reveal-btn")
-                                    .label("Reveal")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_reveal(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("delete-btn")
-                                    .danger()
-                                    .label("Delete")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_delete(window, cx);
-                                        },
-                                    )),
-                            ),
-                    )
-                    .when(has_error, |this| {
-                        this.child(
-                            div()
-                                .px_3()
-                                .py_2()
-                                .rounded_md()
-                                .bg(theme::DANGER_BG)
-                                .text_color(theme::DANGER_TEXT)
-                                .text_sm()
-                                .child(error),
+        let mut page =
+            self.page()
+                .child(self.page_header("Vault", "Your encrypted secrets, unlocked locally."))
+                .child(
+                    self.card("Items", "Select an item to view or reveal its secret.")
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(Button::new("add-btn").primary().label("Add item").on_click(
+                                    cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                        this.vault_adding = !this.vault_adding;
+                                        this.vault.dismiss_error();
+                                        if this.vault_adding {
+                                            let handle =
+                                                this.secret_key_input.read(cx).focus_handle(cx);
+                                            window.focus(&handle, cx);
+                                        }
+                                        cx.notify();
+                                    }),
+                                ))
+                                .child(Button::new("sync-btn").label("Sync").on_click(cx.listener(
+                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_sync(window, cx);
+                                    },
+                                )))
+                                .child(Button::new("reveal-btn").label("Reveal").on_click(
+                                    cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_reveal(window, cx);
+                                    }),
+                                ))
+                                .child(
+                                    Button::new("delete-btn").danger().label("Delete").on_click(
+                                        cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                            this.request_delete(window, cx);
+                                        }),
+                                    ),
+                                ),
                         )
-                    })
-                    .when(rows.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_color(theme::TEXT_MUTED)
-                                .child("No vault items yet. Add one below."),
-                        )
-                    })
-                    .children(rows),
-            );
-
-        if self.vault_adding {
-            page = page.child(
-                self.card("Add item", "Save a new username/password entry to your vault.")
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
+                        .when(has_error, |this| {
+                            this.child(
+                                div()
+                                    .px_3()
+                                    .py_2()
+                                    .rounded_md()
+                                    .bg(theme::DANGER_BG)
+                                    .text_color(theme::DANGER_TEXT)
+                                    .text_sm()
+                                    .child(error),
+                            )
+                        })
+                        .when(rows.is_empty(), |this| {
+                            this.child(
                                 div()
                                     .text_sm()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme::TEXT)
-                                    .child("Title"),
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child("No vault items yet. Add one below."),
                             )
-                            .child(Input::new(&self.secret_key_input).w_full())
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme::TEXT)
-                                    .child("Password / value"),
-                            )
-                            .child(Input::new(&self.secret_value_input).w_full()),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("vault-save-btn")
-                                    .primary()
-                                    .label("Save item")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_add_vault_item(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("vault-cancel-btn")
-                                    .label("Cancel")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, _window, cx| {
-                                            this.vault_adding = false;
-                                            cx.notify();
-                                        },
-                                    )),
-                            ),
-                    ),
-            );
-        }
+                        })
+                        .children(rows),
+                );
 
         if let Some(s) = self.revealed.as_deref() {
             page = page.child(
@@ -2453,6 +2855,590 @@ impl DesktopView {
     }
 
     // ── Projects section ─────────────────────────────────────────────────
+
+    fn render_add_item_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .absolute()
+            .flex()
+            .items_center()
+            .justify_center()
+            // Backdrop: click anywhere outside the card closes the modal.
+            .child(
+                Button::new("add-item-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.vault_adding = false;
+                        cx.notify();
+                    })),
+            )
+            // Card: in-flow, content-sized, painted on top of the backdrop.
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child("Add item"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_DIM)
+                                    .child("Save a new username/password entry to your vault."),
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme::TEXT)
+                                            .child("Title"),
+                                    )
+                                    .child(Input::new(&self.secret_key_input).w_full())
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme::TEXT)
+                                            .child("Password / value"),
+                                    )
+                                    .child(Input::new(&self.secret_value_input).w_full()),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("vault-save-btn")
+                                            .primary()
+                                            .label("Save item")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.do_add_vault_item(window, cx);
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("vault-cancel-btn").label("Cancel").on_click(
+                                            cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.vault_adding = false;
+                                                    cx.notify();
+                                                },
+                                            ),
+                                        ),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "add-item-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
+            )
+    }
+
+    fn render_delete_confirm_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("delete-confirm-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(
+                        |this, _: &gpui::ClickEvent, _window, cx| {
+                            this.pending_delete = None;
+                            cx.notify();
+                        },
+                    )),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child("Delete item?"),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_DIM)
+                                    .child(
+                                        "This permanently removes the selected vault item. This cannot be undone.",
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("delete-confirm-cancel")
+                                            .label("Cancel")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_delete = None;
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("delete-confirm-btn")
+                                            .danger()
+                                            .label("Delete")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    if let Some(uuid) = this.pending_delete.take() {
+                                                        this.do_delete(uuid, window, cx);
+                                                    }
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "delete-confirm-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    )
+            )
+    }
+
+    /// Confirm destructive deletion of the selected project.
+    fn render_delete_project_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = self
+            .projects
+            .selected_project()
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("del-project-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_delete_project = None;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Delete project?"),
+                            )
+                            .child(div().text_xs().text_color(theme::TEXT_MUTED).child(format!(
+                                "This permanently deletes project '{}' and cannot be undone.",
+                                name
+                            )))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("Type the project name to confirm: {}", name)),
+                            )
+                            .child(Input::new(&self.confirm_text_input).w_full())
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        Button::new("del-project-cancel").label("Cancel").on_click(
+                                            cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_delete_project = None;
+                                                    cx.notify();
+                                                },
+                                            ),
+                                        ),
+                                    )
+                                    .child(
+                                        Button::new("del-project-confirm")
+                                            .danger()
+                                            .label("Delete project")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    let name = this
+                                                        .projects
+                                                        .selected_project()
+                                                        .map(|p| p.name.clone())
+                                                        .unwrap_or_default();
+                                                    let confirmed = this
+                                                        .confirm_text_input
+                                                        .read(cx)
+                                                        .value()
+                                                        .trim()
+                                                        == name;
+                                                    if !confirmed {
+                                                        return;
+                                                    }
+                                                    let uuid = this.pending_delete_project.take();
+                                                    if let Some(uuid) = uuid {
+                                                        this.do_delete_project(uuid, window, cx);
+                                                    }
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "delete-project-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
+            )
+    }
+
+    /// Confirm destructive deletion of a secret.
+    fn render_delete_secret_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let uuid = self.pending_delete_secret.clone().unwrap_or_default();
+        let shown = if uuid.len() > 12 {
+            format!("{}…{}", &uuid[..6], &uuid[uuid.len() - 4..])
+        } else {
+            uuid.clone()
+        };
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("del-secret-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_delete_secret = None;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Delete secret?"),
+                            )
+                            .child(div().text_xs().text_color(theme::TEXT_MUTED).child(format!(
+                                "This permanently deletes secret {} and cannot be undone.",
+                                shown
+                            )))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        Button::new("del-secret-cancel").label("Cancel").on_click(
+                                            cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_delete_secret = None;
+                                                    cx.notify();
+                                                },
+                                            ),
+                                        ),
+                                    )
+                                    .child(
+                                        Button::new("del-secret-confirm")
+                                            .danger()
+                                            .label("Delete secret")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    let uuid = this.pending_delete_secret.take();
+                                                    if let Some(uuid) = uuid {
+                                                        this.do_delete_secret(uuid, window, cx);
+                                                    }
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "delete-secret-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
+            )
+    }
+
+    /// Confirm a destructive offboard (revoke all access) for a user.
+    fn render_offboard_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let user_uuid = self.pending_offboard.clone().unwrap_or_default();
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("offboard-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.5 })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_offboard = None;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child("Revoke all access?"))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!(
+                                        "This revokes every project, membership and token for user {} — and cannot be undone.",
+                                        user_uuid
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("Type the user UUID to confirm: {}", user_uuid)),
+                            )
+                            .child(Input::new(&self.confirm_text_input).w_full())
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        Button::new("offboard-cancel")
+                                            .label("Cancel")
+                                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                                this.pending_offboard = None;
+                                                cx.notify();
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("offboard-confirm")
+                                            .danger()
+                                            .label("Revoke all")
+                                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                                let user_uuid = this.pending_offboard.clone().unwrap_or_default();
+                                                let confirmed = this
+                                                    .confirm_text_input
+                                                    .read(cx)
+                                                    .value()
+                                                    .trim()
+                                                    == user_uuid;
+                                                if !confirmed {
+                                                    return;
+                                                }
+                                                let user_uuid = this.pending_offboard.take();
+                                                if let Some(user_uuid) = user_uuid {
+                                                    this.do_offboard(user_uuid, window, cx);
+                                                }
+                                            })),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "offboard-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    )
+            )
+    }
+
+    /// Create-project dialog (moved out of the inline panel per Phase 4 §3).
+    fn render_create_project_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("create-project-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_create_project = false;
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w_96()
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("New project"),
+                            )
+                            .child(Input::new(&self.project_name_input).w_full())
+                            .child(Input::new(&self.project_desc_input).w_full())
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("kind-personal")
+                                            .when(self.projects.new_kind == "personal", |b| {
+                                                b.primary()
+                                            })
+                                            .compact()
+                                            .label("Personal")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.projects.new_kind = "personal".into();
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("kind-shared")
+                                            .when(self.projects.new_kind == "shared", |b| {
+                                                b.primary()
+                                            })
+                                            .compact()
+                                            .label("Shared")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.projects.new_kind = "shared".into();
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_end()
+                                    .child(
+                                        Button::new("create-project-cancel")
+                                            .label("Cancel")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_create_project = false;
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("create-project-confirm")
+                                            .primary()
+                                            .label("Create project")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.pending_create_project = false;
+                                                    this.do_create_project(window, cx);
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "create-project-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
+            )
+    }
 
     fn render_projects(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.projects.error_message.clone().unwrap_or_default();
@@ -2495,16 +3481,19 @@ impl DesktopView {
                 h_flex()
                     .justify_between()
                     .items_center()
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).child("Projects"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .child("Projects"),
+                    )
                     .child(
                         Button::new("projects-refresh")
                             .compact()
                             .label("Refresh")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, window, cx| {
-                                    this.do_refresh_projects(window, cx);
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_refresh_projects(window, cx);
+                            })),
                     ),
             )
             .child(
@@ -2515,43 +3504,15 @@ impl DesktopView {
                     .children(project_rows),
             )
             .child(div().border_t_1().border_color(theme::BORDER))
-            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("New project"))
-            .child(Input::new(&self.project_name_input).w_full())
-            .child(Input::new(&self.project_desc_input).w_full())
             .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("kind-personal")
-                            .when(self.projects.new_kind == "personal", |b| b.primary())
-                            .compact()
-                            .label("Personal")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.new_kind = "personal".into();
-                                    cx.notify();
-                                },
-                            )),
-                    )
-                    .child(
-                        Button::new("kind-shared")
-                            .when(self.projects.new_kind == "shared", |b| b.primary())
-                            .compact()
-                            .label("Shared")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.new_kind = "shared".into();
-                                    cx.notify();
-                                },
-                            )),
-                    ),
-            )
-            .child(
-                Button::new("create-project-btn")
+                Button::new("open-create-project-btn")
                     .primary()
-                    .label("Create project")
+                    .label("New project")
                     .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                        this.do_create_project(window, cx);
+                        this.pending_create_project = true;
+                        let handle = this.project_name_input.read(cx).focus_handle(cx);
+                        window.focus(&handle, cx);
+                        cx.notify();
                     })),
             )
             .child(
@@ -2559,7 +3520,7 @@ impl DesktopView {
                     .danger()
                     .label("Delete selected project")
                     .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                        this.do_delete_project(window, cx);
+                        this.request_delete_project(window, cx);
                     })),
             );
 
@@ -2583,43 +3544,40 @@ impl DesktopView {
                             .font_weight(FontWeight::BOLD)
                             .child(proj_name),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::TEXT_DIM)
-                            .child(if proj_type.is_empty() {
-                                "Select a project to see its members and secrets.".into()
-                            } else {
-                                format!("Type: {proj_type}")
-                            }),
-                    ),
+                    .child(div().text_xs().text_color(theme::TEXT_DIM).child(
+                        if proj_type.is_empty() {
+                            "Select a project to see its members and secrets.".into()
+                        } else {
+                            format!("Type: {proj_type}")
+                        },
+                    )),
             )
             .child(
                 h_flex()
                     .gap_2()
                     .child(
                         Button::new("tab-members")
-                            .when(self.projects.detail_tab == DetailTab::Members, |b| b.primary())
+                            .when(self.projects.detail_tab == DetailTab::Members, |b| {
+                                b.primary()
+                            })
                             .compact()
                             .label("Members")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.detail_tab = DetailTab::Members;
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.detail_tab = DetailTab::Members;
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("tab-secrets")
-                            .when(self.projects.detail_tab == DetailTab::Secrets, |b| b.primary())
+                            .when(self.projects.detail_tab == DetailTab::Secrets, |b| {
+                                b.primary()
+                            })
                             .compact()
                             .label("Secrets")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.detail_tab = DetailTab::Secrets;
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.detail_tab = DetailTab::Secrets;
+                                cx.notify();
+                            })),
                     ),
             )
             .child(
@@ -2642,32 +3600,21 @@ impl DesktopView {
                 "Projects",
                 "Create and manage shared vaults with members and secrets.",
             ))
-            .child(
-                div()
-                    .when(has_error, |this| {
-                        this.child(
-                            div()
-                                .px_3()
-                                .py_2()
-                                .rounded_md()
-                                .bg(theme::DANGER_BG)
-                                .text_color(theme::DANGER_TEXT)
-                                .text_sm()
-                                .child(error),
-                        )
-                    }),
-            )
-            .child(
-                div()
-                    .when(!status.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_xs()
-                                .text_color(theme::TEXT_MUTED)
-                                .child(status),
-                        )
-                    }),
-            )
+            .child(div().when(has_error, |this| {
+                this.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .bg(theme::DANGER_BG)
+                        .text_color(theme::DANGER_TEXT)
+                        .text_sm()
+                        .child(error),
+                )
+            }))
+            .child(div().when(!status.is_empty(), |this| {
+                this.child(div().text_xs().text_color(theme::TEXT_MUTED).child(status))
+            }))
             .child(
                 h_flex()
                     .flex_1()
@@ -2784,11 +3731,19 @@ impl DesktopView {
         v_flex()
             .gap_2()
             .child(
-                div().text_sm().font_weight(FontWeight::BOLD).child("Members"),
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Members"),
             )
             .children(rows)
             .child(div().border_t_1().border_color(theme::BORDER).mt_1())
-            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("Add member"))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Add member"),
+            )
             .child(Input::new(&self.member_user_input).w_full())
             .child(
                 h_flex()
@@ -2799,48 +3754,40 @@ impl DesktopView {
                             .when(self.projects.member_role == "member", |b| b.primary())
                             .compact()
                             .label("member")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_role = "member".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_role = "member".into();
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("role-manager")
                             .when(self.projects.member_role == "manager", |b| b.primary())
                             .compact()
                             .label("manager")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_role = "manager".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_role = "manager".into();
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("role-admin")
                             .when(self.projects.member_role == "admin", |b| b.primary())
                             .compact()
                             .label("admin")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_role = "admin".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_role = "admin".into();
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("role-owner")
                             .when(self.projects.member_role == "owner", |b| b.primary())
                             .compact()
                             .label("owner")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_role = "owner".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_role = "owner".into();
+                                cx.notify();
+                            })),
                     ),
             )
             .child(
@@ -2848,39 +3795,39 @@ impl DesktopView {
                     .gap_1()
                     .child(
                         Button::new("perm-canview")
-                            .when(self.projects.member_permission == "can_view", |b| b.primary())
+                            .when(self.projects.member_permission == "can_view", |b| {
+                                b.primary()
+                            })
                             .compact()
                             .label("Can View")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_permission = "can_view".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_permission = "can_view".into();
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("perm-canedit")
-                            .when(self.projects.member_permission == "can_edit", |b| b.primary())
+                            .when(self.projects.member_permission == "can_edit", |b| {
+                                b.primary()
+                            })
                             .compact()
                             .label("Can Edit")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_permission = "can_edit".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_permission = "can_edit".into();
+                                cx.notify();
+                            })),
                     )
                     .child(
                         Button::new("perm-canmanage")
-                            .when(self.projects.member_permission == "can_manage", |b| b.primary())
+                            .when(self.projects.member_permission == "can_manage", |b| {
+                                b.primary()
+                            })
                             .compact()
                             .label("Can Manage")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                    this.projects.member_permission = "can_manage".into();
-                                    cx.notify();
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.projects.member_permission = "can_manage".into();
+                                cx.notify();
+                            })),
                     ),
             )
             .child(
@@ -2891,9 +3838,12 @@ impl DesktopView {
                         this.do_add_member(window, cx);
                     })),
             )
-            .child(div().text_xs().text_color(theme::TEXT_DIM).child(format!(
-                "Current member field: {user_uuid}"
-            )))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme::TEXT_DIM)
+                    .child(format!("Current member field: {user_uuid}")),
+            )
     }
 
     fn render_secrets(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2938,19 +3888,23 @@ impl DesktopView {
                             Button::new(format!("sreveal-{i}"))
                                 .compact()
                                 .label("Reveal")
-                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
-                                    this.reveal_target_uuid = Some(uuid_reveal.clone());
-                                    this.do_reveal_secret(window, cx);
-                                })),
+                                .on_click(cx.listener(
+                                    move |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.reveal_target_uuid = Some(uuid_reveal.clone());
+                                        this.do_reveal_secret(window, cx);
+                                    },
+                                )),
                         )
                         .child(
                             Button::new(format!("sdelete-{i}"))
                                 .compact()
                                 .danger()
                                 .label("Delete")
-                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
-                                    this.do_delete_secret(window, cx, uuid_delete.clone());
-                                })),
+                                .on_click(cx.listener(
+                                    move |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.request_delete_secret(uuid_delete.clone(), window, cx);
+                                    },
+                                )),
                         ),
                 );
             rows.push(row);
@@ -2982,10 +3936,20 @@ impl DesktopView {
 
         v_flex()
             .gap_2()
-            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Secrets"))
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Secrets"),
+            )
             .children(rows)
             .child(div().border_t_1().border_color(theme::BORDER).mt_1())
-            .child(div().text_xs().text_color(theme::TEXT_MUTED).child("New secret"))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("New secret"),
+            )
             .child(Input::new(&self.secret_key_input).w_full())
             .child(Input::new(&self.secret_value_input).w_full())
             .child(
@@ -3013,22 +3977,22 @@ impl DesktopView {
                     .text_color(theme::DANGER_TEXT)
                     .child("Offboard (revoke all access)"),
             )
-            .child(h_flex().gap_2().child(Input::new(&self.offboard_input).w_full()).child(
-                Button::new("offboard-btn")
-                    .danger()
-                    .label("Revoke all")
-                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                        this.do_offboard(window, cx);
-                    })),
-            ))
             .child(
-                div()
-                    .when(result.is_some(), |this| {
-                        this.text_xs()
-                            .text_color(theme::SUCCESS)
-                            .child(result.clone().unwrap_or_default())
-                    }),
+                h_flex()
+                    .gap_2()
+                    .child(Input::new(&self.offboard_input).w_full())
+                    .child(
+                        Button::new("offboard-btn")
+                            .danger()
+                            .label("Revoke all")
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                this.request_offboard(window, cx);
+                            })),
+                    ),
             )
+            .child(div().when(result.is_some(), |this| {
+                this.child(success_callout(result.clone().unwrap_or_default()))
+            }))
     }
 
     // ── Generator section ─────────────────────────────────────────────────
@@ -3058,18 +4022,14 @@ impl DesktopView {
                         .child(password),
                 )
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("generator-btn")
-                                .primary()
-                                .label("Generate")
-                                .on_click(cx.listener(
-                                    |this, _: &gpui::ClickEvent, _window, cx| {
-                                        this.do_regenerate_generator(cx);
-                                    },
-                                )),
-                        ),
+                    h_flex().gap_2().child(
+                        Button::new("generator-btn")
+                            .primary()
+                            .label("Generate")
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                this.do_regenerate_generator(cx);
+                            })),
+                    ),
                 ),
             )
     }
@@ -3099,39 +4059,32 @@ impl DesktopView {
             ))
             .child(
                 self.card("Status", "Your current two-factor authentication state.")
-                    .child(div().text_sm().text_color(theme::TEXT_MUTED).child(status_line))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child(status_line),
+                    )
                     .child(
                         h_flex().gap_2().child(
                             Button::new("mfa-refresh-btn")
                                 .label("Refresh")
-                                .on_click(cx.listener(
-                                    |this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_refresh_mfa(window, cx);
-                                    },
-                                )),
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_refresh_mfa(window, cx);
+                                })),
                         ),
                     )
                     .when(!text.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_color(theme::WARN)
-                                .child(text.clone()),
-                        )
+                        this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
                     }),
             );
 
         if let Some(issued) = enrolled {
             body = body.child(
                 self.card("Enrollment", "Finish enrolling your authenticator.")
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme::TEXT_MUTED)
-                            .child(
-                                "Scan the QR code / enter this TOTP secret into your authenticator:",
-                            ),
-                    )
+                    .child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                        "Scan the QR code / enter this TOTP secret into your authenticator:",
+                    ))
                     .child(
                         div()
                             .p_2()
@@ -3159,20 +4112,40 @@ impl DesktopView {
         }
 
         body = body.child(
-            self.card("Setup", "Enroll a new authenticator app.")
-                .child(
-                    h_flex().gap_2().child(
-                        Button::new("mfa-enroll-btn")
-                            .primary()
-                            .label("Enroll TOTP")
-                            .on_click(cx.listener(
-                                |this, _: &gpui::ClickEvent, window, cx| {
-                                    this.do_enroll_totp(window, cx);
-                                },
-                            )),
-                    ),
+            self.card("Setup", "Enroll a new authenticator app.").child(
+                h_flex().gap_2().child(
+                    Button::new("mfa-enroll-btn")
+                        .primary()
+                        .label("Enroll TOTP")
+                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                            this.do_enroll_totp(window, cx);
+                        })),
                 ),
+            ),
         );
+
+        // Recovery codes: shown once after a TOTP (re)verification, with the
+        // canonical one-time warning. Held until the next MFA status refresh
+        // clears `mfa_status` (do_verify_totp sets it to None).
+        if let Some(codes) = &self.mfa_recovery_codes {
+            let mut list = v_flex().gap_1();
+            for c in codes {
+                list = list.child(
+                    div()
+                        .font_family("ui-monospace")
+                        .text_base()
+                        .text_color(theme::TEXT)
+                        .child(c.clone()),
+                );
+            }
+            body = body.child(
+                self.card(
+                    "Recovery codes",
+                    "Save these now. They won't be shown again.",
+                )
+                .child(list),
+            );
+        }
 
         body
     }
@@ -3241,7 +4214,11 @@ impl DesktopView {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(Icon::new(IconName::Folder).size_4().text_color(theme::ACCENT))
+                            .child(
+                                Icon::new(IconName::Folder)
+                                    .size_4()
+                                    .text_color(theme::ACCENT),
+                            )
                             .child(
                                 div()
                                     .text_sm()
@@ -3258,15 +4235,17 @@ impl DesktopView {
         let backup_text = match &backup {
             Some(b) if b.enabled => format!(
                 "Enabled · last backup {}",
-                b.last_backup_at.map(fmt_time).unwrap_or_else(|| "n/a".into())
+                b.last_backup_at
+                    .map(fmt_time)
+                    .unwrap_or_else(|| "n/a".into())
             ),
             Some(_) => "Not configured".to_string(),
             None => "Backup API unavailable".to_string(),
         };
         let projects_desc = if projects.is_empty() {
-            "No projects yet. Create one to get started.".to_string()
+            "You have no projects yet."
         } else {
-            format!("You can access {} project(s).", projects.len())
+            "Your most recently active projects."
         };
 
         self.page()
@@ -3275,7 +4254,7 @@ impl DesktopView {
                 "Overview of your organization's vaults and secrets.",
             ))
             .when(loading, |this| {
-                this.child(div().text_sm().text_color(theme::TEXT_MUTED).child("Loading…"))
+                this.child(loading_state("Loading dashboard…"))
             })
             .child(
                 h_flex()
@@ -3287,16 +4266,31 @@ impl DesktopView {
                     .child(stat("MFA", mfa_methods, IconName::CircleCheck)),
             )
             .child(
-                self.card("Recent projects", &projects_desc).children(recent_rows),
+                self.card("Recent projects", projects_desc)
+                    .when(loading, |this| this.child(skeleton_list(4)))
+                    .when(!loading && projects.is_empty(), |this| {
+                        this.child(empty_state(
+                            IconName::Folder,
+                            "No projects yet",
+                            "Create a project to start organizing your vaults and secrets.",
+                            None,
+                        ))
+                    })
+                    .when(!loading, |this| this.children(recent_rows)),
             )
             .child(
-                self.card("Backup status", "Automated and on-demand backups.").child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(Icon::new(IconName::HardDrive).size_4().text_color(theme::TEXT_MUTED))
-                        .child(div().text_sm().text_color(theme::TEXT).child(backup_text)),
-                ),
+                self.card("Backup status", "Automated and on-demand backups.")
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::HardDrive)
+                                    .size_4()
+                                    .text_color(theme::TEXT_MUTED),
+                            )
+                            .child(div().text_sm().text_color(theme::TEXT).child(backup_text)),
+                    ),
             )
     }
 
@@ -3321,7 +4315,13 @@ impl DesktopView {
                     .text_color(theme::TEXT_MUTED)
                     .child("Project"),
             )
-            .child(div().flex_1().text_xs().text_color(theme::TEXT_MUTED).child("Key"))
+            .child(
+                div()
+                    .flex_1()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Key"),
+            )
             .child(
                 div()
                     .w_16()
@@ -3381,9 +4381,15 @@ impl DesktopView {
                             Button::new(format!("sreveal-{i}"))
                                 .compact()
                                 .label(if is_revealed { "Hide" } else { "Reveal" })
-                                .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
-                                    this.do_reveal_overview_secret(window, cx, reveal_uuid.clone());
-                                })),
+                                .on_click(cx.listener(
+                                    move |this, _: &gpui::ClickEvent, window, cx| {
+                                        this.do_reveal_overview_secret(
+                                            window,
+                                            cx,
+                                            reveal_uuid.clone(),
+                                        );
+                                    },
+                                )),
                         ),
                     )
                     .into_any_element(),
@@ -3396,25 +4402,23 @@ impl DesktopView {
                 "Secrets are project-scoped. Revealing a value requires the secrets:reveal scope.",
             ))
             .when(!error.is_empty(), |this| {
-                this.child(div().text_sm().text_color(theme::DANGER).child(error.clone()))
+                this.child(error_callout(error.clone()))
             })
             .when(loading, |this| {
-                this.child(div().text_sm().text_color(theme::TEXT_MUTED).child("Loading…"))
+                this.child(loading_state("Loading secrets…"))
             })
             .child(
                 self.card("All secrets", "Every secret across your projects.")
+                    .when(loading, |this| this.child(skeleton_list(5)))
                     .when(!loading && rows.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .py_6()
-                                .w_full()
-                                .text_center()
-                                .text_sm()
-                                .text_color(theme::TEXT_MUTED)
-                                .child("No secrets found across your projects. Open a project to add one."),
-                        )
+                        this.child(empty_state(
+                            IconName::HardDrive,
+                            "No secrets found",
+                            "No secrets exist across your projects. Open a project to add one.",
+                            None,
+                        ))
                     })
-                    .when(!rows.is_empty(), |this| {
+                    .when(!loading && !rows.is_empty(), |this| {
                         this.child(
                             v_flex()
                                 .rounded_md()
@@ -3485,11 +4489,7 @@ impl DesktopView {
                             .size_4()
                             .rounded_sm()
                             .border_1()
-                            .border_color(if active {
-                                theme::ACCENT
-                            } else {
-                                theme::BORDER
-                            })
+                            .border_color(if active { theme::ACCENT } else { theme::BORDER })
                             .flex()
                             .items_center()
                             .justify_center()
@@ -3613,48 +4613,46 @@ impl DesktopView {
                 this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
             })
             .child(
-                self.card("Machine accounts", "Service identities with scoped API access.")
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child(format!("{} account(s)", machines.len())),
-                            )
-                            .child(
-                                Button::new("ma-refresh")
-                                    .compact()
-                                    .label("Refresh")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_refresh_settings(window, cx);
-                                        },
-                                    )),
-                            ),
-                    )
-                    .when(rows.is_empty(), |this| {
-                        this.child(
+                self.card(
+                    "Machine accounts",
+                    "Service identities with scoped API access.",
+                )
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
                             div()
-                                .py_6()
-                                .w_full()
-                                .text_center()
-                                .text_sm()
+                                .text_xs()
                                 .text_color(theme::TEXT_MUTED)
-                                .child("No machine accounts yet."),
+                                .child(format!("{} account(s)", machines.len())),
                         )
-                    })
-                    .when(!rows.is_empty(), |this| {
-                        this.child(
-                            v_flex()
-                                .rounded_md()
-                                .border_1()
-                                .border_color(theme::BORDER)
-                                .children(rows),
-                        )
-                    }),
+                        .child(
+                            Button::new("ma-refresh")
+                                .compact()
+                                .label("Refresh")
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_refresh_settings(window, cx);
+                                })),
+                        ),
+                )
+                .when(rows.is_empty(), |this| {
+                    this.child(empty_state(
+                        IconName::Bot,
+                        "No machine accounts yet",
+                        "Create a service identity to grant CI/CD and apps scoped API access.",
+                        None,
+                    ))
+                })
+                .when(!rows.is_empty(), |this| {
+                    this.child(
+                        v_flex()
+                            .rounded_md()
+                            .border_1()
+                            .border_color(theme::BORDER)
+                            .children(rows),
+                    )
+                }),
             )
             .child(
                 self.card("New machine account", "Register a new service identity.")
@@ -3665,11 +4663,9 @@ impl DesktopView {
                             Button::new("ma-create")
                                 .primary()
                                 .label("Create machine account")
-                                .on_click(cx.listener(
-                                    |this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_create_machine(window, cx);
-                                    },
-                                )),
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_create_machine(window, cx);
+                                })),
                         ),
                     ),
             )
@@ -3744,9 +4740,11 @@ impl DesktopView {
                         Button::new(format!("tok-revoke-{i}"))
                             .compact()
                             .label("Revoke")
-                            .on_click(cx.listener(move |this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_revoke_token(window, cx, revoke_uuid.clone());
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_revoke_token(window, cx, revoke_uuid.clone());
+                                },
+                            )),
                     )
                     .into_any_element(),
             );
@@ -3763,36 +4761,39 @@ impl DesktopView {
             .when(issued.is_some(), |this| {
                 let tok = issued.clone().unwrap_or_default();
                 this.child(
-                    self.card("Save this token now", "The full token is shown only once. Store it somewhere safe.")
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .px_3()
-                                        .py_2()
-                                        .rounded_md()
-                                        .border_1()
-                                        .border_color(theme::BORDER)
-                                        .bg(theme::SURFACE_RAISED)
-                                        .font_family("ui-monospace")
-                                        .text_sm()
-                                        .text_color(theme::TEXT)
-                                        .child(tok),
-                                )
-                                .child(
-                                    Button::new("issued-dismiss")
-                                        .compact()
-                                        .label("Dismiss")
-                                        .on_click(cx.listener(
-                                            |this, _: &gpui::ClickEvent, _window, cx| {
-                                                this.issued_token = None;
-                                                cx.notify();
-                                            },
-                                        )),
-                                ),
-                        ),
+                    self.card(
+                        "Save this token now",
+                        "The full token is shown only once. Store it somewhere safe.",
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .px_3()
+                                    .py_2()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(theme::BORDER)
+                                    .bg(theme::SURFACE_RAISED)
+                                    .font_family("ui-monospace")
+                                    .text_sm()
+                                    .text_color(theme::TEXT)
+                                    .child(tok),
+                            )
+                            .child(
+                                Button::new("issued-dismiss")
+                                    .compact()
+                                    .label("Dismiss")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.issued_token = None;
+                                            cx.notify();
+                                        },
+                                    )),
+                            ),
+                    ),
                 )
             })
             .child(
@@ -3819,15 +4820,12 @@ impl DesktopView {
                             ),
                     )
                     .when(rows.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .py_6()
-                                .w_full()
-                                .text_center()
-                                .text_sm()
-                                .text_color(theme::TEXT_MUTED)
-                                .child("No access tokens yet."),
-                        )
+                        this.child(empty_state(
+                            IconName::Globe,
+                            "No access tokens yet",
+                            "Issue a scoped token to grant programmatic access to your vault.",
+                            None,
+                        ))
                     })
                     .when(!rows.is_empty(), |this| {
                         this.child(
@@ -3848,11 +4846,9 @@ impl DesktopView {
                             Button::new("tok-create")
                                 .primary()
                                 .label("Create token")
-                                .on_click(cx.listener(
-                                    |this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_create_token(window, cx);
-                                    },
-                                )),
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_create_token(window, cx);
+                                })),
                         ),
                     ),
             )
@@ -3885,26 +4881,17 @@ impl DesktopView {
                             .items_center()
                             .child(status_badge(status))
                             .when(b.last_backup_at.is_some(), |c| {
-                                c.child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(theme::TEXT_MUTED)
-                                        .child(format!(
-                                            "Last backup {}",
-                                            fmt_time(b.last_backup_at.unwrap())
-                                        )),
-                                )
+                                c.child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                    format!("Last backup {}", fmt_time(b.last_backup_at.unwrap())),
+                                ))
                             })
                             .when(b.last_restore_test_status.is_some(), |c| {
-                                c.child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(theme::TEXT_MUTED)
-                                        .child(format!(
-                                            "Last restore test: {}",
-                                            b.last_restore_test_status.clone().unwrap()
-                                        )),
-                                )
+                                c.child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                    format!(
+                                        "Last restore test: {}",
+                                        b.last_restore_test_status.clone().unwrap()
+                                    ),
+                                ))
                             }),
                     );
                 this.child(card)
@@ -3932,12 +4919,9 @@ impl DesktopView {
                                             .text_color(theme::TEXT)
                                             .child("Export backup"),
                                     )
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(theme::TEXT_MUTED)
-                                            .child("Create an encrypted backup archive of the current state."),
-                                    ),
+                                    .child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                        "Create an encrypted backup archive of the current state.",
+                                    )),
                             )
                             .child(
                                 div()
@@ -3987,7 +4971,11 @@ impl DesktopView {
                             .child(
                                 Button::new("export-backup")
                                     .primary()
-                                    .label(if busy { "Exporting…" } else { "Export backup" })
+                                    .label(if busy {
+                                        "Exporting…"
+                                    } else {
+                                        "Export backup"
+                                    })
                                     .on_click(cx.listener(
                                         |this, _: &gpui::ClickEvent, window, cx| {
                                             this.do_export_backup(window, cx);
@@ -4022,15 +5010,11 @@ impl DesktopView {
                                     ),
                             )
                             .child(Input::new(&self.import_archive_input).w_full())
-                            .child(
-                                Button::new("restore-backup")
-                                    .label("Restore")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_restore_backup(window, cx);
-                                        },
-                                    )),
-                            ),
+                            .child(Button::new("restore-backup").label("Restore").on_click(
+                                cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_restore_backup(window, cx);
+                                }),
+                            )),
                     ),
             )
     }
@@ -4039,58 +5023,66 @@ impl DesktopView {
         let machines = self.machines.clone();
         let tokens = self.tokens.clone();
         let text = self.settings_text.clone();
-        let mut machine_rows = Vec::new();
-        for m in &machines {
-            machine_rows.push(
-                v_flex()
-                    .p_2()
-                    .rounded_md()
-                    .bg(theme::SURFACE_RAISED)
-                    .gap_1()
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(m.name.clone()))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::TEXT_MUTED)
-                            .child(format!("uuid: {}  scopes: {:?}", m.uuid, m.scopes)),
-                    ),
-            );
-        }
-        let mut token_rows = Vec::new();
-        for t in &tokens {
-            token_rows.push(
-                v_flex()
-                    .p_2()
-                    .rounded_md()
-                    .bg(theme::SURFACE_RAISED)
-                    .gap_1()
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(t.name.clone()))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::TEXT_MUTED)
-                            .child(format!("uuid: {}  scopes: {:?}", t.uuid, t.scopes)),
-                    ),
-            );
-        }
-        let machine_empty = machine_rows.is_empty();
-        let token_empty = token_rows.is_empty();
-
         self.page()
-            .child(self.page_header(
-                "Settings",
-                "Organization and security administration.",
-            ))
+            .child(self.page_header("Settings", "Organization and security administration."))
             .when(!text.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_sm()
-                        .text_color(theme::WARN)
-                        .child(text.clone()),
-                )
+                this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
             })
             .child(
-                self.card("Machine accounts", "Service identities with scoped API access.")
+                self.card(
+                    "Machine accounts",
+                    "Service identities with scoped API access.",
+                )
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::TEXT_MUTED)
+                                .child(format!("{} account(s)", machines.len())),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("settings-refresh-btn")
+                                        .compact()
+                                        .label("Refresh")
+                                        .on_click(cx.listener(
+                                            |this, _: &gpui::ClickEvent, window, cx| {
+                                                this.do_refresh_settings(window, cx);
+                                            },
+                                        )),
+                                )
+                                .child(
+                                    Button::new("settings-manage-machines-btn")
+                                        .compact()
+                                        .label("Manage")
+                                        .on_click(cx.listener(
+                                            |this, _: &gpui::ClickEvent, window, cx| {
+                                                this.activate_section(
+                                                    Section::MachineAccounts,
+                                                    window,
+                                                    cx,
+                                                );
+                                            },
+                                        )),
+                                ),
+                        ),
+                )
+                .when(machines.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .text_sm()
+                            .text_color(theme::TEXT_MUTED)
+                            .child("No machine accounts yet. Create one below."),
+                    )
+                }),
+            )
+            .child(
+                self.card("API tokens", "Long-lived tokens for API access.")
                     .child(
                         h_flex()
                             .justify_between()
@@ -4099,58 +5091,48 @@ impl DesktopView {
                                 div()
                                     .text_xs()
                                     .text_color(theme::TEXT_MUTED)
-                                    .child(format!("{} account(s)", machines.len())),
+                                    .child(format!("{} token(s)", tokens.len())),
                             )
                             .child(
-                                Button::new("settings-refresh-btn")
+                                Button::new("settings-manage-tokens-btn")
                                     .compact()
-                                    .label("Refresh")
+                                    .label("Manage")
                                     .on_click(cx.listener(
                                         |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_refresh_settings(window, cx);
+                                            this.activate_section(Section::Tokens, window, cx);
                                         },
                                     )),
                             ),
                     )
-                    .when(machine_empty, |this| {
+                    .when(tokens.is_empty(), |this| {
                         this.child(
                             div()
                                 .text_sm()
                                 .text_color(theme::TEXT_MUTED)
-                                .child("No machine accounts yet."),
+                                .child("No API tokens yet. Create one below."),
                         )
-                    })
-                    .children(machine_rows),
+                    }),
             )
             .child(
-                self.card("API tokens", "Long-lived tokens for API access.")
-                    .when(token_empty, |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_color(theme::TEXT_MUTED)
-                                .child("No API tokens yet."),
-                        )
-                    })
-                    .children(token_rows),
-            )
-            .child(
-                self.card("Create a machine account", "Register a new service identity.")
-                    .child(
-                        h_flex().gap_2().child(Input::new(&self.settings_name_input).w_full()),
-                    )
-                    .child(
-                        h_flex().gap_2().child(
-                            Button::new("settings-create-machine-btn")
-                                .primary()
-                                .label("Create machine account")
-                                .on_click(cx.listener(
-                                    |this, _: &gpui::ClickEvent, window, cx| {
-                                        this.do_create_machine(window, cx);
-                                    },
-                                )),
-                        ),
+                self.card(
+                    "Create a machine account",
+                    "Register a new service identity.",
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(Input::new(&self.settings_name_input).w_full()),
+                )
+                .child(
+                    h_flex().gap_2().child(
+                        Button::new("settings-create-machine-btn")
+                            .primary()
+                            .label("Create machine account")
+                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                this.do_create_machine(window, cx);
+                            })),
                     ),
+                ),
             )
     }
 }
@@ -4166,7 +5148,8 @@ impl Focusable for DesktopView {
 /// Rust side (the desktop client has no JS runtime).
 fn generate_password(length: usize) -> String {
     use rand::Rng;
-    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    const CHARS: &[u8] =
+        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
     let mut rng = rand::thread_rng();
     (0..length)
         .map(|_| {
@@ -4217,4 +5200,3 @@ fn scope_pill(scope: &str) -> Div {
         .text_color(theme::TEXT_MUTED)
         .child(scope.to_string())
 }
-

@@ -52,6 +52,38 @@ services:
       start_period: 10s
 
   # -------------------------------------------------------------------------
+  # dev — hot-reload development server (VTR-010 TDD #4). Enable with
+  # `docker compose --profile dev up`. Bind-mounts the source so editing a
+  # Rust file triggers an automatic recompile + restart via cargo-watch.
+  # -------------------------------------------------------------------------
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: vautr/server:dev
+    ports:
+      - "${VAUTR_PORT:-8080}:8080"
+    environment:
+      VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:/data/vautr.db}
+      RUST_LOG: ${RUST_LOG:-debug}
+    volumes:
+      # Live source for hot reload; target/ cached in a named volume so the
+      # dependency tree isn't recompiled on every restart.
+      - ./core:/build/core
+      - ./packages:/build/packages
+      - ./Cargo.toml:/build/Cargo.toml:ro
+      - ./Cargo.lock:/build/Cargo.lock:ro
+      - devtarget:/build/target
+      - serverdata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/account/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
   # PostgreSQL backend — OPT-IN. Enable with --profile postgres.
   # -------------------------------------------------------------------------
   postgres:
@@ -83,7 +115,10 @@ services:
     restart: unless-stopped
     profiles: ["https"]
     environment:
-      VAUTR_DOMAIN: ${VAUTR_DOMAIN:?set VAUTR_DOMAIN to enable the Caddy HTTPS proxy}
+      # Optional: only used when the https profile is active. Empty by default so
+      # `docker compose config` validates without it; set it before
+      # `docker compose --profile https up`.
+      VAUTR_DOMAIN: ${VAUTR_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"
@@ -97,6 +132,7 @@ services:
 
 volumes:
   serverdata:
+  devtarget:
   pgdata:
   caddydata:
   caddyconfig:

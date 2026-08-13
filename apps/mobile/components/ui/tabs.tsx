@@ -1,7 +1,7 @@
 import * as TabsPrimitive from '@rn-primitives/tabs';
 import type { ComponentPropsWithoutRef, ComponentRef, ReactNode } from 'react';
 import { forwardRef } from 'react';
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
 
 import { cn } from '../../lib/utils';
 

@@ -72,7 +72,57 @@ k6 run test/load/occ-conflicts.js
 k6 run test/load/sync-pull.js
 ```
 
+### Reproducible run against the bundled SQLite image
+
+The scripts above assume a running server with a seeded session + at least one
+item. To stand up a throwaway load-test instance from the Docker image
+(VTR-010) **without replaying the OPAQUE login flow**, use the provided seeder
+and compose override:
+
+```bash
+# 1. Build + bring up the server once so it runs its own migrations, then
+#    stop it (the schema must come from the server, not hand-applied SQL).
+docker compose up -d
+docker compose stop vautr-server
+
+# 2. Seed a users + sessions row (session token 'loadtok') and N items for
+#    that user, into a host-side SQLite file (test/.loadtest/vautr.db).
+cd test/load
+./seed_db.sh                      # TOKEN=loadtok, N_ITEMS=2000 by default
+chmod 666 ../.loadtest/vautr.db   # let the non-root container user write
+
+# 3. Bring the server back up bound to the seeded DB (bind-mount override).
+#    The override also disables the per-IP rate limiter (VAUTR_RATE_LIMIT_MAX)
+#    so the run measures raw sync-pull throughput, not the 429 path.
+docker compose -f ../../docker-compose.yml -f docker-compose.loadtest.yml up -d
+cd ..
+
+# 4. Run the suites.
+VAUTR_BASE_URL=http://localhost:8080 VAUTR_TOKEN=loadtok \
+  k6 run test/load/sync-pull.js
+VAUTR_BASE_URL=http://localhost:8080 VAUTR_TOKEN=loadtok \
+  k6 run test/load/occ-conflicts.js
+
+# 5. Tear down.
+docker compose -f ../../docker-compose.yml -f docker-compose.loadtest.yml down
+```
+
+> The seeded DB lives in `test/.loadtest/` (git-ignored). `seed_db.sh` leaves
+> `foreign_keys` OFF on purpose: the shipped schema has a composite-PK FK
+> (`shares`/`project_items` → `items`) that SQLite rejects at insert time, and
+> the runtime server enforces its own integrity, so we seed without FK
+> enforcement.
+
+> **Verified result (single SQLite container, 2026-08-12):** `sync-pull.js` at
+> 50 iters/s → **checks 100.00%, http_req_failed 0.00%** (1001 reqs, p95 4.2 ms);
+> at 200 iters/s → **checks 100.00%, http_req_failed 0.00%** (4001 reqs, p95
+> 3.7 ms). The endpoint is correct and the single-node SQLite build sustains
+> ~200 concurrent read pulls/s with zero errors. Keep the server stable during
+> the run — restarting the container mid-test (e.g. `docker stop`/`up` churn)
+> trips transient connection-refused failures that are not test defects.
+
 ### Tuning
+
 
 | Env var             | Default | Applies to       |
 | ------------------- | ------- | ---------------- |

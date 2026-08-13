@@ -81,7 +81,7 @@ export class ApiClient {
       'X-Request-ID': requestId,
     };
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers.Authorization = `Bearer ${this.token}`;
     }
     const init: RequestInit = { method, headers };
     if (body !== undefined) {

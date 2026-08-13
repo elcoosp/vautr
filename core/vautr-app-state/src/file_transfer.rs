@@ -48,7 +48,10 @@ pub trait FileTransport: Send + Sync {
         ciphertext: Vec<u8>,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
     /// Atomically mark a fully-uploaded file `Available` (§4.1 step 4).
-    fn complete_upload(&self, file_uuid: Uuid) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
+    fn complete_upload(
+        &self,
+        file_uuid: Uuid,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
     /// Fetch one encrypted chunk for on-demand download (§4.2).
     fn fetch_chunk(
         &self,
@@ -106,12 +109,11 @@ impl FileTransferWorker {
     fn emit_progress(&self, file_uuid: Uuid, bytes_transferred: u64, total_bytes: u64) {
         if self.throttled() {
             self.events_emitted.fetch_add(1, Ordering::SeqCst);
-            self.bus
-                .publish(VaultStateUpdate::FileTransferProgress {
-                    file_uuid,
-                    bytes_transferred,
-                    total_bytes,
-                });
+            self.bus.publish(VaultStateUpdate::FileTransferProgress {
+                file_uuid,
+                bytes_transferred,
+                total_bytes,
+            });
         }
     }
 
@@ -196,8 +198,8 @@ impl FileTransferWorker {
                 .await
                 .map_err(|e| format!("fetch chunk {index}: {e}"))?;
             ciphertext.extend_from_slice(&chunk);
-            let transferred = ((index as u64 + 1) * manifest.chunk_size as u64)
-                .min(manifest.total_size);
+            let transferred =
+                ((index as u64 + 1) * manifest.chunk_size as u64).min(manifest.total_size);
             self.emit_progress(manifest.file_uuid, transferred, manifest.total_size);
         }
         let mut plaintext = Vec::new();

@@ -1,7 +1,6 @@
 import * as TablePrimitive from '@rn-primitives/table';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 import { forwardRef } from 'react';
-import { Text, View } from 'react-native';
 
 import { cn } from '../../lib/utils';
 

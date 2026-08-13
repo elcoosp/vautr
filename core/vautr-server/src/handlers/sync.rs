@@ -466,18 +466,83 @@ mod tests {
         }
     }
 
+    // --- TDD instruction #1: a non-final page returns a higher new_cursor ----
     #[tokio::test]
-    async fn cursor_within_window_succeeds_after_pruning() {
-        let (st, tok) = seed_gapped().await;
-        // Cursor 200 is within the retained window (min version 101).
+    async fn non_final_page_advances_cursor() {
+        let (st, tok) = seed().await;
+        let in_cursor = 0u64;
         let resp = sync_pull(
             State(st),
-            Query(PullQuery { cursor: 200, limit: Some(100) }),
+            Query(PullQuery { cursor: in_cursor, limit: Some(100) }),
             Bearer(tok),
         )
         .await
         .unwrap()
         .0;
-        assert!(resp.items.len() > 0);
+        assert!(resp.has_more);
+        assert!(resp.new_cursor > in_cursor, "new_cursor must advance past the input cursor on a non-final page");
+    }
+
+    // --- TDD instruction #5: 10k items at limit=1000 pulls in under 2s ------
+    #[tokio::test]
+    async fn pull_10k_items_under_two_seconds() {
+        let path =
+            std::env::temp_dir().join(format!("vautr_sync_perf_test_{}.db", uuid::Uuid::new_v4()));
+        let url = format!("sqlite://{}", path.display());
+        let pool = crate::db::connect(&url).await.expect("connect + migrate");
+        let repo = Arc::new(crate::repository::Repository::new(pool));
+        let now = 1_700_000_000_000i64;
+        repo.create_user("perf", "perf@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('perftok', 'perf', ?, ?)",
+        )
+        .bind(4_000_000_000_000i64)
+        .bind(now)
+        .execute(repo.pool())
+        .await
+        .unwrap();
+        for v in 1..=10_000i64 {
+            sqlx::query(
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
+                 VALUES (?, ?, ?, 1, NULL, NULL, ?)",
+            )
+            .bind(format!("perf-{v}"))
+            .bind("perf")
+            .bind(v)
+            .bind(now + v)
+            .execute(repo.pool())
+            .await
+            .unwrap();
+        }
+        let st = AppState::new(repo);
+        let tok = "perftok".to_string();
+
+        let start = std::time::Instant::now();
+        let mut cursor = 0u64;
+        let mut got = 0u64;
+        loop {
+            let resp = sync_pull(
+                State(st.clone()),
+                Query(PullQuery { cursor, limit: Some(1000) }),
+                Bearer(tok.clone()),
+            )
+            .await
+            .unwrap()
+            .0;
+            got += resp.items.len() as u64;
+            cursor = resp.new_cursor;
+            if !resp.has_more {
+                break;
+            }
+        }
+        let elapsed = start.elapsed();
+        assert_eq!(got, 10_000, "must receive all 10k items");
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "pulling 10k items with limit=1000 took {:?}, expected < 2s",
+            elapsed
+        );
     }
 }

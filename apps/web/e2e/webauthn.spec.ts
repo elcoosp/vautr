@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
 /**
  * WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052).
@@ -39,8 +39,8 @@ type Session = { token: string; userId: string; headers: Record<string, string> 
 function freshSession(): Session {
   const db = new DatabaseSync(state.dbPath);
   const now = Date.now();
-  const userId = 'e2e-user-' + Math.random().toString(36).slice(2, 10);
-  const token = 'e2e-tok-' + Math.random().toString(36).slice(2, 14);
+  const userId = `e2e-user-${Math.random().toString(36).slice(2, 10)}`;
+  const token = `e2e-tok-${Math.random().toString(36).slice(2, 14)}`;
   db.prepare(
     `INSERT INTO users (id, email, kdf_salt, opaque_record, svk_ciphertext_blob,
        svk_ciphertext_blob_rk, min_enc_key_gen, created_at, updated_at)
@@ -149,7 +149,7 @@ async function registerKey(page: Page, session: Session, label: string): Promise
           headers,
           body: JSON.stringify({ label }),
         });
-        if (!start.ok) throw new Error('register/start ' + start.status);
+        if (!start.ok) throw new Error(`register/start ${start.status}`);
         const startJson = await start.json();
         const cred = (await navigator.credentials.create(
           (window as unknown as { fixCreate: (o: unknown) => unknown }).fixCreate(
@@ -177,7 +177,7 @@ async function registerKey(page: Page, session: Session, label: string): Promise
         });
         if (!verify.ok) {
           const body = await verify.text();
-          throw new Error('register/verify ' + verify.status + ': ' + body);
+          throw new Error(`register/verify ${verify.status}: ${body}`);
         }
         return true;
       })(),
@@ -197,7 +197,7 @@ async function assertSecondFactor(page: Page, session: Session): Promise<void> {
           method: 'POST',
           headers,
         });
-        if (!start.ok) throw new Error('assert/start ' + start.status);
+        if (!start.ok) throw new Error(`assert/start ${start.status}`);
         const startJson = await start.json();
         const cred = (await navigator.credentials.get(
           (window as unknown as { fixGet: (o: unknown) => unknown }).fixGet(
@@ -225,7 +225,7 @@ async function assertSecondFactor(page: Page, session: Session): Promise<void> {
             credential: { id: cred.id, rawId: b64(cred.rawId), type: cred.type, response },
           }),
         });
-        if (!verify.ok) throw new Error('assert/verify ' + verify.status);
+        if (!verify.ok) throw new Error(`assert/verify ${verify.status}`);
         return true;
       })(),
     { server: SERVER, headers: session.headers },
@@ -266,7 +266,7 @@ async function listCredentials(
 
 test.beforeEach(async ({ context, page }) => {
   await injectHelpers(page);
-  await page.goto(ORIGIN + '/');
+  await page.goto(`${ORIGIN}/`);
   const { authenticatorId } = await addAuthenticator(context, page);
   (page as unknown as { __authId: string }).__authId = authenticatorId;
 });
@@ -322,7 +322,7 @@ test('d: disabling second factor removes the credential', async ({ page }) => {
   await registerKey(page, session, 'DisableMe');
   const list = await listCredentials(page, session);
   expect(list.length).toBe(1);
-  const credId = list[0]!.cred_id;
+  const credId = list[0]?.cred_id;
 
   const del = await page.evaluate(
     ({ server, headers, credId }) =>
