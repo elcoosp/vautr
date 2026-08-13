@@ -13,19 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { performAction, release, reveal } from '@/lib/client';
 import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/secrets')({
   component: SecretsManagerPage,
 });
-
-function b64decode(value: string): string {
-  try {
-    return atob(value);
-  } catch {
-    return value;
-  }
-}
 
 interface Row {
   project: Project;
@@ -36,7 +29,7 @@ function SecretsManagerPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState<Record<string, boolean>>({});
   const [revealError, setRevealError] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -64,19 +57,20 @@ function SecretsManagerPage() {
     void load();
   }, [load]);
 
+  // ZK reveal: the plaintext is decrypted in the wasm `WebClient` behind an
+  // opaque handle and copied to the clipboard via `perform_action`; it never
+  // enters React state (data.md §1 rule 4 / VTR-062).
   const onReveal = async (uuid: string) => {
-    if (revealed[uuid]) {
-      setRevealed((prev) => {
-        const next = { ...prev };
-        delete next[uuid];
-        return next;
-      });
-      return;
-    }
     try {
-      const res = await mlp.revealSecret(uuid);
-      setRevealed((prev) => ({ ...prev, [uuid]: b64decode(res.value_ciphertext) }));
-      setRevealError((prev) => ({ ...prev, [uuid]: '' }));
+      const handle = await reveal(uuid);
+      try {
+        await performAction({ type: 'CopyToClipboard', handle });
+        setCopied((prev) => ({ ...prev, [uuid]: true }));
+        window.setTimeout(() => setCopied((prev) => ({ ...prev, [uuid]: false })), 1500);
+        setRevealError((prev) => ({ ...prev, [uuid]: '' }));
+      } finally {
+        await release(handle);
+      }
     } catch (err) {
       setRevealError((prev) => ({
         ...prev,
@@ -147,12 +141,12 @@ function SecretsManagerPage() {
                         variant="outline"
                         onClick={() => void onReveal(secret.uuid)}
                       >
-                        {revealed[secret.uuid] ? (
+                        {copied[secret.uuid] ? (
                           <EyeOff className="mr-1 size-4" aria-hidden="true" />
                         ) : (
                           <Eye className="mr-1 size-4" aria-hidden="true" />
                         )}
-                        {revealed[secret.uuid] ? 'Hide' : 'Reveal'}
+                        {copied[secret.uuid] ? 'Copied' : 'Reveal'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -160,22 +154,6 @@ function SecretsManagerPage() {
               </TableBody>
             </Table>
           )}
-
-          {Object.values(revealed).some(Boolean) ? (
-            <div className="mt-4 space-y-2">
-              {rows.map(({ secret }) =>
-                revealed[secret.uuid] ? (
-                  <div
-                    key={secret.uuid}
-                    className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 font-mono text-sm text-text"
-                  >
-                    <span className="text-text-muted">{secret.key}: </span>
-                    {revealed[secret.uuid]}
-                  </div>
-                ) : null,
-              )}
-            </div>
-          ) : null}
 
           {Object.values(revealError).some(Boolean) ? (
             <div className="mt-4 space-y-2">
