@@ -115,6 +115,7 @@ impl PlatformAdapter for MockAdapter {
                 *self.copied.lock().unwrap() = Some(String::from_utf8_lossy(secret).into_owned());
                 Ok(())
             }
+            CoreAction::RenderInOverlay { .. } => Ok(()),
         }
     }
 }

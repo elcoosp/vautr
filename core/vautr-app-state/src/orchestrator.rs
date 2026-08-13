@@ -13,7 +13,7 @@
 //! - Sync (api.md §4): `connect_sync`, `sync`, `disconnect_sync`.
 //! - Rotation (core.md §4 / ADR-006): `rotate_key`.
 
-use sea_orm::{DatabaseConnection, Set, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Set, TransactionTrait};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -1040,6 +1040,10 @@ impl VautrClient {
     /// Push every locally-persisted item to the server (save→sync→push path).
     /// Used by import seeding, offline flush, and the Phase 4 save→sync→pull
     /// flow (Client A pushes, Client B pulls).
+    /// Push locally-persisted edits to the server (Client A → server → Client B).
+    /// On a 412/version conflict for an item, publishes a `ConflictDetected`
+    /// event (data.md §7.2) so the UI can surface the resolution modal. The
+    /// conflict is left unresolved until the user picks a side via `resolve_conflict`.
     pub async fn push_local_changes(&self) -> Result<(), String> {
         if self.is_locked() {
             return Err("vault locked".into());
@@ -1050,16 +1054,101 @@ impl VautrClient {
             .await
             .clone()
             .ok_or_else(|| "sync not connected".to_string())?;
+        let engine = Engine::new(transport.clone(), self.blacklist.clone());
         let rows = self.list_local_items().await?;
         for chunk in rows.chunks(100) {
             let items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)> = chunk
                 .iter()
                 .map(|(u, v, g, p)| (*u, *v as u64, *g, Some(p.clone())))
                 .collect();
-            let _outcomes = transport
+            let outcomes = engine
                 .push_batch(items)
                 .await
                 .map_err(|e| format!("push batch: {e}"))?;
+            for (uuid, outcome) in outcomes {
+                if let vautr_sync::engine::PushOutcome::Conflict(server_version) = outcome {
+                    let local_version = chunk
+                        .iter()
+                        .find(|(u, ..)| *u == uuid)
+                        .map(|(_, v, ..)| *v as u64)
+                        .unwrap_or(server_version);
+                    let is_toxic = self.blacklist.is_toxic(&uuid);
+                    self.bus.publish(VaultStateUpdate::ConflictDetected(
+                        crate::event_bus::ConflictEvent {
+                            uuid,
+                            local_version,
+                            server_version,
+                            is_toxic,
+                        },
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolve a sync conflict (data.md §7.2 / VTR-056) for `uuid`.
+    ///
+    /// - `force_overwrite == false` (keep server): delete the local copy and
+    ///   re-pull so the server version becomes authoritative.
+    /// - `force_overwrite == true` (push local): re-push the local item at
+    ///   `server_version + 1`, then refresh so the list reflects the outcome.
+    pub async fn resolve_conflict(
+        &self,
+        uuid: Uuid,
+        server_version: u64,
+        force_overwrite: bool,
+    ) -> Result<(), String> {
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
+        let transport = self
+            .transport
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| "sync not connected".to_string())?;
+
+        if !force_overwrite {
+            // Keep server: drop the local copy, then re-pull to fetch the
+            // server's authoritative version.
+            self.delete_local_item(uuid).await?;
+            self.sync().await?;
+            return Ok(());
+        }
+
+        // Push local at server_version + 1 (the canonical OCC retry).
+        let local = self
+            .get_local_item(uuid)
+            .await?
+            .ok_or_else(|| format!("no local item {uuid}"))?;
+        let (_version, enc_key_gen, payload) = local;
+        transport
+            .push_batch(vec![(uuid, server_version + 1, enc_key_gen, Some(payload))])
+            .await
+            .map_err(|e| format!("push conflict resolution: {e}"))?;
+        Ok(())
+    }
+
+    /// Read a single local item's `(version, enc_key_gen, payload)` by uuid.
+    async fn get_local_item(&self, uuid: Uuid) -> Result<Option<(i64, u64, Vec<u8>)>, String> {
+        let rows = self.list_local_items().await?;
+        Ok(rows
+            .into_iter()
+            .find(|(u, ..)| *u == uuid)
+            .map(|(_, v, g, p)| (v, g, p)))
+    }
+
+    /// Delete a local item's overview + payload (used when the user keeps the
+    /// server's version of a conflicted item).
+    async fn delete_local_item(&self, uuid: Uuid) -> Result<(), String> {
+        let uuid_str = uuid.to_string();
+        for table in ["item_overviews", "item_payloads", "item_secrets"] {
+            let sql = format!("DELETE FROM {table} WHERE uuid = '{uuid_str}'");
+            self.db
+                .execute_unprepared(&sql)
+                .await
+                .map_err(|e| format!("delete {table}: {e}"))?;
         }
         Ok(())
     }

@@ -31,7 +31,7 @@ use crate::state::{self, VaultConfig, VaultManagerState};
 use crate::theme;
 use crate::ui_states::{empty_state, error_callout, loading_state, skeleton_list, success_callout};
 use vautr_app_state::VautrClient;
-use vautr_app_state::event_bus::VaultStateUpdate;
+use vautr_app_state::event_bus::{ConflictEvent, VaultStateUpdate};
 use vautr_app_state::hardening::lock_secret_memory;
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
@@ -218,6 +218,9 @@ pub struct DesktopView {
     /// Pending, signature-verified update offered to the user (None = no update).
     /// VTR-049: set by the background update check; surfaced via a modal.
     pending_update: Option<updater::UpdateInfo>,
+    /// FIFO queue of unresolved sync conflicts (VTR-056 parity with web). Each
+    /// entry is a `ConflictDetected` event surfaced via the conflict modal.
+    conflict_queue: Vec<ConflictEvent>,
 
     // ── Secrets overview section ────────────────────────────────────────
     secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
@@ -393,6 +396,7 @@ impl DesktopView {
             import_busy: false,
             import_archive_input,
             pending_update: None,
+            conflict_queue: Vec::new(),
         }
     }
 
@@ -605,6 +609,10 @@ impl DesktopView {
                 // VTR-047: subscribe to the reactive event bus so quarantine
                 // reaper outcomes surface in the UI (recovery toast + refresh).
                 this.subscribe_quarantine_events(cx);
+
+                // VTR-056 parity: subscribe so 412/conflict events during sync
+                // surface the conflict-resolution modal in the desktop UI.
+                this.subscribe_conflict_events(cx);
 
                 // VTR-049: check for a signature-verified update in the
                 // background (never blocks the UI). Honors the auto-update
@@ -1009,7 +1017,6 @@ impl DesktopView {
             let mut rx = client.watch_state();
             while let Ok(ev) = rx.recv().await {
                 let target = view_entity.clone();
-                let c = client.clone();
                 let _ = cx.update_entity::<DesktopView, _>(&target, |this, cx| match ev {
                     VaultStateUpdate::ItemRecovered(_) => {
                         this.toast_success("A previously unreadable item has been recovered.", cx);
@@ -1019,6 +1026,32 @@ impl DesktopView {
                         this.trigger_refresh(cx);
                     }
                     _ => {}
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// VTR-056 parity with web: subscribe to the reactive event bus and enqueue
+    /// every `ConflictDetected` event into `conflict_queue` so the conflict
+    /// modal (rendered by `render_conflict_modal`) can surface a user choice.
+    fn subscribe_conflict_events(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let view_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let mut rx = client.watch_state();
+            while let Ok(ev) = rx.recv().await {
+                let target = view_entity.clone();
+                let _ = cx.update_entity::<DesktopView, _>(&target, |this, cx| {
+                    if let VaultStateUpdate::ConflictDetected(event) = ev {
+                        // De-dupe by uuid so a repeated 412 doesn't stack.
+                        if !this.conflict_queue.iter().any(|e| e.uuid == event.uuid) {
+                            this.conflict_queue.push(event);
+                            cx.notify();
+                        }
+                    }
                 });
             }
         })
@@ -2703,6 +2736,9 @@ impl DesktopView {
             .when(self.pending_update.is_some(), |this| {
                 this.child(self.render_update_modal(cx))
             })
+            .when(!self.conflict_queue.is_empty(), |this| {
+                this.child(self.render_conflict_modal(cx))
+            })
             .child(self.render_toasts(cx))
     }
 
@@ -3283,6 +3319,149 @@ impl DesktopView {
                         |el, t| el.opacity(t),
                     ),
             )
+    }
+
+    /// VTR-056 parity with web: modal surfacing the head of `conflict_queue`,
+    /// offering the user a resolution (keep server vs. push local). Toxic
+    /// conflicts get explicit warning copy; resolving calls the orchestrator's
+    /// `resolve_conflict` and dequeues the event.
+    fn render_conflict_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(event) = self.conflict_queue.first().cloned() else {
+            return div();
+        };
+        let toxic = event.is_toxic;
+        let body = if toxic {
+            "This item was changed on another device AND is on the blacklist (toxic) list. \
+             Keeping the server copy discards your local change; pushing local overrides the \
+             blacklisted server copy. Choose carefully."
+                .to_string()
+        } else {
+            format!(
+                "This item changed on another device (server v{}, your local v{}). \
+                 Keep the server copy, or push your local copy to override it.",
+                event.server_version, event.local_version
+            )
+        };
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Button::new("conflict-backdrop")
+                    .child(div())
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.5,
+                    })
+                    .on_click(cx.listener(|_this, _: &gpui::ClickEvent, _window, cx| {
+                        // Dismiss (defer): keep it queued for later.
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .w(px(420.))
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child(if toxic {
+                                        "Sync conflict — toxic item"
+                                    } else {
+                                        "Sync conflict"
+                                    }),
+                            )
+                            .child(div().text_xs().text_color(theme::TEXT_DIM).child(body))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("conflict-keep-server")
+                                            .child(div())
+                                            .label("Keep server copy")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.resolve_conflict_head(false, window, cx);
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("conflict-push-local")
+                                            .child(div())
+                                            .primary()
+                                            .label("Push my local copy")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.resolve_conflict_head(true, window, cx);
+                                                },
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .with_animation(
+                        "conflict-modal",
+                        Animation::new(Duration::from_millis(150)).with_easing(ease_in_out),
+                        |el, t| el.opacity(t),
+                    ),
+            )
+    }
+
+    /// Resolve the head of `conflict_queue` with the chosen side, delegating to
+    /// the orchestrator. Dequeues the event regardless of outcome so a failed
+    /// resolution doesn't pin the modal forever (the next sync re-detects).
+    fn resolve_conflict_head(
+        &mut self,
+        force_overwrite: bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(event) = self.conflict_queue.first().cloned() else {
+            return;
+        };
+        let uuid = event.uuid;
+        let server_version = event.server_version;
+        self.conflict_queue.retain(|e| e.uuid != uuid);
+        cx.notify();
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let view_entity = cx.entity();
+        cx.spawn(async move |_this, cx| {
+            let _rt = crate::runtime::enter();
+            match client
+                .resolve_conflict(uuid, server_version, force_overwrite)
+                .await
+            {
+                Ok(()) => {
+                    let _ = cx.update_entity::<DesktopView, _>(&view_entity, |this, cx| {
+                        this.toast_success("Conflict resolved.", cx);
+                        this.trigger_refresh(cx);
+                    });
+                }
+                Err(e) => {
+                    let _ = cx.update_entity::<DesktopView, _>(&view_entity, |this, cx| {
+                        this.toast_error(format!("Could not resolve conflict: {e}"), cx);
+                    });
+                }
+            }
+        })
+        .detach();
     }
 
     /// Confirm destructive deletion of the selected project.
