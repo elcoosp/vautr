@@ -16,6 +16,9 @@ import type {
   AccessTokenCreateRequest,
   AccessTokenCreateResponse,
   AccessTokenListResponse,
+  BackupExportResponse,
+  BackupRestoreResponse,
+  BackupStatus,
   MachineAccount,
   MachineAccountCreateRequest,
   MachineAccountListResponse,
@@ -128,6 +131,25 @@ export class VautrMlpClient {
   /** Read a secret's value. Requires the `secrets:reveal` scope on the caller. */
   getSecretValue(uuid: string): Promise<SecretValue> {
     return this.api.request<SecretValue>('GET', `/secrets/${uuid}/value`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Backup / export / import (VTR-039)
+  // ---------------------------------------------------------------------------
+
+  backupStatus(): Promise<BackupStatus> {
+    return this.api.request<BackupStatus>('GET', '/backup');
+  }
+
+  backupExport(request: { include_secrets?: boolean }): Promise<BackupExportResponse> {
+    return this.api.request<BackupExportResponse>('POST', '/backup/export', request);
+  }
+
+  backupRestore(request: {
+    backup_id?: string;
+    archive_base64?: string;
+  }): Promise<BackupRestoreResponse> {
+    return this.api.request<BackupRestoreResponse>('POST', '/backup/restore', request);
   }
 
   // -------------------------------------------------------------------------

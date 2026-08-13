@@ -1,17 +1,31 @@
 import type { VautrMlpClient } from '@vautr/client-sdk';
 import { createClipboardHandler } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
-import { CircleCheck, Eye, Folder, HardDrive, Lock, Settings2 } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Bot,
+  CircleCheck,
+  Eye,
+  Folder,
+  HardDrive,
+  Lock,
+  Settings2,
+  Ticket,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import * as browser from 'webextension-polyfill';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getApiUrl } from '../lib/apiUrl';
 import { AuthView } from './components/AuthView';
+import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
+import { ImportExportTab } from './components/ImportExportTab';
+import { MachineAccountsTab } from './components/MachineAccountsTab';
 import { MfaTab } from './components/MfaTab';
 import { ProjectsTab } from './components/ProjectsTab';
 import { SecretsTab } from './components/SecretsTab';
+import { TokensTab } from './components/TokensTab';
 import { VaultTab } from './components/VaultTab';
 import { disposePopupClient, getPopupClient, getPopupMlpClient } from './popupClient';
 import { usePopupStore } from './store';
@@ -22,6 +36,9 @@ const TABS = [
   { id: 'generator', label: 'Generator', icon: Settings2 },
   { id: 'secrets', label: 'Secrets', icon: HardDrive },
   { id: 'mfa', label: 'MFA & security', icon: CircleCheck },
+  { id: 'import-export', label: 'Backup', icon: ArrowLeftRight },
+  { id: 'machine-accounts', label: 'Machines', icon: Bot },
+  { id: 'tokens', label: 'Tokens', icon: Ticket },
 ];
 
 export function App() {
@@ -37,6 +54,7 @@ export function App() {
   const reset = usePopupStore((s) => s.reset);
   const activeTab = usePopupStore((s) => s.activeTab);
   const setActiveTab = usePopupStore((s) => s.setActiveTab);
+  const pushConflict = usePopupStore((s) => s.pushConflict);
 
   const clientRef = useRef<VautrWebClient | null>(null);
   const mlpRef = useRef<VautrMlpClient | null>(null);
@@ -55,14 +73,21 @@ export function App() {
   }, []);
 
   const onVaultUpdate = useCallback(
-    (update: { type: string; overview?: { uuid: string }; uuid?: string }) => {
+    (update: {
+      type: string;
+      overview?: { uuid: string };
+      uuid?: string;
+      event?: { uuid: string; localVersion: string; serverVersion: string; isToxic: boolean };
+    }) => {
       if (update.type === 'OverviewUpserted' && update.overview) {
         upsertItem(update.overview as never);
       } else if (update.type === 'OverviewDeleted' && update.uuid) {
         removeItem(update.uuid);
+      } else if (update.type === 'ConflictDetected' && update.event) {
+        pushConflict(update.event);
       }
     },
-    [upsertItem, removeItem],
+    [upsertItem, removeItem, pushConflict],
   );
 
   async function handleAuthenticated(user: string): Promise<void> {
@@ -160,8 +185,18 @@ export function App() {
           <TabsContent value="mfa" className="mt-0">
             {mlp ? <MfaTab mlp={mlp} /> : null}
           </TabsContent>
+          <TabsContent value="import-export" className="mt-0">
+            {mlp ? <ImportExportTab mlp={mlp} /> : null}
+          </TabsContent>
+          <TabsContent value="machine-accounts" className="mt-0">
+            {mlp ? <MachineAccountsTab mlp={mlp} /> : null}
+          </TabsContent>
+          <TabsContent value="tokens" className="mt-0">
+            {mlp ? <TokensTab mlp={mlp} /> : null}
+          </TabsContent>
         </div>
       </Tabs>
+      {client ? <ConflictModal client={client} /> : null}
       <footer className="flex items-center justify-between border-t px-4 py-2 text-xs">
         <span className="text-muted-foreground">Vault on this device</span>
         <button

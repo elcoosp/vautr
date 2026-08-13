@@ -1,5 +1,5 @@
 import type { MachineAccount, Project, Secret } from '@vautr/api-contract';
-import type { DecryptedOverview } from '@vautr/client-sdk';
+import type { ConflictEvent, DecryptedOverview } from '@vautr/client-sdk';
 import { create } from 'zustand';
 
 export type PopupStatus = 'locked' | 'unlocking' | 'unlocked' | 'busy';
@@ -15,6 +15,9 @@ interface PopupState {
   projects: Project[];
   secrets: Secret[];
   machines: MachineAccount[];
+
+  /** FIFO queue of active sync-conflict events (VTR-064 / VTR-056). */
+  conflictQueue: ConflictEvent[];
 
   /** Plaintext passwords revealed this session (in-memory only) for reused detection. */
   revealedPasswords: string[];
@@ -39,6 +42,11 @@ interface PopupState {
 
   setMachines: (machines: MachineAccount[]) => void;
 
+  /** Push a new conflict event onto the FIFO queue (head = current). */
+  pushConflict: (event: ConflictEvent) => void;
+  /** Drop the head conflict without resolving (dismiss). */
+  dismissConflict: (uuid: string) => void;
+
   addRevealedPassword: (password: string) => void;
   reset: () => void;
 }
@@ -54,6 +62,7 @@ export const usePopupStore = create<PopupState>((set) => ({
   projects: [],
   secrets: [],
   machines: [],
+  conflictQueue: [],
   revealedPasswords: [],
 
   setStatus: (status) => set({ status }),
@@ -103,6 +112,13 @@ export const usePopupStore = create<PopupState>((set) => ({
 
   setMachines: (machines) => set({ machines }),
 
+  pushConflict: (event) => set((s) => ({ conflictQueue: [...s.conflictQueue, event] })),
+  dismissConflict: (uuid) =>
+    set((s) => {
+      if (s.conflictQueue[0]?.uuid !== uuid) return s;
+      return { conflictQueue: s.conflictQueue.slice(1) };
+    }),
+
   addRevealedPassword: (password) =>
     set((s) => ({ revealedPasswords: [...s.revealedPasswords, password] })),
 
@@ -117,6 +133,7 @@ export const usePopupStore = create<PopupState>((set) => ({
       projects: [],
       secrets: [],
       machines: [],
+      conflictQueue: [],
       revealedPasswords: [],
     }),
 }));
