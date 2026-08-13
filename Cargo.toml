@@ -98,3 +98,20 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # only that crate; the full workspace is compiled at integration time.
 [profile.dev]
 incremental = false
+
+# ---------------------------------------------------------------------------
+# Release profile (VTR-039): small, fast, auditable binaries.
+# - lto + codegen-units=1: whole-program optimization for the server/desktop.
+# - strip = "symbols": drop debug symbols from shipped artifacts (the desktop
+#   applies `mlock` from VTR-040; symbols add nothing to a ZK client binary).
+# - opt-level = "z": minimize binary size (desktop/CLI ship to user machines;
+#   the server image layers this on top of a distroless base).
+# panic = "abort" is intentionally NOT set so `catch_unwind` hardening (used by
+# the FFI/sdk boundary) keeps working in release.
+# ---------------------------------------------------------------------------
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
+opt-level = "z"
+panic = "unwind"

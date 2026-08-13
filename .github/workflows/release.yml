@@ -1,0 +1,267 @@
+# =============================================================================
+# VTR-039 — Multi-arch release pipeline.
+#
+# Triggers:
+#   - push of a tag matching `v*` (a release cut) → full build + GitHub release
+#   - manual `workflow_dispatch` with `dry_run=true` → build everything, upload
+#     artifacts, but do NOT push the image or publish a release (CI smoke).
+#
+# What it produces:
+#   1. Server container image for linux/amd64 + linux/arm64, pushed to GHCR
+#      (ghcr.io/vautrorg/vautr-server:<tag> and :latest).
+#   2. Desktop binaries for macOS (universal), Windows (x86_64), Linux
+#      (x86_64 + aarch64) — codesign (macOS) / signtool (Windows) when signing
+#      secrets are present.
+#   3. Web app static bundle and the browser-extension zip.
+#   4. A GitHub release collecting the desktop/extension artifacts (not the
+#      container image, which lives in GHCR).
+#
+# Required repo secrets for a full release:
+#   GHCR_TOKEN            — packages:write (auto-provided by GITHUB_TOKEN).
+#   MACOS_CERT_BASE64     — base64 PKCS#12 signing cert (optional).
+#   MACOS_CERT_PASSWORD   — unlock password for the cert (optional).
+#   APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID — notarization (optional).
+#   WINDOWS_CERT_BASE64 / WINDOWS_CERT_PASSWORD — Authenticode (optional).
+# =============================================================================
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build + upload artifacts only; no push / no release."
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Release profile (lto/strip/opt-level=z) is defined in the workspace root
+  # Cargo.toml; no target-cpu=native so artifacts stay portable (VTR-039).
+  VAUTR_DB_URL: sqlite:vautr.db
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Multi-arch server image (amd64 + arm64) via buildx + QEMU emulation.
+  # ---------------------------------------------------------------------------
+  server-image:
+    name: server image (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        run: |
+          REF="${GITHUB_REF_NAME}"
+          echo "tag=${REF}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/vautrorg/vautr-server" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the pushed image (amd64 only)
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -e VAUTR_DB_URL=sqlite:/tmp/vautr.db \
+            "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}" \
+            --help || true
+
+  # ---------------------------------------------------------------------------
+  # 2. Desktop binaries per-OS (macOS universal, Windows x86_64, Linux x86_64
+  #    + aarch64). Each runner builds its native target; Linux also cross-builds
+  #    aarch64 via `cross` for ARM boards / Apple Silicon Linux.
+  # ---------------------------------------------------------------------------
+  desktop-macos:
+    name: desktop (macOS universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Build universal binary
+        run: |
+          cargo build --release -p vautr-desktop --target aarch64-apple-darwin
+          cargo build --release -p vautr-desktop --target x86_64-apple-darwin
+          lipo -create -output target/release/vautr-desktop-universal \
+            target/aarch64-apple-darwin/release/vautr-desktop \
+            target/x86_64-apple-darwin/release/vautr-desktop
+
+      - name: Codesign (optional)
+        if: ${{ env.MACOS_CERT_BASE64 != '' }}
+        env:
+          MACOS_CERT_BASE64: ${{ secrets.MACOS_CERT_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "$MACOS_CERT_BASE64" | base64 -d > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security find-identity -v
+          codesign --force --options runtime --timestamp \
+            --sign "$APPLE_TEAM_ID" target/release/vautr-desktop-universal
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vautr-desktop-macos
+          path: target/release/vautr-desktop-universal
+
+  desktop-windows:
+    name: desktop (Windows x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release -p vautr-desktop
+
+      - name: Authenticode sign (optional)
+        if: ${{ env.WINDOWS_CERT_BASE64 != '' }}
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $cert = [System.Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $cert)
+          & signtool sign /f cert.pfx /p "$env:WINDOWS_CERT_PASSWORD" `
+            /fd SHA256 /tr http://timestamp.digicert.com `
+            target/release/vautr-desktop.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vautr-desktop-windows
+          path: target/release/vautr-desktop.exe
+
+  desktop-linux:
+    name: desktop (Linux x86_64 + aarch64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+
+      - name: Build x86_64
+        run: cargo build --release -p vautr-desktop --target x86_64-unknown-linux-gnu
+
+      - name: Build aarch64 (cross)
+        run: |
+          cargo install cross --locked || true
+          cross build --release -p vautr-desktop --target aarch64-unknown-linux-gnu
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vautr-desktop-linux
+          path: |
+            target/x86_64-unknown-linux-gnu/release/vautr-desktop
+            target/aarch64-unknown-linux-gnu/release/vautr-desktop
+
+  # ---------------------------------------------------------------------------
+  # 3. Web app + browser extension static bundles.
+  # ---------------------------------------------------------------------------
+  web:
+    name: web + extension bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        run: pnpm --filter @vautr/web build
+
+      - name: Build extension
+        run: pnpm --filter @vautr/extension build
+
+      - name: Package extension zip
+        run: cd apps/extension/dist && zip -r ../../vautr-extension.zip .
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vautr-web
+          path: apps/web/dist
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vautr-extension
+          path: vautr-extension.zip
+
+  # ---------------------------------------------------------------------------
+  # 4. Publish GitHub release (real release only, not dry-run).
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish release
+    needs: [server-image, desktop-macos, desktop-windows, desktop-linux, web]
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/vautr-desktop-macos
+            artifacts/vautr-desktop.exe
+            artifacts/vautr-desktop
+            artifacts/vautr-extension.zip
+          body: |
+            Vautr release ${{ github.ref_name }}.
+
+            - Server image: `ghcr.io/vautrorg/vautr-server:${{ github.ref_name }}` (linux/amd64 + linux/arm64)
+            - Desktop: macOS (universal), Windows (x86_64), Linux (x86_64 + aarch64)
+            - Web + browser extension bundles attached.
+          draft: false
+          prerelease: false

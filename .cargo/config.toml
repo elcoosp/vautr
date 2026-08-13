@@ -1,0 +1,19 @@
+# Vautr Cargo configuration (VTR-039 — multi-arch release).
+#
+# IMPORTANT: we do NOT set `target-cpu=native` here. The release pipeline
+# (`.github/workflows/release.yml`) builds for both x86_64 and aarch64, so the
+# binaries must be portable. Release optimization lives in `[profile.release]`
+# in the workspace root Cargo.toml (lto, strip, opt-level="z").
+#
+# Cross-compilation for the desktop app is performed on each platform's native
+# runner (macOS builds the universal macOS binary, Linux builds the x86_64 +
+# aarch64 .deb/.AppImage, Windows builds the x86_64 .msi). The server image is
+# built with `docker buildx` for linux/amd64 + linux/arm64. No `target-cpu`
+# override means the produced artifacts run on stock commodity hardware.
+
+[build]
+# Share a single target/ across workspace members to keep CI caches small.
+# (Incremental is disabled in [profile.dev] to bound disk use.)
+
+[term]
+verbose = false
