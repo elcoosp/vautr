@@ -19,12 +19,17 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod aead;
 pub mod error;
 pub mod kdf;
-pub mod aead;
 pub mod key_tree;
 pub mod opaque;
 pub mod recovery;
 
 #[cfg(feature = "sharing")]
 pub mod sharing;
+
+// Test-only memory-leak instrumentation (VTR-037). Absent from production
+// builds — CI asserts the `test-instrumentation` feature is never enabled there.
+#[cfg(feature = "test-instrumentation")]
+pub mod instrumentation;

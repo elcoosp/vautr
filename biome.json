@@ -24,7 +24,8 @@
       "!packages/design-tokens/tokens.ts",
       "!packages/design-tokens/tokens.md",
       "!packages/design-tokens/tokens.json",
-      "!apps/desktop/src/theme_tokens.rs"
+      "!apps/desktop/src/theme_tokens.rs",
+      "!**/pacts"
     ]
   },
   "formatter": {

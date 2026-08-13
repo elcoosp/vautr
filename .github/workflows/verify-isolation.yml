@@ -99,6 +99,21 @@ jobs:
         # apps/desktop/src/theme_tokens.rs) are out of sync. One author, no drift.
         run: pnpm --filter @vautr/design-tokens check:tokens
 
+      - name: test-instrumentation feature must NOT leak into production builds
+        # VTR-037 (step 5): the memory-leak instrumentation in vautr-crypto is
+        # gated behind the `test-instrumentation` feature. It must never be
+        # compiled into a production/handshake artifact. Build vautr-crypto
+        # WITHOUT the feature and assert the `instrumentation` module symbol is
+        # absent from the emitted rlib (compile-fail guard).
+        run: |
+          set -uo pipefail
+          cargo build -p vautr-crypto 2>/dev/null
+          if grep -rq "instrumentation" target/debug/deps/libvautr_crypto-*.rlib 2>/dev/null; then
+            echo "::error::SECURITY/HYGIENE BREACH: vautr-crypto 'test-instrumentation' module leaked into a production build. The feature must stay disabled in release artifacts."
+            exit 1
+          fi
+          echo "::notice::vautr-crypto built without test-instrumentation (no leak)"
+
   # ---------------------------------------------------------------------------
   # Nightly exhaustive verification (build-env-deploy.md §6.2 / roadmap §9).
   # ---------------------------------------------------------------------------
@@ -179,3 +194,100 @@ jobs:
 
       - name: A11y audit + screenshot gallery
         run: pnpm --filter @vautr/extension exec playwright test tests/popup-a11y.spec.ts tests/popup-screenshots.spec.ts
+
+  # ---------------------------------------------------------------------------
+  # Nightly coverage fuzzing (VTR-037).
+  # Feeds arbitrary bytes to vautr_crypto::aead::decrypt and asserts it never
+  # panics (returns Err). Bounded to FUZZ_SECONDS (default 120s in CI; the
+  # local recommendation is 3600s / 1h per the issue). A crash fails the job.
+  # ---------------------------------------------------------------------------
+  nightly-fuzz:
+    name: Nightly cargo-fuzz (aead_decrypt)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly + cargo-fuzz
+        uses: dtolnay/rust-toolchain@nightly-2026-08-10
+        with:
+          components: rustfmt
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Build fuzz target
+        working-directory: core/vautr-crypto
+        run: cargo +nightly fuzz build aead_decrypt
+
+      - name: Run fuzzer (bounded)
+        working-directory: core/vautr-crypto
+        env:
+          FUZZ_SECONDS: "120"
+        run: cargo +nightly fuzz run aead_decrypt -- -max_total_time=${FUZZ_SECONDS} -print_final_stats=1
+
+      - name: Memory-leak regression (test-instrumentation)
+        # VTR-037: reveal+copy 10k secrets, assert the drop counter returns to
+        # baseline (no plaintext retained). Gated feature, run only here.
+        run: cargo test -p vautr-crypto --features test-instrumentation instrumentation
+
+  # ---------------------------------------------------------------------------
+  # Nightly Pact contract verification (VTR-037).
+  # The SDK consumer test (packages/vautr-client-sdk/test/pact) writes
+  # pacts/vautr-client-sdk-vautr-server.json. Here we boot the real Rust server
+  # and verify it honours that contract. Requires the Pact standalone verifier
+  # (installed below) and a built server binary.
+  # ---------------------------------------------------------------------------
+  pact-verify:
+    name: Nightly Pact contract verify (server)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly-2026-08-10
+        with:
+          components: rustfmt
+
+      - name: Build server
+        run: cargo build -p vautr-server
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate consumer pact
+        run: pnpm --filter @vautr/client-sdk test:pact
+
+      - name: Install Pact standalone verifier
+        run: |
+          set -uo pipefail
+          VERIFIER_VERSION="1.1.2"
+          ARCH="x86_64-unknown-linux-musl"
+          curl -fsSL "https://github.com/pact-foundation/pact-rust/releases/download/pact_verifier_cli-v${VERIFIER_VERSION}/pact_verifier_cli-${VERIFIER_VERSION}-${ARCH}.gz" -o pact_verifier.gz
+          gunzip pact_verifier.gz
+          chmod +x pact_verifier
+          sudo mv pact_verifier /usr/local/bin/pact_verifier
+
+      - name: Start server + verify pact
+        run: |
+          set -uo pipefail
+          # Minimal server config; the verifier only exercises /sync/push-batch.
+          DATABASE_URL="sqlite::memory:" RUST_LOG=info cargo run -p vautr-server &
+          SERVER_PID=$!
+          sleep 5
+          pact_verifier --contracts-dir packages/vautr-client-sdk/pacts || pact_verifier packages/vautr-client-sdk/pacts/vautr-client-sdk-vautr-server.json
+          kill $SERVER_PID || true

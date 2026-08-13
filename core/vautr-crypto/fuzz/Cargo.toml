@@ -1,0 +1,28 @@
+[package]
+name = "vautr-crypto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "AGPL-3.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dependencies.vautr-crypto]
+path = ".."
+
+[[bin]]
+name = "aead_decrypt"
+path = "fuzz_targets/aead_decrypt.rs"
+test = false
+doc = false
+
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1

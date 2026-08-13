@@ -28,6 +28,10 @@ opaque-ke.workspace = true
 # Sharing is "Should" priority (SRS REQ-SHARE-01..04). The X25519 KEM lives
 # behind this feature so the core build stays lean. See ADR-007.
 sharing = []
+# Test-only instrumentation: exposes `TrackedZeroizing` + drop counters used by
+# the memory-leak regression test (VTR-037). MUST NOT be enabled in production
+# builds — CI asserts this with `cargo build` (no feature) + a symbol check.
+test-instrumentation = []
 
 [dev-dependencies]
 hex = "0.4"

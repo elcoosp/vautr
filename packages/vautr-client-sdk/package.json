@@ -26,13 +26,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"sdk: no tests yet\""
+    "test": "vitest run",
+    "test:pact": "vitest run test/pact"
   },
   "dependencies": {
     "@vautr/api-contract": "workspace:*",
     "@vautr/ui-logic": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "@pact-foundation/pact": "^14.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.0"
   }
 }
