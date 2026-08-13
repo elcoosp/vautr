@@ -1,7 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { Eye, EyeOff, Plus } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { SecretOverlay } from '../../components/SecretOverlay';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
@@ -14,9 +15,7 @@ import {
   TableRow,
 } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { useToast } from '../../components/ui/toast';
 import type { Project, ProjectMember, Secret } from '../../lib/api';
-import { requireBiometric } from '../../lib/biometrics';
 import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/projects/$projectId')({
@@ -26,12 +25,10 @@ export const Route = createFileRoute('/_app/projects/$projectId')({
 function ProjectDetailScreen() {
   const { projectId } = Route.useParams();
   const router = useRouter();
-  const toast = useToast();
 
   const [project, setProject] = useState<Project | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [secrets, setSecrets] = useState<Secret[]>([]);
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<'secrets' | 'members'>('secrets');
@@ -57,36 +54,6 @@ function ProjectDetailScreen() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const reveal = async (secret: Secret) => {
-    const gate = await requireBiometric('Reveal secret');
-    if (!gate.success) {
-      toast.show({ title: 'Biometric authentication cancelled', variant: 'destructive' });
-      return;
-    }
-    try {
-      const value = await services.api.revealSecret(secret.uuid);
-      setRevealed((current) => ({ ...current, [secret.uuid]: value.value_ciphertext }));
-    } catch (err) {
-      toast.show({
-        title: 'Reveal denied',
-        description: err instanceof Error ? err.message : 'You lack the secrets:reveal permission.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const toggleReveal = async (secret: Secret) => {
-    if (revealed[secret.uuid]) {
-      setRevealed((current) => {
-        const next = { ...current };
-        delete next[secret.uuid];
-        return next;
-      });
-      return;
-    }
-    await reveal(secret);
-  };
 
   if (!loaded) {
     return <ActivityIndicator className="mt-8" color="#42b59a" />;
@@ -147,33 +114,21 @@ function ProjectDetailScreen() {
             {secrets.length === 0 ? (
               <Text className="text-sm text-muted-foreground">No secrets in this project yet.</Text>
             ) : (
-              secrets.map((secret) => {
-                const value = revealed[secret.uuid];
-                return (
-                  <Card key={secret.uuid} className="p-4">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-1 gap-0.5">
-                        <Text className="text-base font-medium text-foreground">{secret.key}</Text>
-                        <Text className="text-xs text-muted-foreground">
-                          v{secret.version} · {new Date(secret.updated_at).toLocaleString()}
-                        </Text>
-                        {value ? (
-                          <Text className="mt-1 text-sm text-foreground" selectable>
-                            {value}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Button variant="ghost" size="sm" onPress={() => void toggleReveal(secret)}>
-                        {value ? (
-                          <EyeOff size={18} className="text-foreground" />
-                        ) : (
-                          <Eye size={18} className="text-primary" />
-                        )}
-                      </Button>
+              secrets.map((secret) => (
+                <Card key={secret.uuid} className="p-4">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-1 gap-0.5">
+                      <Text className="text-base font-medium text-foreground">{secret.key}</Text>
+                      <Text className="text-xs text-muted-foreground">
+                        v{secret.version} · {new Date(secret.updated_at).toLocaleString()}
+                      </Text>
                     </View>
-                  </Card>
-                );
-              })
+                    {/* VTR-048/056: reveal via the opaque-handle native overlay when
+                        the FFI core is linked; degrades to a locked state when HTTP-only. */}
+                    <SecretOverlay uuid={secret.uuid} label={secret.key} />
+                  </View>
+                </Card>
+              ))
             )}
           </View>
         </TabsContent>
