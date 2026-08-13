@@ -31,6 +31,10 @@ vautr-db.workspace = true
 # In-crate integration tests exercise the full unlock->list->reveal->lock flow
 # against a real SQLite (temp-file) database, mirroring vautr-app-state/tests.
 tempfile = "3"
+# `bindgen` feature exposes `uniffi::generate` / `GenerateOptions` used by the
+# `gen_bindings` example that produces the Kotlin/Swift glue for modules/vautr-native.
+uniffi = { version = "0.31", features = ["tokio", "bindgen"] }
+camino = "1"
 
 [features]
 # `read_secret` is enabled ONLY for the desktop (GPUI) build — never mobile/web.

@@ -1,0 +1,14 @@
+package expo.modules.vautr
+
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
+
+/**
+ * Vautr native module Gradle build (VTR-061). Links the Rust `vautr-ffi`
+ * cdylib (built via `cargo ndk` / `cargo build`) as a JNI-loadable library.
+ *
+ * The actual Rust artifact is produced by:
+ *   cargo build -p vautr-ffi --release   # -> target/*/libvautr_ffi.so
+ * and copied into `src/main/jniLibs/<abi>/` by the project's native build
+ * (see docs/modules/vautr-native/README.md).
+ */

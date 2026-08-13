@@ -1,0 +1,35 @@
+{
+  "name": "@vautr/native",
+  "version": "0.1.0",
+  "description": "Expo native module bridging the Vautr uniffi core (VTR-061).",
+  "private": true,
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "react-native": "src/index.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "react-native": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "expo-module-scripts": "^3.5.2",
+    "expo-modules-core": "*",
+    "@vautr/client-sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "expo-secure-store": "~57.0.1",
+    "expo-local-authentication": "~57.0.2"
+  }
+}

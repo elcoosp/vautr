@@ -10362,6 +10362,7 @@ name = "vautr-ffi"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "camino",
  "sea-orm",
  "serde",
  "serde_json",

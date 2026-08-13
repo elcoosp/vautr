@@ -1,0 +1,11 @@
+{
+  "extends": "expo-module-scripts/tsconfig.base",
+  "compilerOptions": {
+    "outDir": "build",
+    "rootDir": "src",
+    "moduleResolution": "bundler",
+    "module": "esnext"
+  },
+  "include": ["src"],
+  "exclude": ["**/__tests__", "**/__mocks__", "build"]
+}
