@@ -17,6 +17,8 @@ import { AsyncCryptoAdapter } from './crypto';
 import { IndexedDbStore } from './storage';
 import type {
   ClipboardHandler,
+  ConflictChoice,
+  ConflictEvent,
   CoreAction,
   DecryptedOverview,
   OpaqueHandle,
@@ -366,14 +368,28 @@ export class VautrWebClient {
           { items: batchItems },
         );
         const updated = new Map<string, number>();
+        const conflicts: ConflictEvent[] = [];
         for (const r of resp.results) {
           if (r.status === 'success' && r.version !== undefined) {
             updated.set(r.uuid, r.version);
+          } else if (this.isConflictStatus(r.status)) {
+            // 412 / version-mismatch from the server (data.md §7.2). Surface it
+            // to the UI as a conflict for human resolution.
+            const local = pending.find((i) => i.uuid === r.uuid);
+            conflicts.push({
+              uuid: r.uuid,
+              localVersion: String(local?.version ?? 0),
+              serverVersion: String(r.version ?? (local?.version ?? 0) + 1),
+              isToxic: r.status === 'toxic' || r.status === 'unreadable',
+            });
           }
         }
         for (const item of pending) {
           const v = updated.get(item.uuid);
           await this.store.putItem({ ...item, version: v ?? item.version, pending: false });
+        }
+        for (const conflict of conflicts) {
+          this.emit({ type: 'ConflictDetected', event: conflict });
         }
       }
 
@@ -532,6 +548,46 @@ export class VautrWebClient {
       if (now - active.lastAccess > HANDLE_TTL_MS) {
         this.handles.delete(handle);
       }
+    }
+  }
+
+  /**
+   * Whether a push-batch result status represents an OCC conflict (412 /
+   * version-mismatch) that needs human resolution (data.md §7.2).
+   */
+  private isConflictStatus(status: string): boolean {
+    return (
+      status === 'conflict' ||
+      status === 'version_mismatch' ||
+      status === 'precondition_failed' ||
+      status === 'toxic' ||
+      status === 'unreadable'
+    );
+  }
+
+  /**
+   * Resolve an OCC conflict with the user's choice (VTR-056). Mirrors the sync
+   * engine's `resolve_with_choice(uuid, choice)`:
+   * - `acceptServer`: drop the local copy and re-pull to adopt the server
+   *   version (valid "Keep Server Version"; toxic "Keep Local").
+   * - `pushLocal`: re-push the local edit at `serverVersion + 1` (valid "Force
+   *   Overwrite with Local"; toxic "Overwrite Server"), then re-sync.
+   * The store dequeues the conflict after this returns; the UI refreshes.
+   */
+  async resolveConflict(uuid: string, choice: ConflictChoice): Promise<void> {
+    if (!this.dek) {
+      throw new Error('vault is locked');
+    }
+    const item = await this.store.getItem(uuid);
+    if (choice === 'acceptServer') {
+      await this.store.deleteItem(uuid);
+      this.emit({ type: 'OverviewDeleted', uuid });
+      await this.sync();
+    } else {
+      if (item) {
+        await this.store.putItem({ ...item, pending: true });
+      }
+      await this.sync();
     }
   }
 }

@@ -58,3 +58,19 @@ export function useVaultActions() {
     })),
   );
 }
+
+/** The head of the conflict queue (the one modal currently showing), reactive. */
+export function useCurrentConflict() {
+  return useStore(vaultStore, (s) => s.conflictQueue[0] ?? null);
+}
+
+/** Conflict resolution actions (dequeue / dismiss), stable references. */
+export function useConflictActions() {
+  return useStore(
+    vaultStore,
+    useShallow((s) => ({
+      resolveConflict: s.resolveConflict,
+      dismissConflict: s.dismissConflict,
+    })),
+  );
+}

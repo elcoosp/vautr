@@ -41,6 +41,15 @@ export interface ConflictEvent {
   isToxic: boolean;
 }
 
+/**
+ * The binary resolution decision behind the modal's buttons (data.md §7.2).
+ * - `acceptServer`: take the server copy (valid conflict "Keep Server Version";
+ *   toxic conflict "Keep Local" — keep the local edit, do not push).
+ * - `pushLocal`: re-push the local edit at `serverVersion + 1` (valid "Force
+ *   Overwrite with Local"; toxic "Overwrite Server").
+ */
+export type ConflictChoice = 'acceptServer' | 'pushLocal';
+
 export type RevertibleState =
   | { type: 'Saved'; overview: DecryptedOverview }
   | { type: 'Deleted'; overview: DecryptedOverview };

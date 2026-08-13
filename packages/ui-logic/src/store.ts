@@ -1,5 +1,11 @@
 import { createStore } from 'zustand/vanilla';
-import type { DecryptedOverview, Draft, TaskReceipt, VaultStateUpdate } from './types';
+import type {
+  ConflictEvent,
+  DecryptedOverview,
+  Draft,
+  TaskReceipt,
+  VaultStateUpdate,
+} from './types';
 
 /** Sync indicator state (ui-state-charts §6). */
 export interface SyncState {
@@ -18,8 +24,13 @@ export interface VaultStoreState {
   /** Read-only gate driven by `KeyUpdateRequired`. */
   isReadOnly: boolean;
   sync: SyncState;
-  /** Most recent conflict event (for resolution UI). */
-  lastConflict: { uuid: string } | null;
+  /**
+   * FIFO queue of unresolved conflicts (data.md §7.2). The global modal renders
+   * the head; resolving/dismissing one advances to the next (TDD5: no overlap).
+   */
+  conflictQueue: ConflictEvent[];
+  /** Conflicts the user dismissed without choosing — stay "ignored" (TDD4). */
+  ignoredConflicts: Record<string, ConflictEvent>;
 
   // --- Overview actions ---
   upsertOverview(overview: DecryptedOverview): void;
@@ -30,6 +41,14 @@ export interface VaultStoreState {
   getDraft(receipt: TaskReceipt): Draft | undefined;
   clearDraft(receipt: TaskReceipt): void;
   wipeDrafts(): void;
+
+  // --- Conflict resolution (VTR-056) ---
+  /** Enqueue a conflict (idempotent per uuid). */
+  enqueueConflict(event: ConflictEvent): void;
+  /** Remove a resolved conflict from the queue (the choice was already applied). */
+  resolveConflict(uuid: string): void;
+  /** Dismiss without choosing — keep it ignored so it is not re-shown (TDD4). */
+  dismissConflict(event: ConflictEvent): void;
 
   // --- Lifecycle / sync ---
   lock(): void;
@@ -46,7 +65,8 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
   isLocked: true,
   isReadOnly: false,
   sync: { isSyncing: false, progress: 0 },
-  lastConflict: null,
+  conflictQueue: [],
+  ignoredConflicts: {},
 
   upsertOverview(overview) {
     set((state) => ({ items: { ...state.items, [overview.uuid]: overview } }));
@@ -78,6 +98,32 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
     set({ drafts: {} });
   },
 
+  enqueueConflict(event) {
+    set((state) => {
+      if (state.conflictQueue.some((e) => e.uuid === event.uuid)) {
+        return {}; // idempotent: already queued
+      }
+      const { [event.uuid]: _ignored, ...rest } = state.ignoredConflicts;
+      return {
+        conflictQueue: [...state.conflictQueue, event],
+        ignoredConflicts: rest,
+      };
+    });
+  },
+
+  resolveConflict(uuid) {
+    set((state) => ({
+      conflictQueue: state.conflictQueue.filter((e) => e.uuid !== uuid),
+    }));
+  },
+
+  dismissConflict(event) {
+    set((state) => ({
+      conflictQueue: state.conflictQueue.filter((e) => e.uuid !== event.uuid),
+      ignoredConflicts: { ...state.ignoredConflicts, [event.uuid]: event },
+    }));
+  },
+
   lock() {
     set({
       items: {},
@@ -85,7 +131,8 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
       isLocked: true,
       isReadOnly: false,
       sync: { isSyncing: false, progress: 0 },
-      lastConflict: null,
+      conflictQueue: [],
+      ignoredConflicts: {},
     });
   },
 
@@ -119,7 +166,7 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
         deleteOverview(update.uuid);
         break;
       case 'ConflictDetected':
-        set({ lastConflict: { uuid: update.event.uuid } });
+        get().enqueueConflict(update.event);
         break;
       case 'KeyUpdateRequired':
         set({ isReadOnly: true });

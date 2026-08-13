@@ -1,4 +1,5 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router';
+import { ConflictModal } from '@/components/ConflictModal';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
@@ -10,6 +11,7 @@ function RootComponent() {
   return (
     <TooltipProvider>
       <Outlet />
+      <ConflictModal />
       <Toaster richColors position="bottom-right" />
     </TooltipProvider>
   );
