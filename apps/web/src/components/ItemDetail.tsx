@@ -1,7 +1,14 @@
 import { useOverview } from '@vautr/ui-logic';
-import { ArrowLeft, Copy, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Copy, Eye, EyeOff, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { performAction, release, reveal } from '../lib/client';
+import {
+  ensureSharingKey,
+  getItemPlaintext,
+  performAction,
+  release,
+  reveal,
+  shareItem,
+} from '../lib/client';
 
 interface ItemDetailProps {
   uuid: string;
@@ -18,6 +25,10 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
   const handleRef = useRef<string | null>(null);
   const [masked, setMasked] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareRecipient, setShareRecipient] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Reveal on mount, dispose on unmount (zeroization contract).
   useEffect(() => {
@@ -69,6 +80,26 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
       handleRef.current = null;
     }
   };
+
+  async function confirmShare(): Promise<void> {
+    if (!shareRecipient) {
+      setError('Recipient user id is required.');
+      return;
+    }
+    setShareBusy(true);
+    setError(null);
+    try {
+      await ensureSharingKey();
+      const plaintext = await getItemPlaintext(uuid);
+      await shareItem(uuid, shareRecipient, plaintext);
+      setShareOpen(false);
+      setShareRecipient('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to share item.');
+    } finally {
+      setShareBusy(false);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -127,6 +158,17 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
                   {copied ? 'Copied' : 'Copy'}
                 </span>
               </button>
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                aria-label={`Share ${overview.title}`}
+                className="rounded-md border border-border px-3 py-2 font-medium text-text hover:bg-surface-raised"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Share2 className="size-4" aria-hidden="true" />
+                  Share
+                </span>
+              </button>
             </dd>
           </div>
 
@@ -149,6 +191,57 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
           ) : null}
         </dl>
       </div>
+
+      {shareOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Share ${overview.title}`}
+          className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShareOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShareOpen(false);
+          }}
+        >
+          <div className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-surface p-4 shadow-lg">
+            <h3 className="text-sm font-semibold text-text">Share “{overview.title}”</h3>
+            <p className="text-xs text-text-muted">
+              Encrypts the item under a one-time key and delivers it to the recipient’s inbox. The
+              server only ever stores ciphertext.
+            </p>
+            <label className="block text-xs font-medium text-text-muted" htmlFor="share-recipient">
+              Recipient user id
+            </label>
+            <input
+              id="share-recipient"
+              value={shareRecipient}
+              onChange={(e) => setShareRecipient(e.target.value)}
+              placeholder="recipient username"
+              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-text"
+            />
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShareOpen(false)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-text hover:bg-surface-raised"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmShare()}
+                disabled={shareBusy}
+                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+              >
+                {shareBusy ? 'Sharing…' : 'Share'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

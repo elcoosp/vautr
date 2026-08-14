@@ -1,9 +1,11 @@
 import type { CoreAction, OpaqueHandle } from '@vautr/client-sdk';
+import { VautrMlpClient } from '@vautr/client-sdk';
 import { VautrWebClient } from '@vautr/client-sdk/real';
 import type { DecryptedOverview } from '@vautr/ui-logic';
 import { attachStoreToEventBus, vaultEventBus, vaultStore } from '@vautr/ui-logic';
 
 let client: VautrWebClient | null = null;
+let mlp: VautrMlpClient | null = null;
 let storeAttached = false;
 
 /**
@@ -93,3 +95,26 @@ export function release(handle: OpaqueHandle): Promise<void> {
 export function performAction(action: CoreAction): Promise<void> {
   return getClient().performAction(action);
 }
+
+/** The MLP client (sharing PKI, projects/secrets) sharing this session. */
+export function getMlp(): VautrMlpClient {
+  if (!mlp) {
+    mlp = new VautrMlpClient(getClient().getApi());
+  }
+  return mlp;
+}
+
+// --- sharing (ADR-007) ---
+export const getItemPlaintext = (uuid: string): Promise<Uint8Array> =>
+  getClient().getItemPlaintext(uuid);
+export const ensureSharingKey = (): Promise<string> => getClient().ensureSharingKey(getMlp());
+export const shareItem = (
+  itemUuid: string,
+  recipientUserId: string,
+  plaintext: Uint8Array,
+): Promise<void> => getClient().shareItem(getMlp(), itemUuid, recipientUserId, plaintext);
+export const getShareInbox = () => getClient().getShareInbox(getMlp());
+export const acceptShare = (incoming: unknown): Promise<Uint8Array> =>
+  getClient().acceptShare(getMlp(), incoming);
+export const revokeShare = (itemUuid: string): Promise<void> =>
+  getClient().revokeShare(getMlp(), itemUuid);
