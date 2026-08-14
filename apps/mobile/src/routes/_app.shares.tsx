@@ -13,24 +13,40 @@ import { Input } from '../../components/ui/input';
 import { services } from '../../lib/client';
 import { useSession } from '../../lib/session';
 
-export const Route = createFileRoute('/_app/shares')({
-  component: SharesScreen,
-});
+interface GroupInboxEntry {
+  group_id: string;
+  name: string;
+  admin_uuid: string;
+  member_uuid: string;
+  wrapped_sik: string;
+  ephemeral_public_key: string;
+}
+
+interface GroupItem {
+  itemUuid: string;
+  bytes: number;
+}
 
 /**
- * Native-gated sharing inbox (VTR-070). Only meaningful when the uniffi core
- * is linked (`getMobileClient() !== null`); on an HTTP-only build the FFI
- * client is absent and we surface a clear gated message. The crypto runs in
- * Rust — plaintext never enters the JS heap.
+ * Native-gated sharing inbox + group sharing (VTR-070). Only meaningful when
+ * the uniffi core is linked (`getMobileClient() !== null`); on an HTTP-only
+ * build the FFI client is absent and we surface a clear gated message. The
+ * crypto runs in Rust — plaintext never enters the JS heap.
  */
 function SharesScreen() {
   const username = useSession((s) => s.username);
   const [inbox, setInbox] = useState<Array<{ itemUuid: string; bytes: number }> | null>(null);
   const [recipient, setRecipient] = useState('');
-  const [groupId, setGroupId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
+  // Group sharing state.
+  const [groups, setGroups] = useState<GroupInboxEntry[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState('');
+  const [groupItemUuid, setGroupItemUuid] = useState('');
+  const [groupItems, setGroupItems] = useState<GroupItem[] | null>(null);
 
   const native = getMobileClient()?.getNativeBridge() ?? null;
   const sharing: MobileSharingClient | null = native
@@ -48,9 +64,19 @@ function SharesScreen() {
     }
   }, [sharing]);
 
+  const loadGroups = useCallback(async () => {
+    if (!sharing) return;
+    try {
+      setGroups(await sharing.getGroupInbox());
+    } catch {
+      setGroups([]);
+    }
+  }, [sharing]);
+
   useEffect(() => {
     void loadInbox();
-  }, [loadInbox]);
+    void loadGroups();
+  }, [loadInbox, loadGroups]);
 
   if (!native || !sharing) {
     return (
@@ -70,8 +96,6 @@ function SharesScreen() {
     setInfo(null);
     try {
       const sender = username ?? 'self';
-      // Demo item: a freshly-encrypted vault item would be passed here. We share
-      // a placeholder payload to exercise the native share flow end-to-end.
       const itemUuid = `item-${Date.now()}`;
       await sharing.shareItem(
         sender,
@@ -95,7 +119,8 @@ function SharesScreen() {
     try {
       const json = await sharing.createGroup('Mobile sharing group', 'self');
       const g = JSON.parse(json) as { group_id: string };
-      setGroupId(g.group_id);
+      setActiveGroupId(g.group_id);
+      await loadGroups();
       setInfo(`Created group ${g.group_id}. Add members to share into it.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Group create failed.');
@@ -103,6 +128,88 @@ function SharesScreen() {
       setBusy(false);
     }
   };
+
+  const addMember = async () => {
+    if (!activeGroupId) {
+      setError('Create or select a group first.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const groupJson = sharing.getGroupKey(activeGroupId);
+      if (!groupJson) throw new Error('group key not found locally');
+      await sharing.addGroupMember(groupJson, memberId);
+      setInfo(`Added ${memberId} to the group.`);
+      setMemberId('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Add member failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const shareToGroup = async () => {
+    if (!activeGroupId) {
+      setError('Create or select a group first.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const groupJson = sharing.getGroupKey(activeGroupId);
+      if (!groupJson) throw new Error('group key not found locally');
+      await sharing.shareToGroup(
+        groupJson,
+        activeGroupId,
+        groupItemUuid,
+        new TextEncoder().encode('shared-secret'),
+      );
+      setInfo(`Shared ${groupItemUuid} into the group.`);
+      setGroupItemUuid('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Share to group failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const acceptInvite = async (entry: GroupInboxEntry) => {
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      await sharing.acceptGroup(JSON.stringify(entry));
+      await loadGroups();
+      setInfo(`Accepted invite to group ${entry.group_id}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Accept invite failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadGroupItems = async (groupId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const groupJson = sharing.getGroupKey(groupId);
+      if (!groupJson) throw new Error('group key not found locally');
+      const items = await sharing.listGroupItems(groupJson, groupId);
+      setGroupItems(
+        items.map((it) => ({ itemUuid: it.itemUuid, bytes: it.plaintext.length })),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load group items.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const invites = groups.filter((g) => g.wrapped_sik && g.admin_uuid !== username);
+  const myGroups = groups.filter((g) => !g.wrapped_sik || g.admin_uuid === username);
 
   return (
     <View className="gap-4">
@@ -140,10 +247,82 @@ function SharesScreen() {
         <Button variant="outline" onPress={() => void createGroup()} disabled={busy}>
           <ButtonText>New group</ButtonText>
         </Button>
-        {groupId ? (
-          <Text className="text-xs text-muted-foreground">Active group: {groupId}</Text>
+        {activeGroupId ? (
+          <Text className="text-xs text-muted-foreground">Active group: {activeGroupId}</Text>
+        ) : null}
+
+        <Text className="mt-1 text-xs font-medium text-muted-foreground">Add member</Text>
+        <Input
+          placeholder="Member user id"
+          value={memberId}
+          onChangeText={setMemberId}
+          autoCapitalize="none"
+        />
+        <Button
+          onPress={() => void addMember()}
+          disabled={busy || memberId.length === 0 || !activeGroupId}
+        >
+          <ButtonText>{busy ? 'Adding…' : 'Add member'}</ButtonText>
+        </Button>
+
+        <Text className="mt-1 text-xs font-medium text-muted-foreground">Share item to group</Text>
+        <Input
+          placeholder="Item uuid"
+          value={groupItemUuid}
+          onChangeText={setGroupItemUuid}
+          autoCapitalize="none"
+        />
+        <Button
+          onPress={() => void shareToGroup()}
+          disabled={busy || groupItemUuid.length === 0 || !activeGroupId}
+        >
+          <ButtonText>{busy ? 'Sharing…' : 'Share to group'}</ButtonText>
+        </Button>
+
+        <Button
+          variant="ghost"
+          onPress={() => activeGroupId && void loadGroupItems(activeGroupId)}
+          disabled={busy || !activeGroupId}
+        >
+          <ButtonText>View group items</ButtonText>
+        </Button>
+        {groupItems ? (
+          groupItems.length === 0 ? (
+            <Text className="text-xs text-muted-foreground">No items in this group.</Text>
+          ) : (
+            groupItems.map((it) => (
+              <Text key={it.itemUuid} className="text-xs text-muted-foreground">
+                {it.itemUuid} · {it.bytes} bytes
+              </Text>
+            ))
+          )
         ) : null}
       </Card>
+
+      {invites.length > 0 ? (
+        <Card className="gap-2 p-4">
+          <Text className="text-base font-medium text-foreground">Group invites</Text>
+          {invites.map((entry) => (
+            <View key={entry.group_id} className="flex-row items-center justify-between">
+              <Text className="text-sm text-foreground">{entry.name}</Text>
+              <Button variant="outline" onPress={() => void acceptInvite(entry)} disabled={busy}>
+                <ButtonText>Accept</ButtonText>
+              </Button>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {myGroups.length > 0 ? (
+        <Card className="gap-2 p-4">
+          <Text className="text-base font-medium text-foreground">My groups</Text>
+          {myGroups.map((g) => (
+            <Text key={g.group_id} className="text-xs text-muted-foreground">
+              {g.name} ({g.group_id})
+            </Text>
+          ))}
+        </Card>
+      ) : null}
 
       <View className="gap-2">
         <Text className="text-base font-medium text-foreground">Inbox</Text>
@@ -165,3 +344,7 @@ function SharesScreen() {
     </View>
   );
 }
+
+export const Route = createFileRoute('/_app/shares')({
+  component: SharesScreen,
+});

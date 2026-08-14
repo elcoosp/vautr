@@ -207,11 +207,29 @@ export interface SharingRelay {
   ): Promise<void>;
   listGroupItems(groupId: string): Promise<Array<{ item_uuid: string; payload: string }>>;
   addGroupItem(groupId: string, input: { item_uuid: string; payload: string }): Promise<void>;
+  /** List the groups the caller belongs to, with each member's wrapped Group SIK. */
+  groupInbox(): Promise<
+    Array<{
+      group_id: string;
+      name: string;
+      admin_uuid: string;
+      member_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+    }>
+  >;
 }
 
 export class MobileSharingClient {
   private readonly native: VautrNativeBridge;
   private readonly api: SharingRelay;
+  /**
+   * Local cache of `{ group, secret }` JSON keyed by group_id (the Group SIK).
+   * Mirrors the web client's `store.groupKeys`. Populated by `createGroup`
+   * (admin) and `acceptGroup` (member). The Group SIK is legitimately held in
+   * JS for sharing; this is not a `read_secret`/reveal path.
+   */
+  private readonly groupKeys = new Map<string, string>();
 
   constructor(native: VautrNativeBridge, api: SharingRelay) {
     this.native = native;
@@ -278,9 +296,33 @@ export class MobileSharingClient {
   /** Create a group (admin) and persist its Group SIK locally. */
   async createGroup(name: string, adminUuid: string): Promise<string> {
     const groupJson = await this.native.createGroup(name, adminUuid);
-    const _g = JSON.parse(groupJson) as { group_id: string };
+    const g = JSON.parse(groupJson) as { group_id: string };
+    this.groupKeys.set(g.group_id, groupJson);
     await this.api.createGroup({ name });
     return groupJson;
+  }
+
+  /** List the groups the caller belongs to (admin + member invites). */
+  async getGroupInbox(): Promise<
+    Array<{
+      group_id: string;
+      name: string;
+      admin_uuid: string;
+      member_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+    }>
+  > {
+    return this.api.groupInbox();
+  }
+
+  /**
+   * Return the persisted `{ group, secret }` JSON for a group this client is an
+   * admin or member of, or null if not cached locally. Used to reconstruct the
+   * group key for adding members / sharing / decrypting items.
+   */
+  getGroupKey(groupId: string): string | null {
+    return this.groupKeys.get(groupId) ?? null;
   }
 
   /** Add a member to a group: wrap the Group SIK for them and upload it. */
@@ -303,7 +345,10 @@ export class MobileSharingClient {
 
   /** Decapsulate + persist the Group SIK from an inbox entry (member side). */
   async acceptGroup(groupInboxEntryJson: string): Promise<string> {
-    return this.native.unwrapGroupKey(groupInboxEntryJson);
+    const memberKeyJson = await this.native.unwrapGroupKey(groupInboxEntryJson);
+    const g = JSON.parse(memberKeyJson) as { group: { group_id: string } };
+    this.groupKeys.set(g.group.group_id, memberKeyJson);
+    return memberKeyJson;
   }
 
   /** Encrypt a vault item's plaintext for a group and upload it. */

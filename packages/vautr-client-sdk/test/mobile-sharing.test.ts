@@ -55,6 +55,7 @@ function fakeRelay(): SharingRelay {
     addGroupMember: vi.fn(),
     listGroupItems: vi.fn(),
     addGroupItem: vi.fn(),
+    groupInbox: vi.fn().mockResolvedValue([]),
   };
 }
 
