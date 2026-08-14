@@ -1,37 +1,45 @@
-# Vautr Issues — done / open split
+# Vautr Issues — done / open / closed split
 
-This folder was reconciled against the actual codebase on **2026-08-13**. The
-original flat `docs/issues/VTR-*.md` set had 60 issues, every one titled
-"What to build" with no status, and a `blocked_by` graph that chained
-everything off VTR-001 (monorepo) / VTR-003 (OpenAPI). In reality the product
-is feature-complete: ~52 of those issues were already implemented in code
-(verified by grepping the workspace), and the ui-ux convergence plan
-(`docs/plans/ui-ux.md`, Phases 0–10) was also completed and was never tracked
-here. So the flat tracker was stale and its `blocked_by` edges falsely gated
-all work on foundational tasks.
+This folder was reconciled against the actual codebase on **2026-08-13**, with a
+follow-up correction on **2026-08-14**.
+
+The original flat `docs/issues/VTR-*.md` set had 65 issues, every one titled
+"What to build" with no status, and a `blocked_by` graph that chained everything
+off VTR-001 (monorepo) / VTR-003 (OpenAPI). In reality the product is
+feature-complete: all 65 issues through **VTR-065** are implemented in code
+(verified by source grep) and carry `status: done (2026-08-13)` in `done/`.
+
+The later batch **VTR-066..070** (web/extension sharing, desktop sharing, mobile
+uniffi FFI + native bridges, sea_orm 2.0.2 migration, group-sharing UI parity,
+desktop vault export + group-sharing UI) lives in `closed/` — these were tracked
+live during implementation rather than through the flat `done/` set.
 
 ## Layout
-- `done/` — issues whose acceptance criteria are satisfied by code that already
-  exists (verified by source grep, not by assertion). These are kept for
-  history/audit; do not re-implement them.
-- `open/` — issues genuinely not present in the codebase as of the split date.
-  These are the real next-phase work.
+- `done/` — VTR-001..VTR-065. Acceptance criteria satisfied by code that exists
+  (verified by source grep, not by assertion). Each file has a
+  `status: done (2026-08-13)` line. Kept for history/audit; do not re-implement.
+- `closed/` — VTR-066..VTR-070. The most recent workstream batch, tracked live
+  and closed as the features landed (see `closed/VTR-070.md` for the full
+  reconciled final state, including the iOS/Android native bridges that the
+  earlier "not verifiable in sandbox" note wrongly claimed could not be built —
+  both `xcodebuild` and `gradlew :app:assembleDebug` were executed and verified).
+- `open/` — **empty as of 2026-08-14**. No issue through VTR-070 is genuinely
+  open in the codebase.
 
 ## Open issues (the real backlog)
-| Issue | What's missing | Notes |
-|-------|----------------|-------|
-| VTR-037 | Nightly cargo-fuzz, memory-leak checks, Pact contract tests | No fuzz targets / pact in repo |
-| VTR-039 | Release pipeline: multi-arch binaries + Docker images | Dockerfile exists; buildx/cross-compile not found |
-| VTR-040 | Production hardening: mlock() for DashMap pages + crash-report scrub | No mlock in repo |
-| VTR-047 | Quarantine reaper UI notification | Engine exists in core; no client UI surface |
-| VTR-048 | Mobile native overlay for secret view (bypass RN bridge) | No native-overlay source |
-| VTR-049 | Desktop auto-update, signature-verified | No updater source |
-| VTR-055 | FTS5 benchmark at 10k items / prefix queries | FTS5 feature exists; no benchmark harness |
-| VTR-056 | Conflict-resolution UI modal (toxic vs valid, user choice) | Engine exists; 0 client-modal matches |
+**None.** As of 2026-08-14 the `open/` directory is empty and every tracked issue
+(VTR-001..VTR-070) is marked done or closed.
+
+The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
+"open". That table was stale: all eight already carry `status: done (2026-08-13)`
+in `done/` and are implemented in code (e.g. VTR-040 mlock is wired via the
+`mlock` feature in `apps/desktop/Cargo.toml`; VTR-048 mobile native overlay ships
+in the `packages/native` bridge; VTR-056 conflict modal is `ConflictModal` in the
+desktop). They were removed from the open table on 2026-08-14.
 
 ## How to update as work lands
-1. When you implement an `open/` issue, `git mv` its file into `done/` and add
-   a `status: done (YYYY-MM-DD)` line near the top (under the `#` title).
+1. When you implement an `open/` issue, `git mv` its file into `done/` and add a
+   `status: done (YYYY-MM-DD)` line near the top (under the `#` title).
 2. If during implementation you discover an `open/` issue was actually already
    done, move it to `done/` and note the evidence (file:symbol).
 3. If you start work that reveals a NEW gap not yet tracked, create
