@@ -285,4 +285,133 @@ export class MobileApiClient {
   async revokeToken(uuid: string): Promise<void> {
     await this.http.request('DELETE', HttpClient.interpolate('/tokens/{uuid}', { uuid }));
   }
+
+  // ── Sharing PKI relay (ADR-007 / sharing-pki.md) ──────────────────────
+  /** Publish this user's sharing public key (X25519, base64). */
+  async publishSharingPublicKey(userId: string, publicKeyB64: string): Promise<void> {
+    await this.http.request(
+      'PUT',
+      HttpClient.interpolate('/users/{user_id}/public-key', { user_id: userId }),
+      { sharing_public_key: publicKeyB64 },
+    );
+  }
+  /** Fetch a recipient's sharing public key (base64), or null if unset. */
+  async getSharingPublicKey(userId: string): Promise<string | null> {
+    const res = await this.http.request<{ sharing_public_key: string | null }>(
+      'GET',
+      HttpClient.interpolate('/users/{user_id}/public-key', { user_id: userId }),
+    );
+    return res.sharing_public_key;
+  }
+  /** Create a 1:1 share relay record (server stores wrapped_sik + payload). */
+  async createShare(input: {
+    item_uuid: string;
+    recipient_uuid: string;
+    wrapped_sik: string;
+    ephemeral_public_key: string;
+  }): Promise<void> {
+    await this.http.request('POST', '/shares', input);
+  }
+  /** Upload the share's SIK-encrypted payload blob. */
+  async uploadSharePayload(itemUuid: string, payloadB64: string): Promise<void> {
+    await this.http.request(
+      'POST',
+      HttpClient.interpolate('/shares/{item_uuid}/payload', { item_uuid: itemUuid }),
+      { encrypted_payload: payloadB64 },
+    );
+  }
+  /** List shares waiting in our inbox. */
+  async listShareInbox(): Promise<
+    Array<{
+      share_id: string;
+      sender_uuid: string;
+      item_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+      encrypted_payload: string;
+    }>
+  > {
+    const res = await this.http.request<{
+      shares: Array<{
+        share_id: string;
+        sender_uuid: string;
+        item_uuid: string;
+        wrapped_sik: string;
+        ephemeral_public_key: string;
+        encrypted_payload: string;
+      }>;
+    }>('GET', '/shares/inbox');
+    return res.shares;
+  }
+  // ── Group sharing relay (sharing-pki.md §6) ───────────────────────────
+  async createGroup(input: {
+    name: string;
+  }): Promise<{ group_id: string; name: string; admin_uuid: string }> {
+    return this.http.request('POST', '/groups', input);
+  }
+  async listGroups(): Promise<Array<{ group_id: string; name: string; admin_uuid: string }>> {
+    const res = await this.http.request<{
+      groups: Array<{ group_id: string; name: string; admin_uuid: string }>;
+    }>('GET', '/groups');
+    return res.groups;
+  }
+  /** Fetch a group's member list with each member's wrapped Group SIK. */
+  async groupInbox(): Promise<
+    Array<{
+      group_id: string;
+      name: string;
+      admin_uuid: string;
+      member_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+    }>
+  > {
+    const res = await this.http.request<{
+      groups: Array<{
+        group_id: string;
+        name: string;
+        admin_uuid: string;
+        member_uuid: string;
+        wrapped_sik: string;
+        ephemeral_public_key: string;
+      }>;
+    }>('GET', '/groups/inbox');
+    return res.groups;
+  }
+  async addGroupMember(
+    groupId: string,
+    input: { member_uuid: string; wrapped_sik: string; ephemeral_public_key: string },
+  ): Promise<void> {
+    await this.http.request(
+      'POST',
+      HttpClient.interpolate('/groups/{group_id}/members', { group_id: groupId }),
+      input,
+    );
+  }
+  async listGroupItems(groupId: string): Promise<Array<{ item_uuid: string; payload: string }>> {
+    const res = await this.http.request<{ items: Array<{ item_uuid: string; payload: string }> }>(
+      'GET',
+      HttpClient.interpolate('/groups/{group_id}/items', { group_id: groupId }),
+    );
+    return res.items;
+  }
+  async addGroupItem(
+    groupId: string,
+    input: { item_uuid: string; payload: string },
+  ): Promise<void> {
+    await this.http.request(
+      'POST',
+      HttpClient.interpolate('/groups/{group_id}/items', { group_id: groupId }),
+      input,
+    );
+  }
+  async deleteGroupItem(groupId: string, itemUuid: string): Promise<void> {
+    await this.http.request(
+      'DELETE',
+      HttpClient.interpolate('/groups/{group_id}/items/{item_uuid}', {
+        group_id: groupId,
+        item_uuid: itemUuid,
+      }),
+    );
+  }
 }

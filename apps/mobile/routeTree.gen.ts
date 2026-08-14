@@ -19,6 +19,7 @@ import { Route as AppMachineAccountsRouteImport } from './src/routes/_app.machin
 import { Route as AppMfaRouteImport } from './src/routes/_app.mfa'
 import { Route as AppSecretsRouteImport } from './src/routes/_app.secrets'
 import { Route as AppSettingsRouteImport } from './src/routes/_app.settings'
+import { Route as AppSharesRouteImport } from './src/routes/_app.shares'
 import { Route as AppTokensRouteImport } from './src/routes/_app.tokens'
 import { Route as AuthLoginRouteImport } from './src/routes/_auth.login'
 import { Route as AppProjectsProjectIdRouteImport } from './src/routes/_app.projects.$projectId'
@@ -73,6 +74,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSharesRoute = AppSharesRouteImport.update({
+  id: '/shares',
+  path: '/shares',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTokensRoute = AppTokensRouteImport.update({
   id: '/tokens',
   path: '/tokens',
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/mfa': typeof AppMfaRoute
   '/secrets': typeof AppSecretsRoute
   '/settings': typeof AppSettingsRoute
+  '/shares': typeof AppSharesRoute
   '/tokens': typeof AppTokensRoute
   '/login': typeof AuthLoginRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/mfa': typeof AppMfaRoute
   '/secrets': typeof AppSecretsRoute
   '/settings': typeof AppSettingsRoute
+  '/shares': typeof AppSharesRoute
   '/tokens': typeof AppTokensRoute
   '/login': typeof AuthLoginRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/_app/mfa': typeof AppMfaRoute
   '/_app/secrets': typeof AppSecretsRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/shares': typeof AppSharesRoute
   '/_app/tokens': typeof AppTokensRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_app/': typeof AppIndexRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/mfa'
     | '/secrets'
     | '/settings'
+    | '/shares'
     | '/tokens'
     | '/login'
     | '/projects/$projectId'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/mfa'
     | '/secrets'
     | '/settings'
+    | '/shares'
     | '/tokens'
     | '/login'
     | '/projects/$projectId'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/_app/mfa'
     | '/_app/secrets'
     | '/_app/settings'
+    | '/_app/shares'
     | '/_app/tokens'
     | '/_auth/login'
     | '/_app/'
@@ -275,6 +287,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/shares': {
+      id: '/_app/shares'
+      path: '/shares'
+      fullPath: '/shares'
+      preLoaderRoute: typeof AppSharesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tokens': {
       id: '/_app/tokens'
       path: '/tokens'
@@ -332,6 +351,7 @@ interface AppRouteChildren {
   AppMfaRoute: typeof AppMfaRoute
   AppSecretsRoute: typeof AppSecretsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppSharesRoute: typeof AppSharesRoute
   AppTokensRoute: typeof AppTokensRoute
   AppIndexRoute: typeof AppIndexRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren
@@ -346,6 +366,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMfaRoute: AppMfaRoute,
   AppSecretsRoute: AppSecretsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppSharesRoute: AppSharesRoute,
   AppTokensRoute: AppTokensRoute,
   AppIndexRoute: AppIndexRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRouteWithChildren,

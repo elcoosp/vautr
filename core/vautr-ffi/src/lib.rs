@@ -17,6 +17,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod client;
+pub mod sharing;
 
 pub use client::*;
 
@@ -269,5 +270,116 @@ mod tests {
         fn on_action(&self, action: CoreAction, secret: String) {
             *self.captured.write().unwrap() = Some((action, secret));
         }
+    }
+
+    /// FFI sharing roundtrip: a sender shares an item to a recipient's public
+    /// key via `ffi_share_item`, the recipient accepts via `ffi_accept_share`
+    /// using their persisted sharing secret, and recovers the plaintext. This
+    /// exercises the exact uniffi boundary the React Native layer uses.
+    #[test]
+    fn ffi_share_accept_roundtrip() {
+        use crate::sharing::{ffi_accept_share, ffi_share_item};
+        use base64::Engine;
+        use vautr_crypto::sharing::SharingKeyPair;
+
+        let sender = SharingKeyPair::generate();
+        let recipient = SharingKeyPair::generate();
+        let recipient_pub_b64 = base64::engine::general_purpose::STANDARD.encode(recipient.public);
+        let recipient_secret_b64 =
+            base64::engine::general_purpose::STANDARD.encode(recipient.secret_bytes());
+
+        let sender_uuid = Uuid::new_v4().to_string();
+        let recipient_uuid = Uuid::new_v4().to_string();
+        let item_uuid = Uuid::new_v4().to_string();
+        let plaintext = b"mobile shared secret".to_vec();
+
+        let bundle = ffi_share_item(
+            sender_uuid,
+            recipient_uuid,
+            item_uuid.clone(),
+            recipient_pub_b64,
+            plaintext.clone(),
+        )
+        .expect("share_item");
+
+        // The relay delivers an IncomingShare to the recipient.
+        let incoming = serde_json::json!({
+            "share_id": bundle.share_id,
+            "sender_uuid": bundle.sender_uuid,
+            "item_uuid": bundle.item_uuid,
+            "wrapped_sik": bundle.wrapped_sik,
+            "ephemeral_public_key": bundle.ephemeral_public_key,
+            "encrypted_payload": bundle.encrypted_payload,
+        });
+        let incoming_json = serde_json::to_string(&incoming).unwrap();
+
+        let recovered = ffi_accept_share(incoming_json, recipient_secret_b64).expect("accept_share");
+        assert_eq!(recovered, plaintext);
+        let _ = sender;
+    }
+
+    /// Group sharing roundtrip at the FFI boundary: admin creates a group, adds
+    /// a member (wraps the Group SIK for their public key), the member unwraps
+    /// it, and both encrypt/decrypt a group item under the Group SIK.
+    #[test]
+    fn ffi_group_share_roundtrip() {
+        use crate::sharing::{
+            ffi_add_group_member, ffi_create_group, ffi_decrypt_group_item, ffi_encrypt_group_item,
+            ffi_unwrap_group_key,
+        };
+        use base64::Engine;
+        use vautr_crypto::sharing::SharingKeyPair;
+
+        let admin = SharingKeyPair::generate();
+        let member = SharingKeyPair::generate();
+        let member_pub_b64 = base64::engine::general_purpose::STANDARD.encode(member.public);
+        let member_secret_b64 =
+            base64::engine::general_purpose::STANDARD.encode(member.secret_bytes());
+
+        let group = ffi_create_group("Mobile Team".into(), Uuid::new_v4().to_string())
+            .expect("create_group");
+
+        let wrapped = ffi_add_group_member(
+            group_json(&group),
+            Uuid::new_v4().to_string(),
+            member_pub_b64,
+        )
+        .expect("add_group_member");
+
+        // Member unwraps the Group SIK into their own persisted key.
+        let member_key_json = ffi_unwrap_group_key(
+            serde_json::to_string(&serde_json::json!({
+                "group_id": wrapped.group_id,
+                "member_uuid": wrapped.member_uuid,
+                "wrapped_sik": wrapped.wrapped_sik,
+                "ephemeral_public_key": wrapped.ephemeral_public_key,
+            }))
+            .unwrap(),
+            member_secret_b64,
+        )
+        .expect("unwrap_group_key");
+
+        let item_uuid = Uuid::new_v4().to_string();
+        let plaintext = b"group item payload".to_vec();
+
+        // Admin encrypts under the Group SIK.
+        let ct = ffi_encrypt_group_item(group_json(&group), item_uuid.clone(), plaintext.clone())
+            .expect("encrypt");
+        // Member decrypts using their unwrapped key.
+        let recovered = ffi_decrypt_group_item(member_key_json, item_uuid, ct).expect("decrypt");
+        assert_eq!(recovered, plaintext);
+        let _ = admin;
+    }
+
+    /// Helper: serialize an `FfiGroupKey` into the `{ group, secret_b64 }` JSON
+    /// the FFI functions accept.
+    fn group_json(g: &crate::sharing::FfiGroupKey) -> String {
+        serde_json::to_string(&serde_json::json!({
+            "group_id": g.group_id,
+            "name": g.name,
+            "admin_uuid": g.admin_uuid,
+            "secret_b64": g.secret_b64,
+        }))
+        .unwrap()
     }
 }

@@ -10376,6 +10376,7 @@ dependencies = [
  "vautr-crypto",
  "vautr-db",
  "vautr-domain",
+ "vautr-sharing",
  "zeroize",
 ]
 

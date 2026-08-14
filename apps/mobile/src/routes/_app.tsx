@@ -13,6 +13,7 @@ import {
   Replace,
   Settings,
   Settings2,
+  Share2,
 } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
@@ -27,36 +28,35 @@ import {
 } from '../../components/ui/sheet';
 import { useToast } from '../../components/ui/toast';
 import { requireBiometric } from '../../lib/biometrics';
-import { services } from '../../lib/client';
+import { isLocalVaultActive, services } from '../../lib/client';
 import { useSession } from '../../lib/session';
 
 export const Route = createFileRoute('/_app')({
   component: AppShell,
 });
 
-// Canonical mobile IA: three primary tabs on a bottom bar + a "More" sheet for
-// the rest. Vault has no mobile screen yet, so Secrets is the primary
-// view/use-credentials surface. Labels match the cross-client canon exactly.
-const PRIMARY = [
-  { to: '/secrets', label: 'Secrets', icon: HardDrive },
-  { to: '/generator', label: 'Generator', icon: Settings2 },
-  { to: '/settings', label: 'Settings', icon: Settings },
-] as const;
-
-const MORE = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/', label: 'Projects', icon: Folder },
-  { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
-  { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
-  { to: '/tokens', label: 'Tokens', icon: Globe },
-  { to: '/import-export', label: 'Import / export', icon: Replace },
-] as const;
-
 function AppShell() {
   const username = useSession((s) => s.username);
   const [locked, setLocked] = useState(false);
   const router = useRouter();
   const toast = useToast();
+
+  // Native-gated sharing tab: only when the uniffi core is linked (VTR-070).
+  const PRIMARY = [
+    { to: '/secrets', label: 'Secrets', icon: HardDrive },
+    { to: '/generator', label: 'Generator', icon: Settings2 },
+    { to: '/settings', label: 'Settings', icon: Settings },
+    ...(isLocalVaultActive() ? [{ to: '/shares', label: 'Shares', icon: Share2 } as const] : []),
+  ];
+
+  const MORE = [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/', label: 'Projects', icon: Folder },
+    { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
+    { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
+    { to: '/tokens', label: 'Tokens', icon: Globe },
+    { to: '/import-export', label: 'Import / export', icon: Replace },
+  ];
 
   const go = (to: string) => () => router.navigate({ to: to as '/' });
 

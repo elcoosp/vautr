@@ -68,6 +68,34 @@ export interface VautrNativeBridge {
   sync(): Promise<void>;
   /** Register the OS-keystore SVK adapter (biometric unlock). */
   setSecureEnclaveBridge(bridge: SecureEnclaveBridge): Promise<void>;
+
+  // ── Sharing PKI (ADR-007 / sharing-pki.md §6) ────────────────────────
+  // These run the zero-knowledge crypto in Rust; plaintext secret bytes are
+  // returned only to native callers and never enter the JS heap.
+  /** Ensure a sharing keypair exists; returns the public key (base64) to publish. */
+  ensureSharingKey(): Promise<string>;
+  /** Persist the sharing secret key (base64) loaded from the OS secure store. */
+  setSharingSecret(secretB64: string | null): Promise<void>;
+  /** Build a 1:1 share bundle for a recipient (returns the JSON bundle). */
+  shareItem(
+    senderUuid: string,
+    recipientUuid: string,
+    itemUuid: string,
+    recipientPubkeyB64: string,
+    plaintext: Uint8Array,
+  ): Promise<string>;
+  /** Decrypt an incoming 1:1 share (JSON IncomingShare) → plaintext bytes. */
+  acceptShare(incomingJson: string): Promise<Uint8Array>;
+  /** Create a sharing group; returns the admin's `{ group, secret }` JSON. */
+  createGroup(name: string, adminUuid: string): Promise<string>;
+  /** Wrap the Group SIK for a new member; returns the wrapped key JSON. */
+  addGroupMember(groupJson: string, memberUuid: string, memberPubkeyB64: string): Promise<string>;
+  /** Member-side: decapsulate the Group SIK from an inbox entry JSON. */
+  unwrapGroupKey(inboxJson: string): Promise<string>;
+  /** Encrypt a vault item's payload for a group; returns base64 ciphertext. */
+  encryptGroupItem(groupJson: string, itemUuid: string, plaintext: Uint8Array): Promise<string>;
+  /** Decrypt a group item's payload (base64) → plaintext bytes. */
+  decryptGroupItem(groupJson: string, itemUuid: string, ctB64: string): Promise<Uint8Array>;
 }
 
 /** Options to {@link initializeVautrCore}. */
@@ -128,6 +156,179 @@ export class MobileVautrClient {
   /** Run a metadata-first sync. */
   sync(): Promise<void> {
     return this.native.sync();
+  }
+
+  /** The underlying uniffi native bridge (for building a `MobileSharingClient`). */
+  getNativeBridge(): VautrNativeBridge {
+    return this.native;
+  }
+}
+
+/**
+ * Mobile sharing client (ADR-007 / sharing-pki.md §6). Zero-knowledge: the
+ * crypto runs in Rust via the uniffi `MobileClient` (the native bridge), and
+ * plaintext secret bytes are only ever returned to native code — never held in
+ * the JS heap. This class layers the HTTP relay (publish/fetch public key,
+ * upload/download share + group bundles) on top of those primitives.
+ *
+ * Native-gated: construct only when `getMobileClient()` is non-null (the uniffi
+ * core is linked). On an HTTP-only build, sharing lives in the web/extension
+ * `VautrMlpClient` instead.
+ *
+ * `SharingRelay` is the subset of the mobile API client the sharing flow needs;
+ * the app's `MobileApiClient` structurally satisfies it.
+ */
+export interface SharingRelay {
+  publishSharingPublicKey(userId: string, publicKeyB64: string): Promise<void>;
+  getSharingPublicKey(userId: string): Promise<string | null>;
+  createShare(input: {
+    item_uuid: string;
+    recipient_uuid: string;
+    wrapped_sik: string;
+    ephemeral_public_key: string;
+  }): Promise<void>;
+  uploadSharePayload(itemUuid: string, payloadB64: string): Promise<void>;
+  listShareInbox(): Promise<
+    Array<{
+      share_id: string;
+      sender_uuid: string;
+      item_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+      encrypted_payload: string;
+    }>
+  >;
+  createGroup(input: {
+    name: string;
+  }): Promise<{ group_id: string; name: string; admin_uuid: string }>;
+  addGroupMember(
+    groupId: string,
+    input: { member_uuid: string; wrapped_sik: string; ephemeral_public_key: string },
+  ): Promise<void>;
+  listGroupItems(groupId: string): Promise<Array<{ item_uuid: string; payload: string }>>;
+  addGroupItem(groupId: string, input: { item_uuid: string; payload: string }): Promise<void>;
+}
+
+export class MobileSharingClient {
+  private readonly native: VautrNativeBridge;
+  private readonly api: SharingRelay;
+
+  constructor(native: VautrNativeBridge, api: SharingRelay) {
+    this.native = native;
+    this.api = api;
+  }
+
+  /** Ensure our sharing keypair exists and publish its public key to the PKI. */
+  async publishMyPublicKey(userId: string): Promise<void> {
+    const pub = await this.native.ensureSharingKey();
+    await this.api.publishSharingPublicKey(userId, pub);
+  }
+
+  /** 1:1 share: encrypt for `recipientUserId`, then relay the bundle. */
+  async shareItem(
+    senderUuid: string,
+    recipientUserId: string,
+    itemUuid: string,
+    plaintext: Uint8Array,
+  ): Promise<void> {
+    const pub = await this.api.getSharingPublicKey(recipientUserId);
+    if (!pub) throw new Error(`recipient ${recipientUserId} has no sharing public key`);
+    const bundleJson = await this.native.shareItem(
+      senderUuid,
+      recipientUserId,
+      itemUuid,
+      pub,
+      plaintext,
+    );
+    const b = JSON.parse(bundleJson) as {
+      item_uuid: string;
+      recipient_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+      encrypted_payload: string;
+    };
+    await this.api.createShare({
+      item_uuid: b.item_uuid,
+      recipient_uuid: b.recipient_uuid,
+      wrapped_sik: b.wrapped_sik,
+      ephemeral_public_key: b.ephemeral_public_key,
+    });
+    await this.api.uploadSharePayload(b.item_uuid, b.encrypted_payload);
+  }
+
+  /** Pull the inbox and decrypt each waiting 1:1 share to plaintext. */
+  async collectShares(): Promise<Array<{ itemUuid: string; plaintext: Uint8Array }>> {
+    const inbox = await this.api.listShareInbox();
+    const out: Array<{ itemUuid: string; plaintext: Uint8Array }> = [];
+    for (const s of inbox) {
+      const incoming = JSON.stringify({
+        share_id: s.share_id,
+        sender_uuid: s.sender_uuid,
+        item_uuid: s.item_uuid,
+        wrapped_sik: s.wrapped_sik,
+        ephemeral_public_key: s.ephemeral_public_key,
+        encrypted_payload: s.encrypted_payload,
+      });
+      const plaintext = await this.native.acceptShare(incoming);
+      out.push({ itemUuid: s.item_uuid, plaintext });
+    }
+    return out;
+  }
+
+  /** Create a group (admin) and persist its Group SIK locally. */
+  async createGroup(name: string, adminUuid: string): Promise<string> {
+    const groupJson = await this.native.createGroup(name, adminUuid);
+    const _g = JSON.parse(groupJson) as { group_id: string };
+    await this.api.createGroup({ name });
+    return groupJson;
+  }
+
+  /** Add a member to a group: wrap the Group SIK for them and upload it. */
+  async addGroupMember(groupJson: string, memberUserId: string): Promise<void> {
+    const pub = await this.api.getSharingPublicKey(memberUserId);
+    if (!pub) throw new Error(`member ${memberUserId} has no sharing public key`);
+    const wrappedJson = await this.native.addGroupMember(groupJson, memberUserId, pub);
+    const w = JSON.parse(wrappedJson) as {
+      group_id: string;
+      member_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+    };
+    await this.api.addGroupMember(w.group_id, {
+      member_uuid: w.member_uuid,
+      wrapped_sik: w.wrapped_sik,
+      ephemeral_public_key: w.ephemeral_public_key,
+    });
+  }
+
+  /** Decapsulate + persist the Group SIK from an inbox entry (member side). */
+  async acceptGroup(groupInboxEntryJson: string): Promise<string> {
+    return this.native.unwrapGroupKey(groupInboxEntryJson);
+  }
+
+  /** Encrypt a vault item's plaintext for a group and upload it. */
+  async shareToGroup(
+    groupJson: string,
+    groupId: string,
+    itemUuid: string,
+    plaintext: Uint8Array,
+  ): Promise<void> {
+    const ctB64 = await this.native.encryptGroupItem(groupJson, itemUuid, plaintext);
+    await this.api.addGroupItem(groupId, { item_uuid: itemUuid, payload: ctB64 });
+  }
+
+  /** List + decrypt a group's items (member/admin). */
+  async listGroupItems(
+    groupJson: string,
+    groupId: string,
+  ): Promise<Array<{ itemUuid: string; plaintext: Uint8Array }>> {
+    const items = await this.api.listGroupItems(groupId);
+    const out: Array<{ itemUuid: string; plaintext: Uint8Array }> = [];
+    for (const it of items) {
+      const plaintext = await this.native.decryptGroupItem(groupJson, it.item_uuid, it.payload);
+      out.push({ itemUuid: it.item_uuid, plaintext });
+    }
+    return out;
   }
 }
 

@@ -26,6 +26,7 @@ vautr-domain.workspace = true
 vautr-app-state.workspace = true
 vautr-crypto.workspace = true
 vautr-db.workspace = true
+vautr-sharing.workspace = true
 
 [dev-dependencies]
 # In-crate integration tests exercise the full unlock->list->reveal->lock flow

@@ -138,6 +138,8 @@ pub struct MobileClient {
     /// Native Keychain/Keystore SVK adapter (biometric unlock). Registered via
     /// `set_secure_enclave_bridge`; read by the app to recover the SVK.
     enclave: RwLock<Option<Arc<dyn SecureEnclaveBridge>>>,
+    /// Persisted sharing secret key (base64), used by the sharing PKI surface.
+    sharing_secret: RwLock<Option<String>>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -158,6 +160,7 @@ impl MobileClient {
         Ok(Arc::new(Self {
             inner: Arc::new(client),
             enclave: RwLock::new(None),
+            sharing_secret: RwLock::new(None),
         }))
     }
 
@@ -182,6 +185,7 @@ impl MobileClient {
         Ok(Arc::new(Self {
             inner: Arc::new(client),
             enclave: RwLock::new(None),
+            sharing_secret: RwLock::new(None),
         }))
     }
 
@@ -385,6 +389,140 @@ impl MobileClient {
     /// Rotate the vault key to `new_gen`.
     pub async fn rotate_key(&self, new_gen: u64) -> Result<(), FfiError> {
         self.inner.rotate_key(new_gen).await.map_err(FfiError::Core)
+    }
+
+    // ── Sharing PKI (ADR-007 / sharing-pki.md §6) ───────────────────────
+    // These delegate to the uniffi sharing surface in `crate::sharing`. Plaintext
+    // secret bytes are produced only inside Rust and handed back to the native
+    // caller; they never sit in the JS heap (zero-knowledge invariant).
+
+    /// Ensure a sharing keypair exists; generates + persists one on first use,
+    /// returning the public key (base64) for publishing to the server PKI.
+    pub fn ensure_sharing_key(&self) -> Result<String, FfiError> {
+        let mut guard = self.sharing_secret.write().unwrap();
+        if let Some(existing) = guard.as_ref() {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(existing)
+                .map_err(|e| FfiError::Core(format!("stored sharing secret: {e}")))?;
+            if bytes.len() != 32 {
+                return Err(FfiError::Core("stored sharing secret not 32 bytes".into()));
+            }
+            let mut sk = [0u8; 32];
+            sk.copy_from_slice(&bytes);
+            return Ok(base64::engine::general_purpose::STANDARD
+                .encode(vautr_crypto::sharing::SharingKeyPair::from_secret(sk).public));
+        }
+        let kp = vautr_crypto::sharing::SharingKeyPair::generate();
+        let secret_b64 = base64::engine::general_purpose::STANDARD.encode(kp.secret_bytes());
+        let public_b64 = base64::engine::general_purpose::STANDARD.encode(kp.public);
+        *guard = Some(secret_b64);
+        Ok(public_b64)
+    }
+
+    /// Persist the sharing secret key (base64) loaded from the OS secure store.
+    pub fn set_sharing_secret(&self, secret_b64: Option<String>) -> Result<(), FfiError> {
+        if let Some(s) = secret_b64.as_ref() {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(s)
+                .map_err(|e| FfiError::Core(format!("sharing secret b64: {e}")))?;
+            if bytes.len() != 32 {
+                return Err(FfiError::Core("sharing secret must be 32 bytes".into()));
+            }
+        }
+        *self.sharing_secret.write().unwrap() = secret_b64;
+        Ok(())
+    }
+
+    /// The persisted sharing secret key (base64), if any.
+    pub fn sharing_secret(&self) -> Option<String> {
+        self.sharing_secret.read().unwrap().clone()
+    }
+
+    /// Build a 1:1 share bundle for `recipient_pubkey_b64`.
+    pub fn share_item(
+        &self,
+        sender_uuid: String,
+        recipient_uuid: String,
+        item_uuid: String,
+        recipient_pubkey_b64: String,
+        plaintext: Vec<u8>,
+    ) -> Result<crate::sharing::FfiShareBundle, FfiError> {
+        crate::sharing::ffi_share_item(
+            sender_uuid,
+            recipient_uuid,
+            item_uuid,
+            recipient_pubkey_b64,
+            plaintext,
+        )
+        .map_err(FfiError::Core)
+    }
+
+    /// Decrypt an incoming 1:1 share using the persisted sharing secret.
+    pub fn accept_share(
+        &self,
+        incoming_json: String,
+    ) -> Result<Vec<u8>, FfiError> {
+        let secret = self
+            .sharing_secret
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| FfiError::Core("no sharing secret; call ensure_sharing_key".into()))?;
+        crate::sharing::ffi_accept_share(incoming_json, secret).map_err(FfiError::Core)
+    }
+
+    /// Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+    pub fn create_group(
+        &self,
+        name: String,
+        admin_uuid: String,
+    ) -> Result<crate::sharing::FfiGroupKey, FfiError> {
+        crate::sharing::ffi_create_group(name, admin_uuid).map_err(FfiError::Core)
+    }
+
+    /// Wrap the Group SIK for a new member.
+    pub fn add_group_member(
+        &self,
+        group_json: String,
+        member_uuid: String,
+        member_pubkey_b64: String,
+    ) -> Result<crate::sharing::FfiWrappedGroupKey, FfiError> {
+        crate::sharing::ffi_add_group_member(group_json, member_uuid, member_pubkey_b64)
+            .map_err(FfiError::Core)
+    }
+
+    /// Member-side: decapsulate the Group SIK from an inbox entry.
+    pub fn unwrap_group_key(
+        &self,
+        inbox_json: String,
+    ) -> Result<String, FfiError> {
+        let secret = self
+            .sharing_secret
+            .read()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| FfiError::Core("no sharing secret; call ensure_sharing_key".into()))?;
+        crate::sharing::ffi_unwrap_group_key(inbox_json, secret).map_err(FfiError::Core)
+    }
+
+    /// Encrypt a vault item's payload for a group.
+    pub fn encrypt_group_item(
+        &self,
+        group_json: String,
+        item_uuid: String,
+        plaintext: Vec<u8>,
+    ) -> Result<String, FfiError> {
+        crate::sharing::ffi_encrypt_group_item(group_json, item_uuid, plaintext).map_err(FfiError::Core)
+    }
+
+    /// Decrypt a group item's payload.
+    pub fn decrypt_group_item(
+        &self,
+        group_json: String,
+        item_uuid: String,
+        ct_b64: String,
+    ) -> Result<Vec<u8>, FfiError> {
+        crate::sharing::ffi_decrypt_group_item(group_json, item_uuid, ct_b64).map_err(FfiError::Core)
     }
 }
 
