@@ -1,0 +1,10 @@
+{
+  "name": "@vautr/native",
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["VautrNativeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.vautr.native.VautrNativeModule"]
+  }
+}

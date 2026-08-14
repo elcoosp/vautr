@@ -21,22 +21,22 @@ use uuid::Uuid;
 
 use vautr_crypto::kdf::MK_LEN;
 use vautr_crypto::sharing::{SharingKeyPair, SharingPublicKey};
-use vautr_sharing::{
-    IncomingShare, ShareBundle, ShareGroupKey, WrappedGroupKey,
-};
+use vautr_sharing::{IncomingShare, ShareBundle, ShareGroupKey, WrappedGroupKey};
+
+use crate::FfiError;
 
 fn b64_encode(b: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(b)
 }
 
-fn b64_decode(s: &str) -> Result<Vec<u8>, String> {
+fn b64_decode(s: &str) -> Result<Vec<u8>, FfiError> {
     base64::engine::general_purpose::STANDARD
         .decode(s)
-        .map_err(|e| format!("base64 decode: {e}"))
+        .map_err(|e| FfiError::Core(format!("base64 decode: {e}")))
 }
 
-fn parse_uuid(s: &str) -> Result<Uuid, String> {
-    Uuid::parse_str(s).map_err(|e| format!("invalid uuid: {e}"))
+fn parse_uuid(s: &str) -> Result<Uuid, FfiError> {
+    Uuid::parse_str(s).map_err(|e| FfiError::Uuid(e.to_string()))
 }
 
 /// Result of `generate_sharing_keypair` (base64 for wire transport).
@@ -107,10 +107,13 @@ fn ffi_group_key(g: &ShareGroupKey) -> FfiGroupKey {
     }
 }
 
-fn parse_public_key(b64: &str) -> Result<SharingPublicKey, String> {
+fn parse_public_key(b64: &str) -> Result<SharingPublicKey, FfiError> {
     let bytes = b64_decode(b64)?;
     if bytes.len() != 32 {
-        return Err(format!("public key must be 32 bytes, got {}", bytes.len()));
+        return Err(FfiError::Core(format!(
+            "public key must be 32 bytes, got {}",
+            bytes.len()
+        )));
     }
     let mut pk = [0u8; 32];
     pk.copy_from_slice(&bytes);
@@ -139,14 +142,14 @@ pub fn ffi_share_item(
     item_uuid: String,
     recipient_pubkey_b64: String,
     plaintext: Vec<u8>,
-) -> Result<FfiShareBundle, String> {
+) -> Result<FfiShareBundle, FfiError> {
     let sender = parse_uuid(&sender_uuid)?;
     let recipient = parse_uuid(&recipient_uuid)?;
     let item = parse_uuid(&item_uuid)?;
     let pk = parse_public_key(&recipient_pubkey_b64)?;
     vautr_sharing::share_item(sender, recipient, item, &pk, &plaintext)
         .map(|b| ffi_bundle(&b))
-        .map_err(|e| format!("share_item: {e}"))
+        .map_err(|e| FfiError::Core(format!("share_item: {e}")))
 }
 
 /// Decrypt an incoming 1:1 share. `incoming_json` is the JSON `IncomingShare`
@@ -158,26 +161,30 @@ pub fn ffi_share_item(
 pub fn ffi_accept_share(
     incoming_json: String,
     sharing_secret_b64: String,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, FfiError> {
     let incoming: IncomingShare = serde_json::from_str(&incoming_json)
-        .map_err(|e| format!("parse IncomingShare: {e}"))?;
+        .map_err(|e| FfiError::Core(format!("parse IncomingShare: {e}")))?;
     let secret = b64_decode(&sharing_secret_b64)?;
     if secret.len() != 32 {
-        return Err(format!("sharing secret must be 32 bytes, got {}", secret.len()));
+        return Err(FfiError::Core(format!(
+            "sharing secret must be 32 bytes, got {}",
+            secret.len()
+        )));
     }
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&secret);
     let kp = SharingKeyPair::from_secret(sk);
-    vautr_sharing::accept_share(&kp, &incoming).map_err(|e| format!("accept_share: {e}"))
+    vautr_sharing::accept_share(&kp, &incoming)
+        .map_err(|e| FfiError::Core(format!("accept_share: {e}")))
 }
 
 /// Create a sharing group (admin). Returns the admin's `{ group, secret }`.
 #[uniffi::export]
-pub fn ffi_create_group(name: String, admin_uuid: String) -> Result<FfiGroupKey, String> {
+pub fn ffi_create_group(name: String, admin_uuid: String) -> Result<FfiGroupKey, FfiError> {
     let admin = parse_uuid(&admin_uuid)?;
     vautr_sharing::create_group(name, admin)
         .map(|g| ffi_group_key(&g))
-        .map_err(|e| format!("create_group: {e}"))
+        .map_err(|e| FfiError::Core(format!("create_group: {e}")))
 }
 
 /// Wrap the Group SIK for a new member. `group_json` is the admin's persisted
@@ -188,13 +195,13 @@ pub fn ffi_add_group_member(
     group_json: String,
     member_uuid: String,
     member_pubkey_b64: String,
-) -> Result<FfiWrappedGroupKey, String> {
+) -> Result<FfiWrappedGroupKey, FfiError> {
     let gk = parse_group_key(&group_json)?;
     let member = parse_uuid(&member_uuid)?;
     let pk = parse_public_key(&member_pubkey_b64)?;
     vautr_sharing::add_group_member(&gk, member, &pk)
         .map(|w| ffi_wrapped(&w))
-        .map_err(|e| format!("add_group_member: {e}"))
+        .map_err(|e| FfiError::Core(format!("add_group_member: {e}")))
 }
 
 /// Member-side: decapsulate the Group SIK from an inbox entry. `inbox_json` is
@@ -204,27 +211,30 @@ pub fn ffi_add_group_member(
 pub fn ffi_unwrap_group_key(
     inbox_json: String,
     sharing_secret_b64: String,
-) -> Result<String, String> {
+) -> Result<String, FfiError> {
     let wrapped: WrappedGroupKey = serde_json::from_str(&inbox_json)
-        .map_err(|e| format!("parse WrappedGroupKey: {e}"))?;
+        .map_err(|e| FfiError::Core(format!("parse WrappedGroupKey: {e}")))?;
     let secret = b64_decode(&sharing_secret_b64)?;
     if secret.len() != 32 {
-        return Err(format!("sharing secret must be 32 bytes, got {}", secret.len()));
+        return Err(FfiError::Core(format!(
+            "sharing secret must be 32 bytes, got {}",
+            secret.len()
+        )));
     }
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&secret);
     let kp = SharingKeyPair::from_secret(sk);
     let sik = vautr_sharing::unwrap_group_key(&wrapped, &kp)
-        .map_err(|e| format!("unwrap_group_key: {e}"))?;
+        .map_err(|e| FfiError::Core(format!("unwrap_group_key: {e}")))?;
     let group = vautr_sharing::ShareGroup {
         group_id: wrapped.group_id,
         name: String::new(),
         admin_uuid: Uuid::nil(),
     };
     let group_key = ShareGroupKey::from_secret(group, &sik[..])
-        .map_err(|e| format!("rebuild group key: {e}"))?;
+        .map_err(|e| FfiError::Core(format!("rebuild group key: {e}")))?;
     serde_json::to_string(&ffi_group_key(&group_key))
-        .map_err(|e| format!("serialize group key: {e}"))
+        .map_err(|e| FfiError::Core(format!("serialize group key: {e}")))
 }
 
 /// Encrypt a vault item's payload for a group (one encryption for N members).
@@ -234,10 +244,12 @@ pub fn ffi_encrypt_group_item(
     group_json: String,
     item_uuid: String,
     plaintext: Vec<u8>,
-) -> Result<String, String> {
+) -> Result<String, FfiError> {
     let gk = parse_group_key(&group_json)?;
     let item = parse_uuid(&item_uuid)?;
-    let ct = gk.encrypt_item(&item, &plaintext).map_err(|e| format!("encrypt: {e}"))?;
+    let ct = gk
+        .encrypt_item(&item, &plaintext)
+        .map_err(|e| FfiError::Core(format!("encrypt: {e}")))?;
     Ok(b64_encode(&ct))
 }
 
@@ -248,21 +260,22 @@ pub fn ffi_decrypt_group_item(
     group_json: String,
     item_uuid: String,
     ct_b64: String,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, FfiError> {
     let gk = parse_group_key(&group_json)?;
     let item = parse_uuid(&item_uuid)?;
     let ct = b64_decode(&ct_b64)?;
-    gk.decrypt_item(&item, &ct).map_err(|e| format!("decrypt: {e}"))
+    gk.decrypt_item(&item, &ct)
+        .map_err(|e| FfiError::Core(format!("decrypt: {e}")))
 }
 
 /// Parse a persisted `{ group, secret }` JSON back into a `ShareGroupKey`.
-fn parse_group_key(group_json: &str) -> Result<ShareGroupKey, String> {
+fn parse_group_key(group_json: &str) -> Result<ShareGroupKey, FfiError> {
     let parsed: serde_json::Value = serde_json::from_str(group_json)
-        .map_err(|e| format!("parse group key json: {e}"))?;
+        .map_err(|e| FfiError::Core(format!("parse group key json: {e}")))?;
     let group_id = parsed
         .get("group_id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing group_id".to_string())?;
+        .ok_or_else(|| FfiError::Core("missing group_id".into()))?;
     let name = parsed
         .get("name")
         .and_then(|v| v.as_str())
@@ -271,14 +284,17 @@ fn parse_group_key(group_json: &str) -> Result<ShareGroupKey, String> {
     let admin_uuid = parsed
         .get("admin_uuid")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing admin_uuid".to_string())?;
+        .ok_or_else(|| FfiError::Core("missing admin_uuid".into()))?;
     let secret_b64 = parsed
         .get("secret_b64")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing secret_b64".to_string())?;
+        .ok_or_else(|| FfiError::Core("missing secret_b64".into()))?;
     let secret = b64_decode(secret_b64)?;
     if secret.len() != MK_LEN {
-        return Err(format!("group sik must be {MK_LEN} bytes, got {}", secret.len()));
+        return Err(FfiError::Core(format!(
+            "group sik must be {MK_LEN} bytes, got {}",
+            secret.len()
+        )));
     }
     let mut sik = [0u8; MK_LEN];
     sik.copy_from_slice(&secret);
@@ -287,7 +303,7 @@ fn parse_group_key(group_json: &str) -> Result<ShareGroupKey, String> {
         name,
         admin_uuid: parse_uuid(admin_uuid)?,
     };
-    ShareGroupKey::from_secret(group, &sik).map_err(|e| format!("from_secret: {e}"))
+    ShareGroupKey::from_secret(group, &sik).map_err(|e| FfiError::Core(format!("from_secret: {e}")))
 }
 
 /// Sharing helpers attached to the `MobileClient` object (persists the sharing
@@ -306,13 +322,16 @@ impl MobileSharingStore {
 
     /// Ensure a sharing keypair exists; if none is persisted, generate one and
     /// return its public key (for the app to publish to the server PKI).
-    pub fn ensure_sharing_key(&self) -> Result<String, String> {
+    pub fn ensure_sharing_key(&self) -> Result<String, FfiError> {
         let mut guard = self.secret.write().unwrap();
         if let Some(existing) = guard.as_ref() {
             // Validate it decodes to 32 bytes; derive the public key.
             let bytes = b64_decode(existing)?;
             if bytes.len() != 32 {
-                return Err(format!("stored sharing secret {} bytes", bytes.len()));
+                return Err(FfiError::Core(format!(
+                    "stored sharing secret {} bytes",
+                    bytes.len()
+                )));
             }
             let mut sk = [0u8; 32];
             sk.copy_from_slice(&bytes);

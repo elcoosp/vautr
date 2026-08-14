@@ -1,0 +1,25 @@
+{
+  "name": "@vautr/native",
+  "version": "0.1.0",
+  "description": "Vautr native (Expo TurboModule) bridge linking the uniffi vautr-ffi core into React Native (VTR-048/061/070).",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@vautr/client-sdk": "workspace:*",
+    "expo-local-authentication": "~57.0.2",
+    "expo-modules-core": "~57.0.0",
+    "expo-secure-store": "~57.0.1",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react": "19.2.8"
+  }
+}

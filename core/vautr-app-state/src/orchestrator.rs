@@ -13,6 +13,7 @@
 //! - Sync (api.md §4): `connect_sync`, `sync`, `disconnect_sync`.
 //! - Rotation (core.md §4 / ADR-006): `rotate_key`.
 
+use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Set, TransactionTrait};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -521,7 +522,8 @@ impl VautrClient {
         let adapter = adapter
             .as_ref()
             .ok_or_else(|| "no platform adapter installed".to_string())?;
-        adapter.service_action(action, &secret)
+        adapter.service_action(action, &secret);
+        Ok(())
     }
 
     /// Read the secret string. ONLY available on Desktop via feature flag
@@ -1142,14 +1144,20 @@ impl VautrClient {
     /// Delete a local item's overview + payload (used when the user keeps the
     /// server's version of a conflicted item).
     async fn delete_local_item(&self, uuid: Uuid) -> Result<(), String> {
-        let uuid_str = uuid.to_string();
-        for table in ["item_overviews", "item_payloads", "item_secrets"] {
-            let sql = format!("DELETE FROM {table} WHERE uuid = '{uuid_str}'");
-            self.db
-                .execute_unprepared(&sql)
-                .await
-                .map_err(|e| format!("delete {table}: {e}"))?;
-        }
+        // Use the SeaORM query builder (prepared statements, plan-cache friendly)
+        // for the two real entities. `item_secrets` is not a SeaORM entity and
+        // has no backing table in the schema, so it was a no-op phantom and is
+        // dropped here.
+        item_overview::Entity::delete_many()
+            .filter(item_overview::Column::Uuid.eq(uuid.to_string()))
+            .exec(&self.db)
+            .await
+            .map_err(|e| format!("delete item_overviews: {e}"))?;
+        item_payload::Entity::delete_many()
+            .filter(item_payload::Column::Uuid.eq(uuid.to_string()))
+            .exec(&self.db)
+            .await
+            .map_err(|e| format!("delete item_payloads: {e}"))?;
         Ok(())
     }
 

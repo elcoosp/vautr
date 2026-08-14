@@ -31,7 +31,7 @@ pub enum CoreAction {
 /// it never enters the JS/Kotlin heap (client.md §2, ADR-003/005).
 pub trait PlatformAdapter: Send + Sync {
     /// Service a copy/autofill action with the decrypted secret bytes.
-    fn service_action(&self, action: CoreAction, secret: &[u8]) -> Result<(), String>;
+    fn service_action(&self, action: CoreAction, secret: &[u8]);
 }
 
 /// Owns the live secret handle table and the reaper task. `reveal` stores a

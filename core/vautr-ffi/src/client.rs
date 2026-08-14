@@ -94,10 +94,9 @@ struct MobilePlatformAdapter {
 }
 
 impl PlatformAdapter for MobilePlatformAdapter {
-    fn service_action(&self, action: CoreCoreAction, secret: &[u8]) -> Result<(), String> {
+    fn service_action(&self, action: CoreCoreAction, secret: &[u8]) {
         let secret = String::from_utf8_lossy(secret).into_owned();
         self.handler.on_action(action.into(), secret);
-        Ok(())
     }
 }
 
@@ -454,21 +453,15 @@ impl MobileClient {
             recipient_pubkey_b64,
             plaintext,
         )
-        .map_err(FfiError::Core)
     }
 
     /// Decrypt an incoming 1:1 share using the persisted sharing secret.
-    pub fn accept_share(
-        &self,
-        incoming_json: String,
-    ) -> Result<Vec<u8>, FfiError> {
-        let secret = self
-            .sharing_secret
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| FfiError::Core("no sharing secret; call ensure_sharing_key".into()))?;
-        crate::sharing::ffi_accept_share(incoming_json, secret).map_err(FfiError::Core)
+    pub fn accept_share(&self, incoming_json: String) -> Result<Vec<u8>, FfiError> {
+        let secret =
+            self.sharing_secret.read().unwrap().clone().ok_or_else(|| {
+                FfiError::Core("no sharing secret; call ensure_sharing_key".into())
+            })?;
+        crate::sharing::ffi_accept_share(incoming_json, secret)
     }
 
     /// Create a sharing group (admin). Returns the admin's `{ group, secret }`.
@@ -477,7 +470,7 @@ impl MobileClient {
         name: String,
         admin_uuid: String,
     ) -> Result<crate::sharing::FfiGroupKey, FfiError> {
-        crate::sharing::ffi_create_group(name, admin_uuid).map_err(FfiError::Core)
+        crate::sharing::ffi_create_group(name, admin_uuid)
     }
 
     /// Wrap the Group SIK for a new member.
@@ -488,21 +481,15 @@ impl MobileClient {
         member_pubkey_b64: String,
     ) -> Result<crate::sharing::FfiWrappedGroupKey, FfiError> {
         crate::sharing::ffi_add_group_member(group_json, member_uuid, member_pubkey_b64)
-            .map_err(FfiError::Core)
     }
 
     /// Member-side: decapsulate the Group SIK from an inbox entry.
-    pub fn unwrap_group_key(
-        &self,
-        inbox_json: String,
-    ) -> Result<String, FfiError> {
-        let secret = self
-            .sharing_secret
-            .read()
-            .unwrap()
-            .clone()
-            .ok_or_else(|| FfiError::Core("no sharing secret; call ensure_sharing_key".into()))?;
-        crate::sharing::ffi_unwrap_group_key(inbox_json, secret).map_err(FfiError::Core)
+    pub fn unwrap_group_key(&self, inbox_json: String) -> Result<String, FfiError> {
+        let secret =
+            self.sharing_secret.read().unwrap().clone().ok_or_else(|| {
+                FfiError::Core("no sharing secret; call ensure_sharing_key".into())
+            })?;
+        crate::sharing::ffi_unwrap_group_key(inbox_json, secret)
     }
 
     /// Encrypt a vault item's payload for a group.
@@ -512,7 +499,7 @@ impl MobileClient {
         item_uuid: String,
         plaintext: Vec<u8>,
     ) -> Result<String, FfiError> {
-        crate::sharing::ffi_encrypt_group_item(group_json, item_uuid, plaintext).map_err(FfiError::Core)
+        crate::sharing::ffi_encrypt_group_item(group_json, item_uuid, plaintext)
     }
 
     /// Decrypt a group item's payload.
@@ -522,7 +509,7 @@ impl MobileClient {
         item_uuid: String,
         ct_b64: String,
     ) -> Result<Vec<u8>, FfiError> {
-        crate::sharing::ffi_decrypt_group_item(group_json, item_uuid, ct_b64).map_err(FfiError::Core)
+        crate::sharing::ffi_decrypt_group_item(group_json, item_uuid, ct_b64)
     }
 }
 

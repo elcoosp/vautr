@@ -313,7 +313,8 @@ mod tests {
         });
         let incoming_json = serde_json::to_string(&incoming).unwrap();
 
-        let recovered = ffi_accept_share(incoming_json, recipient_secret_b64).expect("accept_share");
+        let recovered =
+            ffi_accept_share(incoming_json, recipient_secret_b64).expect("accept_share");
         assert_eq!(recovered, plaintext);
         let _ = sender;
     }

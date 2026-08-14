@@ -274,13 +274,12 @@ struct MockAdapter {
 }
 
 impl PlatformAdapter for MockAdapter {
-    fn service_action(&self, action: CoreAction, secret: &[u8]) -> Result<(), String> {
+    fn service_action(&self, action: CoreAction, secret: &[u8]) {
         match action {
             CoreAction::CopyToClipboard { .. } | CoreAction::Autofill { .. } => {
                 *self.copied.lock().unwrap() = Some(String::from_utf8_lossy(secret).into_owned());
-                Ok(())
             }
-            CoreAction::RenderInOverlay { .. } => Ok(()),
+            CoreAction::RenderInOverlay { .. } => (),
         }
     }
 }
