@@ -33,7 +33,7 @@ zeroize.workspace = true
 # (reqwest/ring/mio). The browser service worker decrypts vault items locally
 # and exposes only opaque handles + perform_action (data.md §1 rule 4).
 vautr-domain.workspace = true
-vautr-crypto.workspace = true
+vautr-crypto = { workspace = true, features = ["sharing"] }
 vautr-keyring.workspace = true
 
 [features]

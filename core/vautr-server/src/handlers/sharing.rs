@@ -13,7 +13,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -26,6 +26,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         // Directory (§2.1)
         .route("/users/{user_id}/public-key", get(public_key))
+        .route("/users/{user_id}/public-key", put(put_public_key))
         // 1:1 shares (§5)
         .route("/shares/", post(create_share))
         .route("/shares/{share_id}/payload", post(upload_payload))
@@ -49,6 +50,11 @@ pub fn routes() -> Router<AppState> {
 #[derive(Serialize)]
 pub(crate) struct PublicKeyResp {
     user_id: String,
+    public_key: String, // base64 (32-byte X25519 key)
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PutPublicKeyReq {
     public_key: String, // base64 (32-byte X25519 key)
 }
 
@@ -149,6 +155,43 @@ async fn public_key(
     };
     Ok(Json(PublicKeyResp {
         user_id: uid,
+        public_key: b64(&pk),
+    }))
+}
+
+/// PUT /users/{uuid}/public-key
+///
+/// Publish/replace the caller's own sharing public key (the sender looks it up
+/// later via `GET`). A user may only write their own key (path `{uuid}` must
+/// match the authenticated identity).
+async fn put_public_key(
+    State(st): State<AppState>,
+    Path(user_id): Path<String>,
+    auth: Bearer,
+    Json(req): Json<PutPublicKeyReq>,
+) -> Result<Json<PublicKeyResp>, ApiError> {
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    if caller != user_id {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "you may only set your own sharing public key",
+        ));
+    }
+    let pk = decode_b64(&req.public_key)?;
+    if pk.len() != 32 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "sharing public key must be 32 bytes",
+        ));
+    }
+    st.repo
+        .upsert_sharing_public_key(&caller, &pk, now_ms())
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    Ok(Json(PublicKeyResp {
+        user_id: caller,
         public_key: b64(&pk),
     }))
 }

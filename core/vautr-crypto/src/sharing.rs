@@ -56,6 +56,12 @@ impl SharingKeyPair {
     fn static_secret(&self) -> StaticSecret {
         StaticSecret::from(*self.secret)
     }
+
+    /// Export the raw secret key bytes (for client-side persistence; the
+    /// holder can reconstruct the keypair via [`SharingKeyPair::from_secret`]).
+    pub fn secret_bytes(&self) -> SharingSecretKey {
+        *self.secret
+    }
 }
 
 /// HKDF info string for the sharing envelope key (ADR-007).
