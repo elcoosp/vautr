@@ -1,0 +1,32 @@
+plugins {
+    id "com.android.library"
+    id "expo-module-gradle-plugin"
+}
+
+group = "expo.modules.vautr.bridge"
+version = "0.1.0"
+
+android {
+    namespace "expo.modules.vautr.bridge"
+    defaultConfig {
+        versionCode 1
+        versionName "0.1.0"
+        minSdkVersion safeExtGet("minSdkVersion", 24)
+        targetSdkVersion safeExtGet("targetSdkVersion", 35)
+        compileSdkVersion safeExtGet("compileSdkVersion", 35)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(":expo-modules-core")
+    // uniffi-generated Kotlin bindings use JNA for the FFI layer.
+    implementation "net.java.dev.jna:jna:5.14.0"
+}
+
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}

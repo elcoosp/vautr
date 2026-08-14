@@ -92,6 +92,31 @@ ios-build:
 # Full iOS flow: setup -> prebuild -> pod install -> build.
 ios: ios-setup ios-prebuild ios-pod-install ios-build
 
+# --- Android native bridge (VTR-070 native layer) ---
+# Builds the shared lib (.so) + Kotlin bindings, then prebuilds + assembles.
+
+# Build the aarch64 .so via cargo-ndk into the module's jniLibs. Requires
+# ANDROID_NDK_HOME (brew cask android-ndk: the NDK lives inside the .app bundle).
+android-so:
+    export ANDROID_NDK_HOME="/opt/homebrew/Caskroom/android-ndk/29/AndroidNDK14206865.app/Contents/NDK"
+    cargo ndk -t arm64-v8a -o packages/native/android/src/main/jniLibs build -p vautr-ffi --release
+
+# Copy the generated Kotlin bindings into the module's source set.
+android-bindings:
+    mkdir -p packages/native/android/src/main/java/uniffi/vautr_ffi
+    cp -R modules/vautr-native/ffi-bindings/uniffi/vautr_ffi/. packages/native/android/src/main/java/uniffi/vautr_ffi/
+
+# Generate the Gradle project (regenerates apps/mobile/android).
+android-prebuild:
+    cd apps/mobile && npx expo prebuild --platform android --no-install
+
+# Assemble the debug APK (no signing). Requires android-so + android-bindings first.
+android-build:
+    cd apps/mobile/android && ./gradlew :app:assembleDebug --no-daemon
+
+# Full Android flow.
+android: android-so android-bindings android-prebuild android-build
+
 # --- servers / utils ---
 
 # Start the Docker dev server stack.

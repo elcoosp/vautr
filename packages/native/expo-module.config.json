@@ -5,6 +5,6 @@
     "modules": ["VautrNativeModule"]
   },
   "android": {
-    "modules": ["expo.modules.vautr.native.VautrNativeModule"]
+    "modules": ["expo.modules.vautr.bridge.VautrNativeModule"]
   }
 }

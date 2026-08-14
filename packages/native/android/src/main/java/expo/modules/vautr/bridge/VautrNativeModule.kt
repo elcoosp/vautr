@@ -1,11 +1,10 @@
-package expo.modules.vautr.native
+package expo.modules.vautr.bridge
 
 import android.content.Context
 import android.content.SharedPreferences
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
-import expo.modules.kotlin.exception.Exceptions
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import uniffi.vautr_ffi.FfiGroupKey
@@ -31,87 +30,87 @@ class VautrNativeModule : Module() {
         Name("VautrNativeModule")
 
         AsyncFunction("initialize") { dbPath: String ->
-            client = MobileClient.Companion.initialize(dbPath)
+            client = runBlocking { MobileClient.Companion.initialize(dbPath) }
         }
 
         AsyncFunction("unlock") { rawKey: ByteArray, localGen: Double ->
-            requireClient().unlock(rawKey, localGen.toULong())
+            runBlocking { requireClient().unlock(rawKey, localGen.toULong()) }
         }
 
-        AsyncFunction("listOverviews") { ->
-            requireClient().listOverviews()
+        AsyncFunction("listOverviews") {
+            runBlocking { requireClient().listOverviews() }
         }
 
         AsyncFunction("revealSecret") { uuid: String ->
-            requireClient().revealSecret(uuid).toString()
+            runBlocking { requireClient().revealSecret(uuid).toString() }
         }
 
         AsyncFunction("releaseSecret") { handle: String ->
             val h = handle.toULongOrNull() ?: return@AsyncFunction
-            requireClient().releaseSecret(h)
+            runBlocking { requireClient().releaseSecret(h) }
         }
 
         AsyncFunction("renderSecretInOverlay") { handle: String ->
             val h = handle.toULongOrNull() ?: return@AsyncFunction
-            requireClient().renderSecretInOverlay(h)
+            runBlocking { requireClient().renderSecretInOverlay(h) }
         }
 
         AsyncFunction("lock") {
-            requireClient().lock()
+            runBlocking { requireClient().lock() }
         }
 
         AsyncFunction("sync") {
-            requireClient().sync()
+            runBlocking { requireClient().sync() }
         }
 
         AsyncFunction("setSecureEnclaveBridge") {
-            requireClient().setSecureEnclaveBridge(AndroidSecureEnclaveBridge(appContext))
+            requireClient().setSecureEnclaveBridge(AndroidSecureEnclaveBridge(appContext.reactContext!!))
         }
 
         AsyncFunction("ensureSharingKey") {
-            requireClient().ensureSharingKey()
+            runBlocking { requireClient().ensureSharingKey() }
         }
 
         AsyncFunction("setSharingSecret") { secretB64: String? ->
             // Persist is handled by the app layer; the bridge just loads the
             // already-stored secret into the core for the session.
-            requireClient().setSharingSecret(secretB64)
+            runBlocking { requireClient().setSharingSecret(secretB64) }
         }
 
         AsyncFunction("shareItem") { senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: ByteArray ->
-            val b = requireClient().shareItem(senderUuid, recipientUuid, itemUuid, recipientPubkeyB64, plaintext)
+            val b = runBlocking { requireClient().shareItem(senderUuid, recipientUuid, itemUuid, recipientPubkeyB64, plaintext) }
             encodeShareBundle(b)
         }
 
         AsyncFunction("acceptShare") { incomingJson: String ->
-            requireClient().acceptShare(incomingJson)
+            runBlocking { requireClient().acceptShare(incomingJson) }
         }
 
         AsyncFunction("createGroup") { name: String, adminUuid: String ->
-            val g = requireClient().createGroup(name, adminUuid)
+            val g = runBlocking { requireClient().createGroup(name, adminUuid) }
             encodeGroupKey(g)
         }
 
         AsyncFunction("addGroupMember") { groupJson: String, memberUuid: String, memberPubkeyB64: String ->
-            val w = requireClient().addGroupMember(groupJson, memberUuid, memberPubkeyB64)
+            val w = runBlocking { requireClient().addGroupMember(groupJson, memberUuid, memberPubkeyB64) }
             encodeWrappedGroupKey(w)
         }
 
         AsyncFunction("unwrapGroupKey") { inboxJson: String ->
-            requireClient().unwrapGroupKey(inboxJson)
+            runBlocking { requireClient().unwrapGroupKey(inboxJson) }
         }
 
         AsyncFunction("encryptGroupItem") { groupJson: String, itemUuid: String, plaintext: ByteArray ->
-            requireClient().encryptGroupItem(groupJson, itemUuid, plaintext)
+            runBlocking { requireClient().encryptGroupItem(groupJson, itemUuid, plaintext) }
         }
 
         AsyncFunction("decryptGroupItem") { groupJson: String, itemUuid: String, ctB64: String ->
-            requireClient().decryptGroupItem(groupJson, itemUuid, ctB64)
+            runBlocking { requireClient().decryptGroupItem(groupJson, itemUuid, ctB64) }
         }
     }
 
     private fun requireClient(): MobileClient {
-        return client ?: throw Exceptions.ModuleNotFoundException("VautrNativeModule: call initialize() first")
+        return client ?: throw IllegalStateException("VautrNativeModule: call initialize() first")
     }
 
     private fun encodeShareBundle(b: FfiShareBundle): String = JSONObject().apply {

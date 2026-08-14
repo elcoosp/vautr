@@ -26,6 +26,10 @@ test/.loadtest/
 # `cargo build -p vautr-ffi --target aarch64-apple-ios-sim`.
 packages/native/ios/libvautr_ffi.a
 
+# Vautr uniffi prebuilt Android shared lib — regenerated via
+# `cargo ndk -t arm64-v8a -o packages/native/android/src/main/jniLibs build -p vautr-ffi --release`.
+packages/native/android/src/main/jniLibs/
+
 # Real (non-symlinked) copy of the iOS pod sources used by the Podfile's
 # `pod 'VautrNativeModule', :path => '../VautrNativeModule-src'`. Contains a
 # 293MB libvautr_ffi.a; recreated from packages/native/ios after clean clone.
@@ -39,5 +43,7 @@ apps/mobile/ios/build/
 apps/mobile/ios/DerivedData/
 apps/mobile/ios/*.xcodeproj/
 apps/mobile/ios/*.xcworkspace/
-apps/mobile/android/.gradle/
-apps/mobile/android/app/build/
+apps/mobile/android/
+
+# Gradle build output for the @vautr/native Android module.
+packages/native/android/build/
