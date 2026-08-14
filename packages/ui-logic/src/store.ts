@@ -185,11 +185,7 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
       case 'MutationFailed':
         // Surgically revert the normalized map using originalState. The draft is
         // intentionally retained so the recovery flow can re-inject it.
-        if (update.originalState.type === 'Saved') {
-          upsertOverview(update.originalState.overview);
-        } else {
-          upsertOverview(update.originalState.overview);
-        }
+        upsertOverview(update.originalState.overview);
         break;
     }
   },

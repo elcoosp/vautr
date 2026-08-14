@@ -6,31 +6,30 @@
 //! The Master Password / MK never reaches the server (REQ-AUTH-02).
 //!
 //! Uses opaque-ke 4.x. Cipher suite: Ristretto255 OPRF, Triple-DH key exchange,
-//! `Identity` KSF in this skeleton (⚠ see note below).
+//! `argon2::Argon2` KSF (Argon2id) — an expensive KSF so a leaked server DB
+//! cannot be brute-forced offline (REQ-AUTH-02: the MK/salt never leaves the
+//! client, but the OPAQUE record still must resist offline attack).
 //!
-//! ⚠ KSF NOTE: production MUST use an expensive KSF (opaque-ke `ksf::Argon2`,
-//! i.e. Argon2id) instead of `Identity`. The OPAQUE KSF is independent of the
-//! Vault MK Argon2id (crypto.md Step 1). Swapping `type Ksf` is a one-line change
-//! once the argon2 KSF params are tuned; left as `Identity` here only to keep the
-//! integration compiling and reviewable.
+//! The OPAQUE KSF is independent of the Vault MK Argon2id (crypto.md Step 1);
+//! the `argon2` feature on `opaque-ke` supplies `impl Ksf for argon2::Argon2`.
 
 use crate::error::{CryptoError, Result};
 use opaque_ke::{
-    ksf::Identity, CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientRegistration,
+    CipherSuite, ClientLogin, ClientLoginFinishParameters, ClientRegistration,
     ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters, ServerRegistration,
     ServerSetup,
 };
 use rand::rngs::OsRng;
 use sha2::Sha512;
 
-/// Vautr OPAQUE ciphersuite: Ristretto255 + Triple-DH + (placeholder) Identity KSF.
+/// Vautr OPAQUE ciphersuite: Ristretto255 + Triple-DH + Argon2 KSF.
 #[derive(Clone, Copy)]
 pub struct VautrSuite;
 
 impl CipherSuite for VautrSuite {
     type OprfCs = opaque_ke::Ristretto255;
     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, Sha512>;
-    type Ksf = Identity;
+    type Ksf = opaque_ke::argon2::Argon2<'static>;
 }
 
 // --- Server setup (the OPAQUE server long-term keypair, published as public key) ---

@@ -12,8 +12,8 @@
 
 use rand::rngs::OsRng;
 use rand::RngCore;
-use zeroize::Zeroizing;
 use vautr_crypto::aead;
+use zeroize::Zeroizing;
 
 use crate::b64;
 use crate::error::{CliError, CliResult};
@@ -33,9 +33,16 @@ pub fn generate_project_key() -> [u8; 32] {
 }
 
 /// Encrypt a secret value under a 32-byte key. Returns base64 ciphertext.
+///
+/// Uses a fresh random 24-byte nonce per value (XChaCha20-Poly1305); the nonce
+/// is embedded in the envelope, so no fixed/zero nonce is reused. This removes
+/// the earlier static-nonce footgun: under a single project key, two values
+/// encrypted with the same nonce+key pair would otherwise leak their XOR.
 pub fn encrypt_value(key_b64: &str, value: &[u8]) -> CliResult<String> {
     let key = decode_key(key_b64)?;
-    let envelope = aead::encrypt_with_nonce(&key, &zero_nonce(), &[], value)
+    let mut nonce = [0u8; aead::NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce);
+    let envelope = aead::encrypt_with_nonce(&key, &nonce, &[], value)
         .map_err(|e| CliError::Crypto(e.to_string()))?;
     Ok(b64::encode(&envelope))
 }
@@ -56,14 +63,6 @@ fn decode_key(key_b64: &str) -> CliResult<[u8; 32]> {
         .try_into()
         .map_err(|_| CliError::MissingProjectKey("invalid stored key length".into()))?;
     Ok(arr)
-}
-
-/// The AEAD envelope is self-describing (nonce embedded), so the CLI uses a
-/// fixed zero nonce for deterministic, key-only secrets. Each value is
-/// encrypted under a unique key material, so nonce reuse across values is not
-/// a concern here.
-fn zero_nonce() -> [u8; aead::NONCE_LEN] {
-    [0u8; aead::NONCE_LEN]
 }
 
 #[cfg(test)]

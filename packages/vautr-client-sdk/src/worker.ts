@@ -41,9 +41,12 @@ function parseActionJson(json: string): CoreAction {
       };
     }
   } catch {
-    // fall through to Autofill default
+    // Malformed action JSON must not silently degrade to a clipboard
+    // Autofill of handle '0' — surface the failure to the caller.
+    throw new Error('Unknown action format');
   }
-  return { type: 'Autofill', handle: '0' };
+  // Unreachable: the try returns on success and the catch throws on failure.
+  throw new Error('Unknown action format');
 }
 
 function serializeAction(action: CoreAction): string {

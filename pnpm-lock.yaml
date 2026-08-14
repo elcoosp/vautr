@@ -152,7 +152,7 @@ importers:
         version: link:../../packages/vautr-client-sdk
       '@vautr/native':
         specifier: workspace:*
-        version: link:../../modules/vautr-native
+        version: link:../../packages/native
       '@vautr/ui-logic':
         specifier: workspace:*
         version: link:../../packages/ui-logic
@@ -347,6 +347,34 @@ importers:
         version: 5.9.3
 
   packages/design-tokens: {}
+
+  packages/native:
+    dependencies:
+      '@vautr/client-sdk':
+        specifier: workspace:*
+        version: link:../vautr-client-sdk
+      expo-local-authentication:
+        specifier: ~57.0.2
+        version: 57.0.2(expo@57.0.12)
+      expo-modules-core:
+        specifier: ~57.0.0
+        version: 57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
+      expo-secure-store:
+        specifier: ~57.0.1
+        version: 57.0.1(expo@57.0.12)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-native:
+        specifier: 0.86.2
+        version: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/ui-logic:
     dependencies:

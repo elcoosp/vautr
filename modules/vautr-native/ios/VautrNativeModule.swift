@@ -27,8 +27,8 @@ public class VautrNativeModule: Module {
                     // Route to the native overlay UI (released on unmount).
                     break
                 case .copyToClipboard:
-                    // Copy `secret` to the system pasteboard.
-                    break
+                    // Copy `secret` to the system pasteboard. JS never sees it.
+                    UIPasteboard.general.string = secret
                 case .autofill:
                     // Hand `secret` to the autofill service.
                     break
@@ -71,20 +71,58 @@ public class VautrNativeModule: Module {
             try await self.client?.sync()
         }
 
-        AsyncFunction("setSecureEnclaveBridge") { (svkBase64: String?) in
-            self.client?.setSecureEnclaveBridge(bridge: SecureEnclaveBridgeImpl(svkBase64: svkBase64))
+        AsyncFunction("setSecureEnclaveBridge") {
+            self.client?.setSecureEnclaveBridge(bridge: SecureEnclaveBridgeImpl())
         }
     }
 
+    /// Real Keychain-backed SVK persistence (replaces the prior in-memory
+    /// `svkBase64` placeholder). The SVK arrives as raw `Data` from the Rust
+    /// core via `saveSvk` — JS never sees it as a string. Stored with
+    /// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` so it is tied to the
+    /// device passcode and never leaves the device or enters an iCloud backup.
+    private static let svkKeychainKey = "vautr.svk"
+
     private class SecureEnclaveBridgeImpl: SecureEnclaveBridge {
-        private let svkBase64: String?
-        init(svkBase64: String?) { self.svkBase64 = svkBase64 }
-        func saveSvk(svk: Data) {}
+        func saveSvk(svk: Data) {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: SecureEnclaveBridgeImpl.svkKeychainKey,
+                kSecValueData as String: svk,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            ]
+            SecItemDelete(query as CFDictionary) // clear any prior value
+            let status = SecItemAdd(query as CFDictionary, nil)
+            if status != errSecSuccess {
+                NSLog("VautrNative: saveSvk failed with status \(status)")
+            }
+        }
+
         func loadSvk() -> Data? {
-            guard let b64 = svkBase64, let data = Data(base64Encoded: b64) else { return nil }
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: SecureEnclaveBridgeImpl.svkKeychainKey,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ]
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &item)
+            guard status == errSecSuccess, let data = item as? Data else {
+                return nil
+            }
             return data
         }
-        func deleteSvk() {}
-        func hasSvk() -> Bool { svkBase64 != nil }
+
+        func deleteSvk() {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: SecureEnclaveBridgeImpl.svkKeychainKey,
+            ]
+            SecItemDelete(query as CFDictionary)
+        }
+
+        func hasSvk() -> Bool {
+            loadSvk() != nil
+        }
     }
 }

@@ -8,6 +8,15 @@ import uniffi.vautr_ffi.CoreAction
 import uniffi.vautr_ffi.PlatformActionHandler
 import uniffi.vautr_ffi.SecureEnclaveBridge
 import android.util.Base64
+import android.content.Context
+import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Expo TurboModule bridging the Vautr uniffi core (VTR-061).
@@ -32,7 +41,10 @@ class VautrNativeModule : Module() {
                     // The overlay is responsible for calling releaseSecret on unmount.
                 }
                 is CoreAction.CopyToClipboard -> {
-                    // Copy `secret` to the system clipboard.
+                    // Copy `secret` to the system clipboard. JS never sees it.
+                    val cm = appContext.reactContext
+                        ?.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("vautr-secret", secret))
                 }
                 is CoreAction.Autofill -> {
                     // Hand `secret` to the autofill service.
@@ -78,17 +90,71 @@ class VautrNativeModule : Module() {
             client?.sync()
         }
 
-        AsyncFunction("setSecureEnclaveBridge") { svkBase64: String? ->
-            client?.setSecureEnclaveBridge(object : SecureEnclaveBridge {
-                private val key = svkBase64
-                override fun saveSvk(svk: ByteArray) {
-                    // Persist under biometric/device protection (Keystore).
-                }
-                override fun loadSvk(): ByteArray? =
-                    key?.let { Base64.decode(it, Base64.DEFAULT) }
-                override fun deleteSvk() {}
-                override fun hasSvk(): Boolean = key != null
-            })
+        AsyncFunction("setSecureEnclaveBridge") {
+            client?.setSecureEnclaveBridge(SecureEnclaveBridgeImpl())
+        }
+    }
+
+    /// Real Android Keystore-backed SVK persistence (replaces the prior
+    /// in-memory `svkBase64` placeholder). The SVK arrives as raw `ByteArray`
+    /// from the Rust core via `saveSvk` — JS never sees it as a string. A
+    /// non-exportable AES key in the Android Keystore encrypts the SVK; the
+    /// ciphertext is stored in `EncryptedSharedPreferences` (or plain
+    /// SharedPreferences on API < 23 fallback).
+    private class SecureEnclaveBridgeImpl : SecureEnclaveBridge {
+        private val keystoreAlias = "vautr_svk_key"
+        private val prefsName = "vautr_secure"
+        private val ciphertextKey = "svk"
+
+        private fun getKeystoreKey(): SecretKey {
+            val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            ks.getKey(keystoreAlias, null)?.let { return it as SecretKey }
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            val spec = KeyGenParameterSpec.Builder(
+                keystoreAlias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setUserAuthenticationRequired(false)
+                .build()
+            generator.init(spec)
+            return generator.generateKey()
+        }
+
+        private fun prefs(): SharedPreferences {
+            val ctx = appContext.reactContext
+                ?: throw IllegalStateException("VautrNative: no app context for SVK storage")
+            return ctx.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        }
+
+        override fun saveSvk(svk: ByteArray) {
+            val key = getKeystoreKey()
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            val iv = cipher.iv
+            val ct = cipher.doFinal(svk)
+            // Store iv || ciphertext as base64.
+            val blob = Base64.encodeToString(iv + ct, Base64.DEFAULT)
+            prefs().edit().putString(ciphertextKey, blob).apply()
+        }
+
+        override fun loadSvk(): ByteArray? {
+            val blob = prefs().getString(ciphertextKey, null) ?: return null
+            val raw = Base64.decode(blob, Base64.DEFAULT)
+            val iv = raw.copyOfRange(0, 12)
+            val ct = raw.copyOfRange(12, raw.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, getKeystoreKey(), GCMParameterSpec(128, iv))
+            return cipher.doFinal(ct)
+        }
+
+        override fun deleteSvk() {
+            prefs().edit().remove(ciphertextKey).apply()
+        }
+
+        override fun hasSvk(): Boolean {
+            return prefs().contains(ciphertextKey)
         }
     }
 }

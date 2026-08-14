@@ -1,0 +1,4 @@
+module VautrNativeModule {
+    header "VautrNativeModule.h"
+    export *
+}
