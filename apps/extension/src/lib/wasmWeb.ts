@@ -99,3 +99,32 @@ export function opaque_login_finish_js(
   ) as { upload: Uint8Array; session_key: Uint8Array };
   return { upload: result.upload, sessionKey: result.session_key };
 }
+
+// --- sharing (ADR-007) ---
+export function generate_sharing_keypair(): string {
+  return (raw as any).generate_sharing_keypair();
+}
+
+export function restore_sharing_keypair(secret_b64: string): string {
+  return (raw as any).restore_sharing_keypair(secret_b64);
+}
+
+export function share_item(
+  sender_uuid: string,
+  recipient_uuid: string,
+  item_uuid: string,
+  recipient_public_b64: string,
+  plaintext: Uint8Array,
+): string {
+  return (raw as any).share_item(
+    sender_uuid,
+    recipient_uuid,
+    item_uuid,
+    recipient_public_b64,
+    plaintext,
+  );
+}
+
+export function accept_share(incoming_json: string, recipient_secret_b64: string): Uint8Array {
+  return (raw as any).accept_share(incoming_json, recipient_secret_b64);
+}

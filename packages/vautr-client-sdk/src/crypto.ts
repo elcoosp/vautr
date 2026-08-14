@@ -92,7 +92,25 @@ export class AsyncCryptoAdapter {
     return this.m().decrypt_item_js(uuid, encKeyGen, dek, payload);
   }
 
-  // --- OPAQUE (api.md §3) ---
+  // --- sharing (ADR-007) ---
+  generateSharingKeypair(): string {
+    return this.m().generate_sharing_keypair();
+  }
+  restoreSharingKeypair(secretB64: string): string {
+    return this.m().restore_sharing_keypair(secretB64);
+  }
+  shareItem(
+    senderUuid: string,
+    recipientUuid: string,
+    itemUuid: string,
+    recipientPublicB64: string,
+    plaintext: Uint8Array,
+  ): string {
+    return this.m().share_item(senderUuid, recipientUuid, itemUuid, recipientPublicB64, plaintext);
+  }
+  acceptShare(incomingJson: string, recipientSecretB64: string): Uint8Array {
+    return this.m().accept_share(incomingJson, recipientSecretB64);
+  }
   opaqueRegisterStart(password: string): OpaqueStart {
     return this.m().opaque_register_start_js(password);
   }

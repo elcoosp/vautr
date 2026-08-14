@@ -94,3 +94,19 @@ export const opaque_login_finish_js =
       username: string,
     ) => OpaqueLoginFinish
   >();
+
+// --- sharing.rs: ADR-007 1:1 sharing (surface parity; throws without built wasm) ---
+export const generate_sharing_keypair = stub<() => string>();
+export const restore_sharing_keypair = stub<(secretB64: string) => string>();
+export const share_item =
+  stub<
+    (
+      senderUuid: string,
+      recipientUuid: string,
+      itemUuid: string,
+      recipientPublicB64: string,
+      plaintext: Uint8Array,
+    ) => string
+  >();
+export const accept_share =
+  stub<(incomingJson: string, recipientSecretB64: string) => Uint8Array>();

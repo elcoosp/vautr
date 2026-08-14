@@ -23,7 +23,7 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 | Tokens (VTR-047) | ✅ | ✅ | ✅ | ✅ (VTR-064) | ✅ |
 | MFA / WebAuthn (VTR-049) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Generator | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Sharing / key rotation | ✅ crypto + server `/shares`, `/account/rotate-key` | ⚠️ core only, no UI | ✅ local orchestrator + ext key rotation (VTR-065) | ⚠️ key rotation done (VTR-065); sharing FFI/PKI scaffolded (VTR-066, UI blocked on per-item SIK) | ✗ |
+| Sharing / key rotation | ✅ crypto + server `/shares`, `/account/rotate-key` | ⚠️ sharing built (VTR-066, ext send+recv+revoke); web/mobile UI pending | ✅ local orchestrator + ext key rotation (VTR-065) | ✅ ext sharing done (VTR-066); web/mobile sharing UI + group sharing UI pending |
 | Quarantine reaper UI (VTR-047) | ✅ | ✗ no UI | ✅ `watch_state` subscription | ✗ no server endpoint | ✅ local orchestrator |
 
 ## Security-invariant gaps (highest priority)
@@ -46,22 +46,17 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 
 ## Capability gaps (what remains)
 
-3. **Sharing UI on web/extension/mobile (✗/⚠️).** The server has the full sharing
-   PKI (`POST /shares/`, `/shares/{id}/payload`, `/shares/inbox`, revoke, groups,
-   `rotate_group`) and desktop exercises it via its local orchestrator's
-   `share_item` (client-side X25519 KEM envelope). VTR-066 scaffolded the
-   server-backed pieces that were missing: a `PUT /users/{id}/public-key`
-   endpoint (`upsert_sharing_public_key`) plus `vautr-crypto-wasm` FFI exposing
-   `generate_sharing_keypair` / `restore_sharing_keypair` / `share_item` /
-   `unwrap_shared_item` (verified: native tests + wasm32 build green).
-   **Blocker:** ADR-007 sharing wraps a *per-item* SIK, but the server-backed
-   clients (`VautrWebClient`) encrypt every item under a single `deriveDek(svk)`
-   vault DEK — they do not track per-item SIKs. Producing `wrapped_sik` correctly
-   therefore requires a per-item-SIK item-encryption model (data-model + migration
-   change), not just SDK/crypto exposure. Sharing `svk` as the "SIK" would leak
-   the whole vault DEK and is explicitly rejected. VTR-066 is intentionally
-   **incomplete** — scaffolding only; UI + `VautrMlpClient` sharing surface + the
-   per-item-SIK data model remain. Not a UI port.
+3. **Sharing UI on web/mobile (⚠️).** The full zero-knowledge sharing flow is
+   built and verified end-to-end for the **extension** (VTR-066): server PKI
+   (`POST /shares/`, `/shares/{id}/payload`, `/shares/inbox`, revoke),
+   `PUT /users/{id}/public-key`, `vautr-wasm` full share/accept FFI, `VautrMlpClient`
+   HTTP transport, `VautrWebClient` `SharingManager`, and the extension Share
+   button + Inbox tab. ADR-007 sharing generates a fresh random SIK per share and
+   DEM-encrypts the item *plaintext* — no per-item-SIK data model required (the
+   earlier "per-item SIK blocker" was incorrect; the desktop's `share_item` takes
+   plaintext, not a stored key). **Remaining:** the same SDK surface must be wired
+   into the **web** and **mobile** UIs; **group sharing** UI (ADR-007 §6) is
+   implemented in `vautr-sharing` but has no client UI yet.
 
 4. **Key-rotation UI on web/extension/mobile.** The server has
    `POST /account/rotate-key` (`new_min_enc_key_gen` + MP-wrapped `svk`); desktop
@@ -86,15 +81,17 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 
 ## Open issues
 
-- **VTR-066** (sharing crypto/PKI scaffolding — *blocked/incomplete*): server
-  `PUT /users/{id}/public-key` + `vautr-crypto-wasm` sharing FFI built and
-  verified; full sharing UI + `VautrMlpClient` surface + per-item-SIK data model
-  remain (see gap #3). Left open deliberately — NOT a parity port.
+- **Web/mobile sharing UI** — the SDK surface (`VautrMlpClient` + `VautrWebClient`
+  `SharingManager`) is done and verified (VTR-066, extension). Web and mobile need
+  their Share/Inbox UI wired to that surface.
+- **Group sharing UI** (ADR-007 §6) — implemented in `vautr-sharing`; no client UI.
+- **Quarantine reaper** (web/ext) — server-side reaper + event stream still to
+  build (see gap #5).
 
-All previously-tracked parity VTRs (VTR-039/047/049/056/059/060/061/062/063/064)
-and the ext ZK follow-up are closed. Remaining items are backend/client-crypto
-work, not parity ports, and are intentionally left for dedicated VTRs rather than
-stubbed into the extension UI.
+All previously-tracked parity VTRs (VTR-039/047/049/056/059/060/061/062/063/064,
+the ext ZK follow-up, and VTR-065/066) are closed. Remaining items are
+backend/client-crypto work, not parity ports, and are intentionally left for
+dedicated VTRs rather than stubbed into the UI.
 
 ## Verification
 

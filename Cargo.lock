@@ -10527,6 +10527,7 @@ dependencies = [
  "vautr-crypto",
  "vautr-domain",
  "vautr-keyring",
+ "vautr-sharing",
  "wasm-bindgen",
  "zeroize",
 ]

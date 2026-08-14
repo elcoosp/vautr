@@ -220,6 +220,65 @@ export class VautrMlpClient {
   webauthnEnrollFinish(request: WebAuthnEnrollFinishRequest): Promise<StatusResponse> {
     return this.api.request<StatusResponse>('POST', '/mfa/webauthn/enroll/finish', request);
   }
+
+  // -------------------------------------------------------------------------
+  // Sharing (ADR-007) — zero-knowledge 1:1 item share relay
+  // -------------------------------------------------------------------------
+
+  /** Look up a user's published X25519 sharing public key. */
+  getSharingPublicKey(userId: string): Promise<{ user_id: string; public_key: string }> {
+    return this.api.request('GET', `/users/${userId}/public-key`);
+  }
+
+  /** Publish/replace our own sharing public key (caller must equal `userId`). */
+  publishSharingPublicKey(
+    userId: string,
+    publicKeyB64: string,
+  ): Promise<{ user_id: string; public_key: string }> {
+    return this.api.request('PUT', `/users/${userId}/public-key`, { public_key: publicKeyB64 });
+  }
+
+  /** Create a 1:1 share: the KEM envelope (`wrapped_sik` + `ephemeral_public_key`). */
+  createShare(request: {
+    item_uuid: string;
+    recipient_uuid: string;
+    wrapped_sik: string;
+    ephemeral_public_key: string;
+  }): Promise<{
+    share_id: string;
+    sender_uuid: string;
+    recipient_uuid: string;
+    item_uuid: string;
+  }> {
+    return this.api.request('POST', '/shares/', request);
+  }
+
+  /** Deliver the DEM-encrypted payload for a share (keyed by `item_uuid`). */
+  uploadSharePayload(
+    itemUuid: string,
+    payloadB64: string,
+  ): Promise<{ share_id: string; status: string }> {
+    return this.api.request('POST', `/shares/${itemUuid}/payload`, { payload: payloadB64 });
+  }
+
+  /** List shares waiting in our inbox. */
+  listShareInbox(): Promise<
+    Array<{
+      share_id: string;
+      sender_uuid: string;
+      item_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+      payload: string | null;
+    }>
+  > {
+    return this.api.request('GET', '/shares/inbox');
+  }
+
+  /** Revoke a share we own. */
+  revokeShare(itemUuid: string): Promise<{ share_id: string; status: string }> {
+    return this.api.request('DELETE', `/shares/${itemUuid}`);
+  }
 }
 
 /**

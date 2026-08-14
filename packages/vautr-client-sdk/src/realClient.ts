@@ -14,6 +14,7 @@
 
 import { ApiClient, fromBase64, toBase64 } from './api';
 import { AsyncCryptoAdapter } from './crypto';
+import type { VautrMlpClient } from './mlp';
 import { IndexedDbStore } from './storage';
 import type {
   ClipboardHandler,
@@ -321,6 +322,92 @@ export class VautrWebClient {
   }
 
   // -------------------------------------------------------------------------
+  // Sharing (ADR-007) — zero-knowledge 1:1 item share relay
+  // -------------------------------------------------------------------------
+
+  /**
+   * Ensure this client has a sharing keypair. Generates + publishes one on
+   * first use, then persists the secret key locally for inbox unwrap. Returns
+   * the persisted sharing secret key (base64).
+   */
+  async ensureSharingKey(mlp: VautrMlpClient): Promise<string> {
+    const state = await this.store.getState();
+    if (state.sharingSecretKey) {
+      return state.sharingSecretKey;
+    }
+    const kpJson = this.crypto.generateSharingKeypair();
+    const kp = JSON.parse(kpJson) as { public: string; secret: string };
+    if (state.username) {
+      await mlp.publishSharingPublicKey(state.username, kp.public);
+    }
+    await this.store.setState({ sharingSecretKey: kp.secret });
+    return kp.secret;
+  }
+
+  /** Share an item's plaintext with a recipient (by user id). */
+  async shareItem(
+    mlp: VautrMlpClient,
+    itemUuid: string,
+    recipientUserId: string,
+    plaintext: Uint8Array,
+  ): Promise<void> {
+    if (!this.svk) {
+      throw new Error('vault is locked');
+    }
+    const state = await this.store.getState();
+    const sender = state.username;
+    if (!sender) {
+      throw new Error('no logged-in user');
+    }
+    const secret = await this.ensureSharingKey(mlp);
+    void secret;
+
+    const recipient = await mlp.getSharingPublicKey(recipientUserId);
+    const bundleJson = this.crypto.shareItem(
+      sender,
+      recipientUserId,
+      itemUuid,
+      recipient.public_key,
+      plaintext,
+    );
+    const bundle = JSON.parse(bundleJson) as {
+      item_uuid: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+      encrypted_payload: string;
+    };
+    await mlp.createShare({
+      item_uuid: bundle.item_uuid,
+      recipient_uuid: recipientUserId,
+      wrapped_sik: bundle.wrapped_sik,
+      ephemeral_public_key: bundle.ephemeral_public_key,
+    });
+    await mlp.uploadSharePayload(bundle.item_uuid, bundle.encrypted_payload);
+  }
+
+  /** List shares waiting in our inbox. */
+  async getShareInbox(mlp: VautrMlpClient) {
+    return mlp.listShareInbox();
+  }
+
+  /**
+   * Decrypt a received share to its plaintext (Uint8Array). The sharing secret
+   * key is loaded from local storage and never retained.
+   */
+  async acceptShare(_mlp: VautrMlpClient, incoming: unknown): Promise<Uint8Array> {
+    const state = await this.store.getState();
+    if (!state.sharingSecretKey) {
+      throw new Error('no sharing key; cannot decrypt share');
+    }
+    return this.crypto.acceptShare(JSON.stringify(incoming), state.sharingSecretKey);
+  }
+
+  /** Revoke a share we own. */
+  async revokeShare(mlp: VautrMlpClient, itemUuid: string): Promise<void> {
+    await mlp.revokeShare(itemUuid);
+  }
+
+  // -------------------------------------------------------------------------
   // Sync (api.md §4)
   // -------------------------------------------------------------------------
 
@@ -511,6 +598,22 @@ export class VautrWebClient {
     const handle = String(this.nextHandle++);
     this.handles.set(handle, { secret: parsed.password, lastAccess: Date.now() });
     return handle;
+  }
+
+  /**
+   * Decrypt an item's full plaintext (the JSON item blob) as raw bytes for
+   * sharing. The bytes are transient — handed straight to `shareItem` and
+   * zeroized by the wasm module; they never enter React state.
+   */
+  async getItemPlaintext(uuid: string): Promise<Uint8Array> {
+    if (!this.dek) {
+      throw new Error('vault is locked');
+    }
+    const item = await this.store.getItem(uuid);
+    if (!item?.payload) {
+      throw new Error('item payload not available locally; sync first');
+    }
+    return this.crypto.decryptItem(uuid, item.encKeyGen, this.dek, fromBase64(item.payload));
   }
 
   /**

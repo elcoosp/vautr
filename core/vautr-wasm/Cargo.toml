@@ -29,11 +29,14 @@ serde-wasm-bindgen = "0.6"
 base64.workspace = true
 uuid = { version = "1", features = ["v4", "serde", "js"] }
 zeroize.workspace = true
+# Full sharing flow (vautr-sharing) returns serde-JSON envelopes to the SDK.
+serde_json.workspace = true
 # Crypto-only web client (ADR-005): no SQLite (sea-orm), no HTTP transport
 # (reqwest/ring/mio). The browser service worker decrypts vault items locally
 # and exposes only opaque handles + perform_action (data.md §1 rule 4).
 vautr-domain.workspace = true
 vautr-crypto = { workspace = true, features = ["sharing"] }
+vautr-sharing.workspace = true
 vautr-keyring.workspace = true
 
 [features]
@@ -46,4 +49,3 @@ desktop-api = []
 # Native-only integration test against the live server (gate 2). Not built for
 # wasm32 (dev-deps never compile into the cdylib), so ADR-005 is preserved.
 ureq = { version = "2", default-features = false, features = ["json"] }
-serde_json.workspace = true

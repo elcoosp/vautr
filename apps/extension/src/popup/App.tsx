@@ -8,6 +8,7 @@ import {
   Eye,
   Folder,
   HardDrive,
+  Inbox,
   Lock,
   Settings2,
   Ticket,
@@ -21,6 +22,7 @@ import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
 import { ImportExportTab } from './components/ImportExportTab';
+import { InboxTab } from './components/InboxTab';
 import { MachineAccountsTab } from './components/MachineAccountsTab';
 import { MfaTab } from './components/MfaTab';
 import { ProjectsTab } from './components/ProjectsTab';
@@ -39,6 +41,7 @@ const TABS = [
   { id: 'import-export', label: 'Backup', icon: ArrowLeftRight },
   { id: 'machine-accounts', label: 'Machines', icon: Bot },
   { id: 'tokens', label: 'Tokens', icon: Ticket },
+  { id: 'inbox', label: 'Inbox', icon: Inbox },
 ];
 
 export function App() {
@@ -171,7 +174,7 @@ export function App() {
             </div>
           ) : null}
           <TabsContent value="vault" className="mt-0">
-            {client ? <VaultTab client={client} /> : null}
+            {client && mlp ? <VaultTab client={client} mlp={mlp} /> : null}
           </TabsContent>
           <TabsContent value="projects" className="mt-0">
             {mlp ? <ProjectsTab mlp={mlp} /> : null}
@@ -193,6 +196,9 @@ export function App() {
           </TabsContent>
           <TabsContent value="tokens" className="mt-0">
             {mlp ? <TokensTab mlp={mlp} /> : null}
+          </TabsContent>
+          <TabsContent value="inbox" className="mt-0">
+            {mlp && client ? <InboxTab mlp={mlp} client={client} /> : null}
           </TabsContent>
         </div>
       </Tabs>

@@ -1,3 +1,4 @@
+import type { VautrMlpClient } from '@vautr/client-sdk';
 import { assessPassword, strengthLabel } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { useState } from 'react';
@@ -19,9 +20,10 @@ import { usePopupStore } from '../store';
 
 interface VaultTabProps {
   client: VautrWebClient;
+  mlp: VautrMlpClient;
 }
 
-export function VaultTab({ client }: VaultTabProps) {
+export function VaultTab({ client, mlp }: VaultTabProps) {
   const items = usePopupStore((s) => s.items);
   const setError = usePopupStore((s) => s.setError);
   const setStatus = usePopupStore((s) => s.setStatus);
@@ -94,6 +96,37 @@ export function VaultTab({ client }: VaultTabProps) {
     }
   }
 
+  // --- sharing (ADR-007) ---
+  const [shareItem, setShareItem] = useState<{ uuid: string; title: string } | null>(null);
+  const [shareRecipient, setShareRecipient] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
+
+  async function handleShare(item: { uuid: string; title: string }): Promise<void> {
+    setShareItem(item);
+    setShareRecipient('');
+  }
+
+  async function confirmShare(): Promise<void> {
+    if (!shareItem || !shareRecipient) {
+      setError('Recipient user id is required.');
+      return;
+    }
+    setShareBusy(true);
+    setError(null);
+    try {
+      const plaintext = await client.ensureSharingKey(mlp).then(async () => {
+        return client.getItemPlaintext(shareItem.uuid);
+      });
+      await client.shareItem(mlp, shareItem.uuid, shareRecipient, plaintext);
+      toast.success(`Shared "${shareItem.title}" with ${shareRecipient}.`);
+      setShareItem(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -132,6 +165,9 @@ export function VaultTab({ client }: VaultTabProps) {
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => void handleCopy(item)}>
                       Copy
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => void handleShare(item)}>
+                      Share
                     </Button>
                   </div>
                 </CardContent>
@@ -183,6 +219,33 @@ export function VaultTab({ client }: VaultTabProps) {
           </div>
           <DialogFooter>
             <Button onClick={() => void handleAdd()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareItem !== null} onOpenChange={(o) => !o && setShareItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share “{shareItem?.title}”</DialogTitle>
+            <DialogDescription>
+              Encrypts the item under a one-time key and delivers it to the recipient’s inbox. The
+              server only ever stores ciphertext.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Recipient user id</Label>
+              <Input
+                value={shareRecipient}
+                onChange={(e) => setShareRecipient(e.target.value)}
+                placeholder="recipient username"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => void confirmShare()} disabled={shareBusy}>
+              {shareBusy ? 'Sharing…' : 'Share'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

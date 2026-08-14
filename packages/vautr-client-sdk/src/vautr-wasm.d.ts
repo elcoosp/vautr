@@ -70,4 +70,19 @@ declare module 'vautr-wasm' {
     password: string,
     username: string,
   ): { upload: Uint8Array; sessionKey: Uint8Array };
+
+  // --- sharing.rs: ADR-007 1:1 sharing (KEM + DEM) ---
+  // `generate_sharing_keypair` / `restore_sharing_keypair` return a JSON object
+  // `{ public: <b64>, secret: <b64> }`. `share_item` returns a `vautr_sharing::
+  // ShareBundle` JSON string. `accept_share` returns the recovered plaintext.
+  export function generate_sharing_keypair(): string;
+  export function restore_sharing_keypair(secretB64: string): string;
+  export function share_item(
+    senderUuid: string,
+    recipientUuid: string,
+    itemUuid: string,
+    recipientPublicB64: string,
+    plaintext: Uint8Array,
+  ): string;
+  export function accept_share(incomingJson: string, recipientSecretB64: string): Uint8Array;
 }

@@ -59,7 +59,8 @@ fn b64(bytes: &[u8]) -> String {
 }
 
 fn unb64(s: &str, what: &str) -> Result<Vec<u8>> {
-    B64.decode(s).map_err(|_| ShareError::Crypto(format!("invalid {what} base64")))
+    B64.decode(s)
+        .map_err(|_| ShareError::Crypto(format!("invalid {what} base64")))
 }
 
 /// A 1:1 share of one vault item (sharing-pki.md §3–§5).
@@ -137,7 +138,11 @@ pub fn share_item(
     recipient_public_key: &SharingPublicKey,
     plaintext: &[u8],
 ) -> Result<ShareBundle> {
-    let share_id = Uuid::new_v4();
+    // The server keys shares by `item_uuid` (shares table natural key), and the
+    // recipient's `accept_share` derives the DEM associated-data from
+    // `incoming.share_id` (which the server returns as `item_uuid`). Using
+    // `item_uuid` as the `share_id` keeps the AD consistent end-to-end.
+    let share_id = item_uuid;
     let mut sik = Zeroizing::new([0u8; MK_LEN]);
     rand::thread_rng().fill_bytes(&mut *sik);
 
@@ -172,7 +177,9 @@ pub fn accept_share(recipient: &SharingKeyPair, incoming: &IncomingShare) -> Res
     let wrapped_sik = unb64(&incoming.wrapped_sik, "wrapped_sik")?;
     let ephemeral = unb64(&incoming.ephemeral_public_key, "ephemeral_public_key")?;
     if ephemeral.len() != 32 {
-        return Err(ShareError::Crypto("ephemeral_public_key must be 32 bytes".into()));
+        return Err(ShareError::Crypto(
+            "ephemeral_public_key must be 32 bytes".into(),
+        ));
     }
     let mut epk = [0u8; 32];
     epk.copy_from_slice(&ephemeral);
@@ -265,8 +272,12 @@ pub fn add_group_member(
     member_uuid: Uuid,
     member_public_key: &SharingPublicKey,
 ) -> Result<WrappedGroupKey> {
-    let env = kem_share_item(&group_key.group_sik, member_public_key, &group_key.group.group_id)
-        .map_err(|e| ShareError::Crypto(e.to_string()))?;
+    let env = kem_share_item(
+        &group_key.group_sik,
+        member_public_key,
+        &group_key.group.group_id,
+    )
+    .map_err(|e| ShareError::Crypto(e.to_string()))?;
     Ok(WrappedGroupKey {
         group_id: group_key.group.group_id,
         member_uuid,
@@ -283,7 +294,9 @@ pub fn unwrap_group_key(
     let wrapped_sik = unb64(&wrapped.wrapped_sik, "wrapped_sik")?;
     let ephemeral = unb64(&wrapped.ephemeral_public_key, "ephemeral_public_key")?;
     if ephemeral.len() != 32 {
-        return Err(ShareError::Crypto("ephemeral_public_key must be 32 bytes".into()));
+        return Err(ShareError::Crypto(
+            "ephemeral_public_key must be 32 bytes".into(),
+        ));
     }
     let mut epk = [0u8; 32];
     epk.copy_from_slice(&ephemeral);
@@ -330,7 +343,10 @@ pub fn remove_group_member(
     member_to_remove: Uuid,
     remaining_members: &[(Uuid, SharingPublicKey)],
 ) -> Result<GroupKeyRotation> {
-    if remaining_members.iter().any(|(u, _)| *u == member_to_remove) {
+    if remaining_members
+        .iter()
+        .any(|(u, _)| *u == member_to_remove)
+    {
         return Err(ShareError::Group(
             "member being removed must not be in the remaining set".into(),
         ));
@@ -364,9 +380,14 @@ mod tests {
         let item_uuid = Uuid::new_v4();
         let plaintext = b"vault item secret payload";
 
-        let bundle =
-            share_item(sender_uuid, recipient_uuid, item_uuid, &recipient.public, plaintext)
-                .unwrap();
+        let bundle = share_item(
+            sender_uuid,
+            recipient_uuid,
+            item_uuid,
+            &recipient.public,
+            plaintext,
+        )
+        .unwrap();
         let incoming = IncomingShare::from(bundle);
 
         let recovered = accept_share(&recipient, &incoming).unwrap();
@@ -427,7 +448,9 @@ mod tests {
         let item_uuid = Uuid::new_v4();
 
         // Admin and member both encrypt/decrypt the same group item.
-        let ct = group_key.encrypt_item(&item_uuid, b"shared family secret").unwrap();
+        let ct = group_key
+            .encrypt_item(&item_uuid, b"shared family secret")
+            .unwrap();
         let member_ctx = ShareGroupKey {
             group: group_key.group.clone(),
             group_sik: member_sik,
@@ -438,12 +461,8 @@ mod tests {
         );
 
         // Remove member: rotation excludes them, so they can no longer decrypt.
-        let rotation = remove_group_member(
-            &group_key,
-            member_uuid,
-            &[(admin_uuid, admin.public)],
-        )
-        .unwrap();
+        let rotation =
+            remove_group_member(&group_key, member_uuid, &[(admin_uuid, admin.public)]).unwrap();
         let new_ct = rotation
             .new_key
             .encrypt_item(&item_uuid, b"post-removal secret")

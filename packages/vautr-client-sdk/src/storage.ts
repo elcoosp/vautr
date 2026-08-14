@@ -39,6 +39,8 @@ export interface StoredState {
   sessionToken: string | null;
   /** Recovered SVK kept for this session (decrypted, in-memory only). */
   svk: Uint8Array | null;
+  /** Sharing secret key (base64 of 32 raw bytes), persisted for inbox unwrap. */
+  sharingSecretKey: string | null;
 }
 
 export const EMPTY_STATE: StoredState = {
@@ -49,6 +51,7 @@ export const EMPTY_STATE: StoredState = {
   minEncKeyGen: 1,
   sessionToken: null,
   svk: null,
+  sharingSecretKey: null,
 };
 
 const DB_NAME = 'vautr-client';

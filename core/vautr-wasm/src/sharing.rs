@@ -1,128 +1,151 @@
-//! wasm-bindgen wrappers for secure item sharing (ADR-007).
+//! wasm-bindgen wrappers for secure item sharing (ADR-007 / sharing-pki.md).
 //!
+//! These delegate to `vautr_sharing` (the pure-logic, no-I/O sharing crate) so
+//! the SIK generation, DEM, and KEM steps are identical to the desktop client.
 //! The server is an untrusted relay: these functions only ever touch public
 //! keys, KEM envelopes (`wrapped_sik` + `ephemeral_public_key`) and the
 //! recipient's own sharing secret key. The SIK and plaintext never leave the
-//! wasm module except as the unwrapped SIK (returned to the calling client to
-//! decrypt a received item locally).
+//! wasm module except as the unwrapped plaintext (returned to the calling
+//! client to ingest a received item locally).
 //!
-//! Byte layouts at the boundary (all little helpers; the TS SDK base64-encodes
-//! for the JSON wire):
-//!   * `generate_sharing_keypair` -> `public(32) ‖ secret(32)` (64 bytes)
-//!   * `share_item` -> `wrapped_sik ‖ ephemeral_public_key(32)`
-//!   * `unwrap_shared_item` -> `sik(32)`
+//! Wire format: each wrapper returns a JSON string of the corresponding
+//! `vautr_sharing` struct (base64 fields), which the TS SDK forwards to the
+//! server / parses from the inbox.
 
 use wasm_bindgen::prelude::*;
 
-use vautr_crypto::sharing::{SharedEnvelope, SharingKeyPair};
+use base64::Engine;
+use vautr_crypto::sharing::SharingKeyPair;
+use vautr_sharing::{accept_share as vs_accept_share, share_item as vs_share_item, IncomingShare};
 
-fn arr32(bytes: &[u8]) -> Result<[u8; 32], String> {
-    let mut out = [0u8; 32];
-    if bytes.len() != 32 {
-        return Err(format!("expected 32 bytes, got {}", bytes.len()));
+fn parse_keypair(secret_b64: &str) -> Result<SharingKeyPair, String> {
+    let secret = decode_b64(secret_b64)?;
+    if secret.len() != 32 {
+        return Err(format!(
+            "sharing secret must be 32 bytes, got {}",
+            secret.len()
+        ));
     }
-    out.copy_from_slice(bytes);
-    Ok(out)
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&secret);
+    Ok(SharingKeyPair::from_secret(arr))
 }
 
-/// Generate a fresh sharing keypair. Returns `public(32) ‖ secret(32)`. The
-/// caller stores `secret` (MP-encrypted in local storage) and reconstructs the
-/// keypair with [`restore_sharing_keypair`] to unwrap received shares.
+fn decode_b64(s: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| format!("base64 decode: {e}"))
+}
+
+/// Generate a fresh sharing keypair. Returns a JSON object
+/// `{ public: <b64>, secret: <b64> }`. The caller stores `secret` (e.g.
+/// MP-encrypted in local storage) and reconstructs the keypair with
+/// [`restore_sharing_keypair`] to unwrap received shares.
 #[wasm_bindgen]
-pub fn generate_sharing_keypair() -> Result<Vec<u8>, JsValue> {
+pub fn generate_sharing_keypair() -> Result<String, JsValue> {
     let kp = SharingKeyPair::generate();
-    let mut out = Vec::with_capacity(64);
-    out.extend_from_slice(&kp.public);
-    out.extend_from_slice(&kp.secret_bytes());
-    Ok(out)
+    let out = serde_json::json!({
+        "public": base64::engine::general_purpose::STANDARD.encode(kp.public),
+        "secret": base64::engine::general_purpose::STANDARD.encode(kp.secret_bytes()),
+    });
+    serde_json::to_string(&out).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Reconstruct a keypair from persisted secret bytes (32 bytes). Returns
-/// `public(32) ‖ secret(32)` (same layout as [`generate_sharing_keypair`]).
+/// Reconstruct a keypair from persisted secret bytes (base64).
 #[wasm_bindgen]
-pub fn restore_sharing_keypair(secret: &[u8]) -> Result<Vec<u8>, JsValue> {
-    let secret = arr32(secret).map_err(|e| JsValue::from_str(&e))?;
-    let kp = SharingKeyPair::from_secret(secret);
-    let mut out = Vec::with_capacity(64);
-    out.extend_from_slice(&kp.public);
-    out.extend_from_slice(&kp.secret_bytes());
-    Ok(out)
+pub fn restore_sharing_keypair(secret_b64: &str) -> Result<String, JsValue> {
+    let kp = parse_keypair(secret_b64).map_err(|e| JsValue::from_str(&e))?;
+    let out = serde_json::json!({
+        "public": base64::engine::general_purpose::STANDARD.encode(kp.public),
+        "secret": base64::engine::general_purpose::STANDARD.encode(kp.secret_bytes()),
+    });
+    serde_json::to_string(&out).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Wrap `sik` (32 bytes) for `recipient_public` (32 bytes) bound to
-/// `item_uuid`. Returns `wrapped_sik ‖ ephemeral_public_key(32)` — exactly the
-/// bytes the server stores (`POST /shares/`).
+/// Build a 1:1 share of `plaintext` for `recipient_public_b64` (base64 X25519
+/// key), bound to `item_uuid`. Returns a `vautr_sharing::ShareBundle` JSON:
+/// `{ share_id, sender_uuid, recipient_uuid, item_uuid, wrapped_sik,
+/// ephemeral_public_key, encrypted_payload }` (all base64 except uuids). The
+/// caller POSTs `wrapped_sik` + `ephemeral_public_key` to `POST /shares/` and
+/// `encrypted_payload` to `POST /shares/{item_uuid}/payload`.
 #[wasm_bindgen]
 pub fn share_item(
-    sik: &[u8],
-    recipient_public: &[u8],
+    sender_uuid: &str,
+    recipient_uuid: &str,
     item_uuid: &str,
-) -> Result<Vec<u8>, JsValue> {
-    let sik = arr32(sik).map_err(|e| JsValue::from_str(&e))?;
-    let recipient_pk = arr32(recipient_public).map_err(|e| JsValue::from_str(&e))?;
-    let uuid = uuid::Uuid::parse_str(item_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    recipient_public_b64: &str,
+    plaintext: &[u8],
+) -> Result<String, JsValue> {
+    let sender =
+        uuid::Uuid::parse_str(sender_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let recipient =
+        uuid::Uuid::parse_str(recipient_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let item = uuid::Uuid::parse_str(item_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let recipient_pk = decode_b64(recipient_public_b64)?;
+    if recipient_pk.len() != 32 {
+        return Err(JsValue::from_str("recipient public key must be 32 bytes"));
+    }
+    let mut pk = [0u8; 32];
+    pk.copy_from_slice(&recipient_pk);
 
-    let envelope = vautr_crypto::sharing::share_item(&sik, &recipient_pk, &uuid)
+    let bundle = vs_share_item(sender, recipient, item, &pk, plaintext)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let mut out = Vec::with_capacity(envelope.wrapped_sik.len() + 32);
-    out.extend_from_slice(&envelope.wrapped_sik);
-    out.extend_from_slice(&envelope.ephemeral_public_key);
-    Ok(out)
+    serde_json::to_string(&bundle).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Unwrap a received share envelope to recover the SIK (32 bytes). The
-/// recipient passes `wrapped_sik`, `ephemeral_public_key` (32), their
-/// `recipient_secret` (32), and `item_uuid`.
+/// Decrypt a received share. `incoming` is the `IncomingShare` JSON from
+/// `GET /shares/inbox` (base64 fields). Returns the recovered plaintext bytes.
 #[wasm_bindgen]
-pub fn unwrap_shared_item(
-    wrapped_sik: &[u8],
-    ephemeral_public_key: &[u8],
-    recipient_secret: &[u8],
-    item_uuid: &str,
-) -> Result<Vec<u8>, JsValue> {
-    let ephemeral_public_key = arr32(ephemeral_public_key).map_err(|e| JsValue::from_str(&e))?;
-    let secret = arr32(recipient_secret).map_err(|e| JsValue::from_str(&e))?;
-    let uuid = uuid::Uuid::parse_str(item_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-    let envelope = SharedEnvelope {
-        wrapped_sik: wrapped_sik.to_vec(),
-        ephemeral_public_key,
-    };
-    let sik = vautr_crypto::sharing::unwrap_shared_item(
-        &envelope,
-        &SharingKeyPair::from_secret(secret),
-        &uuid,
-    )
-    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    Ok(sik.to_vec())
+pub fn accept_share(incoming_json: &str, recipient_secret_b64: &str) -> Result<Vec<u8>, JsValue> {
+    let incoming: IncomingShare =
+        serde_json::from_str(incoming_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let kp = parse_keypair(recipient_secret_b64).map_err(|e| JsValue::from_str(&e))?;
+    vs_accept_share(&kp, &incoming).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vautr_crypto::kdf::MK_LEN;
 
     #[test]
     fn keypair_generate_and_restore_roundtrip() {
         let generated = generate_sharing_keypair().unwrap();
-        assert_eq!(generated.len(), 64);
-        let restored = restore_sharing_keypair(&generated[32..]).unwrap();
-        assert_eq!(generated, restored);
+        let v: serde_json::Value = serde_json::from_str(&generated).unwrap();
+        let secret = v["secret"].as_str().unwrap();
+        let restored = restore_sharing_keypair(secret).unwrap();
+        let r: serde_json::Value = serde_json::from_str(&restored).unwrap();
+        assert_eq!(v["public"], r["public"]);
+        assert_eq!(v["secret"], r["secret"]);
     }
 
     #[test]
-    fn share_and_unwrap_roundtrip() {
+    fn share_and_accept_roundtrip() {
         let owner = generate_sharing_keypair().unwrap();
         let recipient = generate_sharing_keypair().unwrap();
-        let sik = vec![5u8; MK_LEN];
-        let item_uuid = uuid::Uuid::new_v4().to_string();
+        let o: serde_json::Value = serde_json::from_str(&owner).unwrap();
+        let r: serde_json::Value = serde_json::from_str(&recipient).unwrap();
 
-        let env = share_item(&sik, &recipient[..32], &item_uuid).unwrap();
-        assert!(env.len() > 32);
-        let wrapped = &env[..env.len() - 32];
-        let ephemeral = &env[env.len() - 32..];
-        let recovered =
-            unwrap_shared_item(wrapped, ephemeral, &recipient[32..], &item_uuid).unwrap();
-        assert_eq!(recovered, sik);
+        let item_uuid = uuid::Uuid::new_v4();
+        let plaintext = b"vault item secret payload";
+        let bundle = share_item(
+            &uuid::Uuid::new_v4().to_string(),
+            &uuid::Uuid::new_v4().to_string(),
+            &item_uuid.to_string(),
+            r["public"].as_str().unwrap(),
+            plaintext,
+        )
+        .unwrap();
+        let b: serde_json::Value = serde_json::from_str(&bundle).unwrap();
+        // Recipient rebuilds the IncomingShare JSON from the bundle.
+        let incoming = serde_json::json!({
+            "share_id": b["share_id"],
+            "sender_uuid": b["sender_uuid"],
+            "item_uuid": b["item_uuid"],
+            "wrapped_sik": b["wrapped_sik"],
+            "ephemeral_public_key": b["ephemeral_public_key"],
+            "encrypted_payload": b["encrypted_payload"],
+        });
+        let recovered = accept_share(&incoming.to_string(), r["secret"].as_str().unwrap()).unwrap();
+        assert_eq!(recovered, plaintext);
     }
 }
