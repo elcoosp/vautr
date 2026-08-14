@@ -147,6 +147,96 @@ export class VautrWebClient {
     }
   }
 
+  /**
+   * Subscribe to the server-backed quarantine reaper event stream (VTR-069):
+   * `GET /events` SSE. The server pushes `item_permanently_deleted` /
+   * `item_recovered` (tombstone / recovery) events so web/extension clients
+   * drop stale items and re-sync without waiting for the next pull.
+   *
+   * Returns an unsubscribe function that closes the stream + stops reconnects.
+   */
+  subscribeVaultEvents(): () => void {
+    let closed = false;
+    let abort: AbortController | null = null;
+
+    const connect = async (): Promise<void> => {
+      if (closed) return;
+      const token = this.api.getToken();
+      if (!token) {
+        // Not logged in yet; retry shortly.
+        if (!closed) setTimeout(() => void connect(), 2000);
+        return;
+      }
+      abort = new AbortController();
+      try {
+        const res = await fetch(`${this.api.getBaseUrl()}/events`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: abort.signal,
+        });
+        if (!res.ok || !res.body) {
+          if (!closed) setTimeout(() => void connect(), 2000);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          const rest = parts.pop() ?? '';
+          const frames = parts;
+          buffer = rest;
+          for (const frame of frames) {
+            for (const line of frame.split('\n')) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const payload = trimmed.slice('data:'.length).trim();
+              if (!payload || payload === '[DONE]') continue;
+              try {
+                const ev = JSON.parse(payload) as {
+                  type: string;
+                  uuid?: string;
+                };
+                this.onServerEvent(ev);
+              } catch {
+                // Ignore malformed frames (e.g. comment lines, keep-alive).
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (closed || (err instanceof DOMException && err.name === 'AbortError')) return;
+      } finally {
+        abort = null;
+        if (!closed) setTimeout(() => void connect(), 2000);
+      }
+    };
+
+    void connect();
+    return () => {
+      closed = true;
+      abort?.abort();
+    };
+  }
+
+  /** Handle a single server reaper event, mapping it to a local state update. */
+  private async onServerEvent(ev: { type: string; uuid?: string }): Promise<void> {
+    if (ev.type === 'item_permanently_deleted' && ev.uuid) {
+      await this.store.deleteItem(ev.uuid);
+      this.emit({ type: 'OverviewDeleted', uuid: ev.uuid });
+    } else if (ev.type === 'item_recovered' && ev.uuid && this.isUnlocked()) {
+      // A tombstoned item was un-tombstoned; re-sync to fetch the new payload.
+      try {
+        this.emit({ type: 'SyncStarted' });
+        await this.sync();
+      } catch {
+        // sync() emits its own SyncFailed on error.
+      }
+    }
+  }
+
   isUnlocked(): boolean {
     return this.svk !== null && this.dek !== null;
   }

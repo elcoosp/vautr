@@ -73,6 +73,11 @@ export class ApiClient {
     return this.token;
   }
 
+  /** Base URL of the server (used to build SSE / non-JSON endpoints). */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   /** Perform a JSON request and return the parsed body (200/2xx). */
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const requestId = this.onRequestId();

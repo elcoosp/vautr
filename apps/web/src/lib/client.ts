@@ -23,6 +23,8 @@ export function getClient(): VautrWebClient {
       }
     });
     instance.subscribe((update) => vaultEventBus.emit(update));
+    // Server-backed quarantine reaper (VTR-069): proactive tombstone/recovery push.
+    instance.subscribeVaultEvents();
     if (!storeAttached) {
       attachStoreToEventBus(vaultEventBus);
       storeAttached = true;

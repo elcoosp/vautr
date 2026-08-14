@@ -29,6 +29,7 @@ pub mod account;
 pub mod audit;
 pub mod auth;
 pub mod backup;
+pub mod events;
 pub mod files;
 pub mod health;
 pub mod items;
@@ -48,6 +49,9 @@ pub mod webauthn;
 #[derive(Clone)]
 pub struct AppState {
     pub repo: Arc<Repository>,
+    /// Broadcast channel for proactive vault events (VTR-069): tombstone /
+    /// recovery events the server pushes to web/extension clients over SSE.
+    pub event_tx: tokio::sync::broadcast::Sender<crate::handlers::events::VaultEvent>,
     /// WebAuthn (FIDO2) second-factor service (VTR-052). Present only when the
     /// `webauthn` feature is compiled in.
     #[cfg(feature = "webauthn")]
@@ -58,6 +62,7 @@ impl AppState {
     pub fn new(repo: Arc<Repository>) -> Self {
         Self {
             repo,
+            event_tx: crate::handlers::events::event_channel(),
             #[cfg(feature = "webauthn")]
             webauthn: Arc::new(webauthn::WebauthnService::new()),
         }
@@ -80,6 +85,8 @@ pub fn build_router(state: AppState) -> Router {
         // Items (api.md §4)
         .route("/items/{uuid}", put(items::item_put))
         .route("/items/{uuid}", delete(items::item_delete))
+        // Proactive vault events (VTR-069): SSE stream of tombstone/recovery events.
+        .route("/events", get(events::events_stream))
         // Account & key management (api.md §5)
         .route("/account/status", get(account::account_status))
         .route("/account/rotate-key", post(account::account_rotate_key))

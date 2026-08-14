@@ -75,6 +75,25 @@ pub(crate) async fn item_put(
                 updated_at: row.updated_at,
             }))
         }
+        // A put that cleared a prior tombstone is a successful write; notify
+        // clients so they re-sync to fetch the now-readable payload.
+        UpsertOutcome::Recovered => {
+            let _ = st.event_tx.send(crate::handlers::events::VaultEvent::ItemRecovered {
+                uuid: uuid.parse().unwrap_or_default(),
+            });
+            let row = st
+                .repo
+                .get_item(&uuid, &user_id)
+                .await
+                .map_err(|e| ApiError::internal(&e.to_string()))?
+                .unwrap();
+            Ok(Json(ItemPutResp {
+                uuid,
+                version: row.version,
+                enc_key_gen: row.enc_key_gen,
+                updated_at: row.updated_at,
+            }))
+        }
         UpsertOutcome::Conflict => Err(ApiError::new(
             StatusCode::PRECONDITION_FAILED,
             "precondition_failed",
@@ -122,7 +141,23 @@ pub(crate) async fn item_delete(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     {
-        UpsertOutcome::Updated => Ok(Json(ItemPutResp {
+        UpsertOutcome::Updated => {
+            // Tombstone: proactively notify clients (VTR meets reaper, VTR-069).
+            let _ = st.event_tx.send(
+                crate::handlers::events::VaultEvent::ItemPermanentlyDeleted {
+                    uuid: uuid.parse().unwrap_or_default(),
+                },
+            );
+            Ok(Json(ItemPutResp {
+                uuid,
+                version: row.version + 1,
+                enc_key_gen: row.enc_key_gen,
+                updated_at: now,
+            }))
+        }
+        // A delete sets deleted_date, so upsert_item_occ never returns Recovered
+        // here; the arm exists only for match exhaustiveness.
+        UpsertOutcome::Recovered => Ok(Json(ItemPutResp {
             uuid,
             version: row.version + 1,
             enc_key_gen: row.enc_key_gen,

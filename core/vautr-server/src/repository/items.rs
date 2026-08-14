@@ -2,6 +2,8 @@
 //! (REQ-API-01), and item reads.
 
 use sqlx::FromRow;
+use sqlx::Row;
+use uuid::Uuid;
 
 use crate::repository::Repository;
 
@@ -22,6 +24,9 @@ pub struct ItemRow {
 pub enum UpsertOutcome {
     /// Row updated (OCC matched); `version` was incremented.
     Updated,
+    /// The upsert cleared a prior tombstone (server-side recovery of a
+    /// quarantined/deleted item). The caller should emit `ItemRecovered`.
+    Recovered,
     /// `version` did not match — caller should return 412 (ADR-004).
     Conflict,
     /// `enc_key_gen < min_enc_key_gen` — caller should return 422 (REQ-API-01).
@@ -48,6 +53,14 @@ impl Repository {
             }
         }
 
+        // Capture prior tombstone state BEFORE the UPDATE (the UPDATE clears
+        // deleted_date, so reading it after would always be false).
+        let prior_tombstoned = self
+            .get_item(uuid, user_id)
+            .await?
+            .map(|r| r.deleted_date.is_some())
+            .unwrap_or(false);
+
         let res = sqlx::query(
             "UPDATE items \
                SET payload = ?, version = version + 1, enc_key_gen = ?, deleted_date = ?, updated_at = ? \
@@ -64,7 +77,12 @@ impl Repository {
         .await?;
 
         Ok(if res.rows_affected() == 1 {
-            UpsertOutcome::Updated
+            // Detect recovery: a prior tombstone was cleared by this upsert.
+            if prior_tombstoned && deleted_date.is_none() {
+                UpsertOutcome::Recovered
+            } else {
+                UpsertOutcome::Updated
+            }
         } else if target_version == 0 {
             // Fresh create (no row exists): the OCC UPDATE matched nothing and
             // the caller expressed intent to create a new item (target_version
@@ -100,5 +118,23 @@ impl Repository {
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await
+    }
+
+    /// Return the uuids of all items currently tombstoned (`deleted_date` set)
+    /// across all users. Used by the server-side reaper to push
+    /// `ItemPermanentlyDeleted` events (VTR-069). The client only acts on uuids
+    /// it actually holds locally, so a global scan is safe.
+    pub async fn tombstoned_items(&self) -> Result<Vec<Uuid>, sqlx::Error> {
+        let rows = sqlx::query("SELECT uuid FROM items WHERE deleted_date IS NOT NULL")
+            .fetch_all(&self.pool)
+            .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let uuid: String = row.try_get("uuid")?;
+            if let Ok(u) = Uuid::parse_str(&uuid) {
+                out.push(u);
+            }
+        }
+        Ok(out)
     }
 }

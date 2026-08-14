@@ -282,6 +282,29 @@ pub(crate) async fn sync_push_batch(
                     current_server_state: None,
                 });
             }
+            // A push that cleared a prior tombstone is a successful write; also
+            // notify clients so they re-sync to fetch the recovered payload.
+            UpsertOutcome::Recovered => {
+                let _ = st.event_tx.send(
+                    crate::handlers::events::VaultEvent::ItemRecovered {
+                        uuid: item.uuid.parse().unwrap_or_default(),
+                    },
+                );
+                let row = st
+                    .repo
+                    .get_item(&item.uuid, &user_id)
+                    .await
+                    .map_err(|e| ApiError::internal(&e.to_string()))?
+                    .unwrap();
+                results.push(PushResult {
+                    uuid: item.uuid.clone(),
+                    status: "success".into(),
+                    version: Some(row.version),
+                    enc_key_gen: Some(row.enc_key_gen),
+                    updated_at: Some(row.updated_at),
+                    current_server_state: None,
+                });
+            }
             UpsertOutcome::Conflict => {
                 let row = st
                     .repo

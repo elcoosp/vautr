@@ -103,6 +103,8 @@ export function App() {
     clientRef.current = client;
     client.setClipboardHandler(createClipboardHandler());
     client.subscribe(onVaultUpdate as never);
+    // Server-backed quarantine reaper (VTR-069): proactive tombstone/recovery push.
+    client.subscribeVaultEvents();
     await refreshAll();
   }
 

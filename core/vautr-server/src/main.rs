@@ -31,7 +31,11 @@ async fn main() {
     tracing::info!(%db_url, "vautr-server database ready");
 
     let repo = Arc::new(vautr_server::repository::Repository::new(pool.clone()));
-    let state = AppState::new(repo);
+    let state = AppState::new(repo.clone());
+
+    // Server-side quarantine reaper (VTR-069): periodically pushes tombstone
+    // events so web/extension clients drop stale items without waiting for sync.
+    let _reaper = vautr_server::handlers::events::spawn_reaper(repo, state.event_tx.clone());
 
     // Middleware stack (arch-design §3.3): tracing outermost, then rate
     // limiting, then CORS. Tracing never captures bodies (no-plaintext rule).
