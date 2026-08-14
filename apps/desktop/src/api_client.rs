@@ -734,6 +734,28 @@ impl ApiClient {
         )
         .await
     }
+
+    /// `GET /audit` — list audit-log entries (VTR-071). Metadata-only: the
+    /// server never returns secret plaintext. Returns the raw JSON array.
+    pub async fn audit_list(
+        &self,
+        token: &str,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) -> Result<serde_json::Value, String> {
+        let mut path = "/audit".to_string();
+        if limit.is_some() || offset.is_some() {
+            let mut q = Vec::new();
+            if let Some(l) = limit {
+                q.push(format!("limit={l}"));
+            }
+            if let Some(o) = offset {
+                q.push(format!("offset={o}"));
+            }
+            path = format!("{path}?{}", q.join("&"));
+        }
+        self.send(Method::GET, token, &path, None).await
+    }
 }
 
 /// Convenience: base64-encode a ciphertext blob for the wire format.

@@ -879,6 +879,36 @@
           "created_at": { "type": "integer", "format": "int64" }
         }
       },
+      "AuditEntry": {
+        "type": "object",
+        "required": ["id", "action", "created_at"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "user_id": { "type": "string", "nullable": true },
+          "action": { "type": "string" },
+          "actor": { "type": "string", "nullable": true },
+          "detail": { "type": "string", "nullable": true },
+          "created_at": { "type": "integer", "format": "int64" },
+          "event_type": { "type": "string", "nullable": true },
+          "resource_type": { "type": "string", "nullable": true },
+          "resource_id": { "type": "string", "nullable": true },
+          "ip_address": { "type": "string", "nullable": true }
+        }
+      },
+      "AuditListQuery": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "string", "nullable": true },
+          "actor": { "type": "string", "nullable": true },
+          "event_type": { "type": "string", "nullable": true },
+          "resource_type": { "type": "string", "nullable": true },
+          "resource_id": { "type": "string", "nullable": true },
+          "from": { "type": "integer", "format": "int64", "nullable": true },
+          "to": { "type": "integer", "format": "int64", "nullable": true },
+          "limit": { "type": "integer", "format": "uint32", "default": 100 },
+          "offset": { "type": "integer", "format": "uint32", "default": 0 }
+        }
+      },
       "BackupRestoreRequest": {
         "type": "object",
         "properties": {
@@ -3527,6 +3557,78 @@
           },
           "422": {
             "description": "precondition_failed (bad archive).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/audit": {
+      "get": {
+        "tags": ["audit"],
+        "operationId": "auditList",
+        "parameters": [
+          { "$ref": "#/components/parameters/XRequestId" },
+          { "name": "user_id", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "actor", "in": "query", "required": false, "schema": { "type": "string" } },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "resource_type",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "uint32", "default": 100 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "uint32", "default": 0 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit/security timeline (metadata only — never exposes secret payloads).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/AuditEntry" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized.",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
             }

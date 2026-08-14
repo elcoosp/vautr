@@ -13,6 +13,7 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as AuthedAuditRouteImport } from './routes/_authed/audit'
 import { Route as AuthedDashboardRouteImport } from './routes/_authed/dashboard'
 import { Route as AuthedGeneratorRouteImport } from './routes/_authed/generator'
 import { Route as AuthedImportExportRouteImport } from './routes/_authed/import-export'
@@ -42,6 +43,11 @@ const RegisterRoute = RegisterRouteImport.update({
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedAuditRoute = AuthedAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedDashboardRoute = AuthedDashboardRouteImport.update({
@@ -104,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/audit': typeof AuthedAuditRoute
   '/dashboard': typeof AuthedDashboardRoute
   '/generator': typeof AuthedGeneratorRoute
   '/import-export': typeof AuthedImportExportRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/audit': typeof AuthedAuditRoute
   '/dashboard': typeof AuthedDashboardRoute
   '/generator': typeof AuthedGeneratorRoute
   '/import-export': typeof AuthedImportExportRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/_authed/audit': typeof AuthedAuditRoute
   '/_authed/dashboard': typeof AuthedDashboardRoute
   '/_authed/generator': typeof AuthedGeneratorRoute
   '/_authed/import-export': typeof AuthedImportExportRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
+    | '/audit'
     | '/dashboard'
     | '/generator'
     | '/import-export'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/register'
+    | '/audit'
     | '/dashboard'
     | '/generator'
     | '/import-export'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/register'
+    | '/_authed/audit'
     | '/_authed/dashboard'
     | '/_authed/generator'
     | '/_authed/import-export'
@@ -236,6 +248,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthedIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/audit': {
+      id: '/_authed/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuthedAuditRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/dashboard': {
@@ -319,6 +338,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedRouteChildren {
+  AuthedAuditRoute: typeof AuthedAuditRoute
   AuthedDashboardRoute: typeof AuthedDashboardRoute
   AuthedGeneratorRoute: typeof AuthedGeneratorRoute
   AuthedImportExportRoute: typeof AuthedImportExportRoute
@@ -334,6 +354,7 @@ interface AuthedRouteChildren {
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAuditRoute: AuthedAuditRoute,
   AuthedDashboardRoute: AuthedDashboardRoute,
   AuthedGeneratorRoute: AuthedGeneratorRoute,
   AuthedImportExportRoute: AuthedImportExportRoute,

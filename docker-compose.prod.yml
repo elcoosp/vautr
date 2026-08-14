@@ -1,0 +1,70 @@
+# Vautr production stack — explicit healthchecks, restart policies, and a
+# continuous SQLite backup sidecar (litestream).
+#
+#   docker compose -f docker-compose.prod.yml --profile https up -d
+#
+# SQLite is the default database (persisted in the `serverdata` volume and
+# replicated by litestream to an object store you configure in the sidecar).
+
+name: vautr-prod
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        FEATURES: ${VAUTR_FEATURES:-}
+        VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:vautr.db}
+    image: vautr/server:latest
+    restart: unless-stopped
+    ports:
+      - "${VAUTR_PORT:-8080}:8080"
+    environment:
+      VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:/data/vautr.db}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - serverdata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/account/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Continuous SQLite -> object-store replication (litestream). Point
+  # LITESTREAM_*/AWS_* at your bucket. Disabled by default; enable with
+  # `docker compose -f docker-compose.prod.yml --profile backup up -d`.
+  backup:
+    image: litestream/litestream:latest
+    restart: unless-stopped
+    profiles: ["backup"]
+    command: ["replicate"]
+    volumes:
+      - serverdata:/data:ro
+      - ./deploy/litestream.yml:/etc/litestream.yml:ro
+    depends_on:
+      server:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: ["https"]
+    environment:
+      VAUTR_DOMAIN: ${VAUTR_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  serverdata:
+  caddydata:
+  caddyconfig:

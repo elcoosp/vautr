@@ -23,17 +23,19 @@ live during implementation rather than through the flat `done/` set.
   reconciled final state, including the iOS/Android native bridges that the
   earlier "not verifiable in sandbox" note wrongly claimed could not be built —
   both `xcodebuild` and `gradlew :app:assembleDebug` were executed and verified).
-- `open/` — **empty as of 2026-08-14**. No issue through VTR-070 is genuinely
+- `open/` — **empty as of 2026-08-14**. No issue through VTR-072 is genuinely
   open in the codebase.
 
 ## Open issues (the real backlog)
-As of 2026-08-14 two genuinely-open issues exist (all of VTR-001..VTR-070 are
-done/closed):
+**None.** As of 2026-08-14 all tracked issues VTR-001..VTR-072 are done/closed.
+The two last open items, VTR-071 (audit-log viewer + export in web/desktop
+clients) and VTR-072 (complete VTR-060 self-hosting docs), landed and were
+moved to `closed/` on 2026-08-14:
 
-| Issue | What's missing | Notes |
-|-------|----------------|-------|
-| VTR-071 | Audit-log viewer + export in web/desktop clients | Server `GET /audit` exists (VTR-053); no client surface (0 grep hits in apps/web, apps/desktop). ZK-safe (metadata only). |
-| VTR-072 | Complete VTR-060 self-hosting docs | VTR-060 is marked done but its `docs/self-hosting/` + `docker-compose.prod.yml` deliverables are absent; base compose/Dockerfile/scripts exist. |
+| Issue | Delivered | Notes |
+|-------|-----------|-------|
+| VTR-071 | `closed/VTR-071.md` | SDK `auditList`, web `/_authed/audit` route, desktop `do_export_audit` + export card; `GET /audit` contract added to `openapi.json`. `hermes verify` green. |
+| VTR-072 | `closed/VTR-072.md` | `docs/self-hosting/README.md` runbook + `docker-compose.prod.yml` (validated `docker compose config` → VALID). |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`

@@ -2746,6 +2746,55 @@ impl DesktopView {
         .detach();
     }
 
+    fn do_export_audit(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            self.import_text = "Log in first.".into();
+            cx.notify();
+            return;
+        };
+        let path = self.export_path_input.read(cx).value().to_string();
+        let path = if path.trim().is_empty() {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            format!("{home}/vautr-audit-{}.json", chrono::Utc::now().timestamp())
+        } else {
+            path.trim().to_string()
+        };
+        let api = self.api();
+        self.import_busy = true;
+        self.import_text = "Exporting audit log…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let result = api.audit_list(&token, Some(100), None).await;
+            this.update(cx, |this, cx| {
+                this.import_busy = false;
+                match result {
+                    Ok(value) => match std::fs::write(
+                        &path,
+                        serde_json::to_vec_pretty(&value).unwrap_or_default(),
+                    ) {
+                        Ok(()) => {
+                            let count = value.as_array().map(|a| a.len()).unwrap_or(0);
+                            this.import_text =
+                                format!("Audit log exported ({count} events) to {path}");
+                            cx.notify();
+                        }
+                        Err(e) => {
+                            this.import_text = format!("Write failed: {e}");
+                            cx.notify();
+                        }
+                    },
+                    Err(e) => {
+                        this.import_text = format!("Export failed: {e}");
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn do_restore_backup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(token) = self.token.clone() else {
             return;
@@ -5950,6 +5999,28 @@ impl DesktopView {
                                             this.do_export_vault(window, cx);
                                         },
                                     )),
+                            )
+                            // Audit-log export (VTR-071) — metadata only, no secret plaintext.
+                            .child(
+                                self.card(
+                                    "Export audit log (JSON)",
+                                    "Downloads the server security/audit timeline (logins, key rotations, account changes) and writes it to a file. Metadata only — never contains secret values.",
+                                )
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .child(
+                                            Button::new("export-audit")
+                                                .primary()
+                                                .label(if busy { "Exporting…" } else { "Export audit log" })
+                                                .on_click(cx.listener(
+                                                    |this, _: &gpui::ClickEvent, window, cx| {
+                                                        this.do_export_audit(window, cx);
+                                                    },
+                                                )),
+                                        ),
+                                ),
                             ),
                     ),
             )

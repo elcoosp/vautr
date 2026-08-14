@@ -459,6 +459,31 @@ export interface BackupExportResponse {
     created_at: number;
   }
 
+export interface AuditEntry {
+    id: number;
+    user_id?: string | null;
+    action: string;
+    actor?: string | null;
+    detail?: string | null;
+    created_at: number;
+    event_type?: string | null;
+    resource_type?: string | null;
+    resource_id?: string | null;
+    ip_address?: string | null;
+  }
+
+export interface AuditListQuery {
+    user_id?: string | null;
+    actor?: string | null;
+    event_type?: string | null;
+    resource_type?: string | null;
+    resource_id?: string | null;
+    from?: number | null;
+    to?: number | null;
+    limit?: number;
+    offset?: number;
+  }
+
 export interface BackupRestoreRequest {
     backup_id?: string;
     archive_base64?: string;
@@ -757,6 +782,9 @@ export type backupExportResponse = BackupExportResponse;
 
 export type backupRestoreRequest = BackupRestoreRequest;
 export type backupRestoreResponse = BackupRestoreResponse;
+
+export type auditListRequest = undefined;
+export type auditListResponse = Array<AuditEntry>;
 
 // ---------------------------------------------------------------------------
 // Typed path/method map for building HTTP clients
@@ -1283,6 +1311,14 @@ export type ApiPath__backup_restore = {
     };
 };
 
+export type ApiPath__audit = {
+    get: {
+      pathParams?: undefined;
+      request?: undefined;
+      response: auditListResponse;
+    };
+};
+
 export type ApiPaths = {
   "/auth/register/start": ApiPath__auth_register_start;
   "/auth/register/finish": ApiPath__auth_register_finish;
@@ -1338,4 +1374,5 @@ export type ApiPaths = {
   "/backup": ApiPath__backup;
   "/backup/export": ApiPath__backup_export;
   "/backup/restore": ApiPath__backup_restore;
+  "/audit": ApiPath__audit;
 };

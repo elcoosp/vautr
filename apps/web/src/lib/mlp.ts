@@ -13,6 +13,8 @@ import type {
   AccessTokenCreateRequest,
   AccessTokenCreateResponse,
   AccessTokenListResponse,
+  AuditEntry,
+  AuditListQuery,
   BackupExportResponse,
   BackupRestoreResponse,
   BackupStatus,
@@ -216,7 +218,33 @@ export const mlp = {
     request<BackupExportResponse>('POST', '/backup/export', req),
   backupRestore: (req: { backup_id?: string; archive_base64?: string }) =>
     request<BackupRestoreResponse>('POST', '/backup/restore', req),
+
+  // -------------------------------------------------------------------------
+  // Audit / security log (metadata only — never exposes secret payloads)
+  // -------------------------------------------------------------------------
+  auditList: (query?: AuditListQuery) =>
+    request<AuditEntry[]>('GET', `/audit${auditQueryString(query)}`),
 };
+
+/** Serialize an audit query into a URL query string (omitting empty fields). */
+function auditQueryString(query?: AuditListQuery): string {
+  if (!query) return '';
+  const params = new URLSearchParams();
+  const set = (k: string, v: string | number | null | undefined) => {
+    if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
+  };
+  set('user_id', query.user_id);
+  set('actor', query.actor);
+  set('event_type', query.event_type);
+  set('resource_type', query.resource_type);
+  set('resource_id', query.resource_id);
+  set('from', query.from);
+  set('to', query.to);
+  set('limit', query.limit);
+  set('offset', query.offset);
+  const s = params.toString();
+  return s ? `?${s}` : '';
+}
 
 /** Low-level escape hatch for the E2E test harness. */
 export { request as mlpRawRequest };

@@ -11,6 +11,7 @@ import {
   Lock,
   LogOut,
   Replace,
+  ScrollText,
   Settings,
   Settings2,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const NAV = [
   { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
   { to: '/tokens', label: 'Tokens', icon: Globe },
   { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
+  { to: '/audit', label: 'Security log', icon: ScrollText },
   { to: '/import-export', label: 'Import / export', icon: Replace },
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
