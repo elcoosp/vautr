@@ -35,6 +35,7 @@ use vautr_app_state::event_bus::{ConflictEvent, VaultStateUpdate};
 use vautr_app_state::hardening::lock_secret_memory;
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_domain::{DecryptedOverview, DecryptedSecret, DomainModel, ItemMetadata};
+use vautr_sharing::ShareGroupKey;
 
 /// Which post-login section is active.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -249,6 +250,12 @@ pub struct DesktopView {
     share_recipient_input: Entity<InputState>,
     /// Status / error text shown in the share modal.
     share_text: String,
+    /// Group sharing (VTR-070): name for a new group.
+    group_name_input: Entity<InputState>,
+    /// Group member UUID to add to the active group.
+    group_member_input: Entity<InputState>,
+    /// The group the user is currently operating on (after create / select).
+    active_group_id: Option<Uuid>,
     /// Current vault key generation (advanced by one on rotate_key).
     key_gen: u64,
 }
@@ -294,6 +301,9 @@ impl DesktopView {
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste base64 archive here…"));
         let export_path_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("~/vautr-vault-export.json"));
+        let group_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Group name"));
+        let group_member_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("member user uuid"));
 
         let _subscriptions = vec![];
 
@@ -410,6 +420,9 @@ impl DesktopView {
             import_busy: false,
             import_archive_input,
             export_path_input,
+            group_name_input,
+            group_member_input,
+            active_group_id: None,
             pending_update: None,
             conflict_queue: Vec::new(),
             pending_share: None,
@@ -994,6 +1007,135 @@ impl DesktopView {
                 }
                 Err(err) => {
                     this.share_text = format!("Share failed: {err}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Create a sharing group (VTR-070). The returned `ShareGroupKey` is stored
+    /// in the client's group store; we keep its id as `active_group_id`.
+    fn do_create_group(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let name = self.group_name_input.read(cx).value().to_string();
+        if name.trim().is_empty() {
+            self.share_text = "Group name is required.".into();
+            cx.notify();
+            return;
+        }
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+        self.share_text = "Creating group…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let outcome = client.create_group(name.trim().to_string()).await;
+            this.update(cx, |this, cx| match outcome {
+                Ok(key) => {
+                    this.active_group_id = Some(key.group.group_id);
+                    this.share_text = format!("Group created (id {})", key.group.group_id);
+                    cx.notify();
+                }
+                Err(err) => {
+                    this.share_text = format!("Group create failed: {err}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Add a member to the active group (VTR-070). Wraps the Group SIK for the
+    /// member's public key and relays it via the sharing transport.
+    fn do_add_group_member(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(group_id) = self.active_group_id else {
+            self.share_text = "Create or select a group first.".into();
+            cx.notify();
+            return;
+        };
+        let member = self.group_member_input.read(cx).value().to_string();
+        let member_uuid = match Uuid::parse_str(member.trim()) {
+            Ok(r) => r,
+            Err(_) => {
+                self.share_text = "Member must be a valid UUID.".into();
+                cx.notify();
+                return;
+            }
+        };
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+        self.share_text = "Adding member…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let outcome = client.add_group_member(group_id, member_uuid).await;
+            this.update(cx, |this, cx| match outcome {
+                Ok(_) => {
+                    this.share_text = format!("Member {member_uuid} added.");
+                    cx.notify();
+                }
+                Err(err) => {
+                    this.share_text = format!("Add member failed: {err}");
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Share the pending item with the active group (VTR-070). Reveals the
+    /// plaintext locally (trusted desktop client), then encrypts it under the
+    /// Group SIK via `VautrClient::share_to_group`.
+    fn do_share_to_group(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(group_id) = self.active_group_id else {
+            self.share_text = "Create or select a group first.".into();
+            cx.notify();
+            return;
+        };
+        let Some(uuid) = self.pending_share else {
+            return;
+        };
+        let Some(client) = self.client.clone() else {
+            self.vault.show_error("vault is locked");
+            cx.notify();
+            return;
+        };
+        self.share_text = "Sharing to group…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let outcome = match client.reveal_secret(uuid).await {
+                Ok(handle) => match client.read_secret(handle) {
+                    Ok(plaintext) => {
+                        let res = client
+                            .share_to_group(group_id, uuid, plaintext.as_bytes())
+                            .await;
+                        client.release_secret(handle);
+                        res.map(|_| ())
+                    }
+                    Err(err) => {
+                        client.release_secret(handle);
+                        Err(err)
+                    }
+                },
+                Err(err) => Err(err),
+            };
+            this.update(cx, |this, cx| match outcome {
+                Ok(()) => {
+                    this.share_text = format!("Shared to group {group_id}");
+                    cx.notify();
+                }
+                Err(err) => {
+                    this.share_text = format!("Group share failed: {err}");
                     cx.notify();
                 }
             })
@@ -3699,6 +3841,57 @@ impl DesktopView {
                                     div().text_sm().text_color(theme::WARN).child(text.clone()),
                                 )
                             })
+                            .child(
+                                div()
+                                    .mt_3()
+                                    .pt_3()
+                                    .border_t_1()
+                                    .border_color(theme::BORDER)
+                                    .text_sm()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(match &self.active_group_id {
+                                        Some(id) => format!("Active group: {id}"),
+                                        None => "No active group".to_string(),
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child("Group sharing (VTR-070)"),
+                            )
+                            .child(Input::new(&self.group_name_input).w_full())
+                            .child(Button::new("group-create").label("Create group").on_click(
+                                cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_create_group(window, cx);
+                                }),
+                            ))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child("Add member UUID to active group"),
+                            )
+                            .child(Input::new(&self.group_member_input).w_full())
+                            .child(
+                                Button::new("group-add-member")
+                                    .label("Add member")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_add_group_member(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("group-share")
+                                    .primary()
+                                    .label("Share to active group")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_share_to_group(window, cx);
+                                        },
+                                    )),
+                            )
                             .child(
                                 h_flex()
                                     .gap_2()
