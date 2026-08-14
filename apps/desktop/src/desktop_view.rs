@@ -239,6 +239,8 @@ pub struct DesktopView {
     import_text: String,
     import_busy: bool,
     import_archive_input: Entity<InputState>,
+    /// Path for the local vault JSON export (desktop-only, ZK-preserving).
+    export_path_input: Entity<InputState>,
 
     // ── Sharing / key rotation (VTR-063) ────────────────────────────────
     /// Item currently targeted by the share modal.
@@ -290,6 +292,8 @@ impl DesktopView {
         });
         let import_archive_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste base64 archive here…"));
+        let export_path_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("~/vautr-vault-export.json"));
 
         let _subscriptions = vec![];
 
@@ -405,6 +409,7 @@ impl DesktopView {
             import_text: String::new(),
             import_busy: false,
             import_archive_input,
+            export_path_input,
             pending_update: None,
             conflict_queue: Vec::new(),
             pending_share: None,
@@ -1315,7 +1320,7 @@ impl DesktopView {
         let uuid = Uuid::new_v4();
         let item = DomainModel {
             uuid,
-            enc_key_gen: 1,
+            enc_key_gen: self.key_gen,
             overview: DecryptedOverview {
                 uuid,
                 title: title.trim().to_string(),
@@ -1344,7 +1349,7 @@ impl DesktopView {
                 return;
             }
         };
-        let envelope = match aead::encrypt(&dek, &uuid, 1, &plaintext) {
+        let envelope = match aead::encrypt(&dek, &uuid, self.key_gen, &plaintext) {
             Ok(e) => e,
             Err(e) => {
                 self.vault.show_error(format!("Encryption failed: {e}"));
@@ -2537,6 +2542,57 @@ impl DesktopView {
                         );
                         this.do_refresh_backup(cx);
                     }
+                    Err(e) => {
+                        this.import_text = format!("Export failed: {e}");
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn do_export_vault(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            self.import_text = "Open a vault first.".into();
+            cx.notify();
+            return;
+        };
+        let path = self.export_path_input.read(cx).value().to_string();
+        let path = if path.trim().is_empty() {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            format!(
+                "{home}/vautr-vault-export-{}.json",
+                chrono::Utc::now().timestamp()
+            )
+        } else {
+            path.trim().to_string()
+        };
+        self.import_busy = true;
+        self.import_text = "Exporting vault…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter();
+            let result = client.export_to_json().await;
+            this.update(cx, |this, cx| {
+                this.import_busy = false;
+                match result {
+                    Ok(bytes) => match std::fs::write(&path, &bytes) {
+                        Ok(()) => {
+                            this.import_text = format!(
+                                "Vault exported ({} items / {} bytes) to {}",
+                                String::from_utf8_lossy(&bytes).matches("\"uuid\"").count(),
+                                bytes.len(),
+                                path
+                            );
+                            cx.notify();
+                        }
+                        Err(e) => {
+                            this.import_text = format!("Write failed: {e}");
+                            cx.notify();
+                        }
+                    },
                     Err(e) => {
                         this.import_text = format!("Export failed: {e}");
                         cx.notify();
@@ -5665,6 +5721,43 @@ impl DesktopView {
                                     this.do_restore_backup(window, cx);
                                 }),
                             )),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .border_1()
+                            .border_color(theme::BORDER)
+                            .rounded_lg()
+                            .bg(theme::SURFACE)
+                            .p_5()
+                            .gap_4()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(theme::TEXT)
+                                            .child("Export vault (JSON)"),
+                                    )
+                                    .child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                        "Decrypts every item locally and writes a plaintext \
+                                                 JSON file. Desktop-only — never leaves the local \
+                                                 process.",
+                                    )),
+                            )
+                            .child(Input::new(&self.export_path_input).w_full())
+                            .child(
+                                Button::new("export-vault")
+                                    .primary()
+                                    .label(if busy { "Exporting…" } else { "Export vault" })
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_export_vault(window, cx);
+                                        },
+                                    )),
+                            ),
                     ),
             )
     }

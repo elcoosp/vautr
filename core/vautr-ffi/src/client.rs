@@ -526,4 +526,12 @@ impl MobileClient {
             .map(|s| s.to_string())
             .map_err(FfiError::Core)
     }
+
+    /// Export the entire vault as decrypted JSON (ZK boundary: the plaintext
+    /// bytes are returned to the desktop process only — never to JS/web). The
+    /// caller is responsible for writing the bytes to disk and zeroizing them.
+    /// ONLY available on Desktop (`desktop-api` feature).
+    pub async fn export_vault(&self) -> Result<Vec<u8>, FfiError> {
+        self.inner.export_to_json().await.map_err(FfiError::Core)
+    }
 }
