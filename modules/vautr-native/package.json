@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "build": "expo-module build",
+    "build": "tsc -p tsconfig.json",
     "clean": "expo-module clean",
     "typecheck": "tsc --noEmit"
   },

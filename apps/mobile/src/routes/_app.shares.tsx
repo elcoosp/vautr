@@ -198,9 +198,7 @@ function SharesScreen() {
       const groupJson = sharing.getGroupKey(groupId);
       if (!groupJson) throw new Error('group key not found locally');
       const items = await sharing.listGroupItems(groupJson, groupId);
-      setGroupItems(
-        items.map((it) => ({ itemUuid: it.itemUuid, bytes: it.plaintext.length })),
-      );
+      setGroupItems(items.map((it) => ({ itemUuid: it.itemUuid, bytes: it.plaintext.length })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load group items.');
     } finally {
