@@ -2,14 +2,11 @@
 //! Spec: docs/architecture/db-contract.md §3. Entities: item_overview,
 //! item_payload, sync_meta, local_blacklist, quarantine.
 //!
-//! SeaORM 2.0 entity form: `#[derive(DeriveEntityModel)]` + `#[sea_orm(table_name
-//! = ..)]` (the 2.0 derive macro) with the 1.0-compat `Relation` enum
-//! (`sea-orm-2` migration-guide: "old entity format still works (deprecated but
-//! not removed)"). NOTE: the documented `#[sea_orm::model]` macro and inline
-//! `has_one`/`belongs_to` relation *fields* are not yet implemented in
-//! `sea-orm = 2.0.0-rc.38` (their expansion references `ActiveBelongsTo`/
-//! `ActiveHasOne` types that do not exist in this rc), so relations are expressed
-//! via the transaction layer (db-contract §5) instead. `DashMapState` is stored
+//! SeaORM 2.0.2 `#[sea_orm::model]` attribute-macro form: the macro emits
+//! `Entity`/`ActiveModel`/`Column`/`COLUMN`/`PrimaryKey` and (with
+//! `DeriveEntityModel`) the `Model` struct. The separate `Relation` enum is no
+//! longer required (relations are expressed in the transaction layer,
+//! db-contract §5, not via relation-field attributes). `DashMapState` is stored
 //! as a plain `String` column matching the `CHECK` constraint in db-contract §3.
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +42,7 @@ pub mod item_overview {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
 
+    #[sea_orm::model]
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
     #[sea_orm(table_name = "item_overviews")]
     pub struct Model {
@@ -62,9 +60,6 @@ pub mod item_overview {
         pub updated_at: i64,
     }
 
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
     impl ActiveModelBehavior for ActiveModel {}
 }
 
@@ -73,6 +68,7 @@ pub mod item_payload {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
 
+    #[sea_orm::model]
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
     #[sea_orm(table_name = "item_payloads")]
     pub struct Model {
@@ -80,9 +76,6 @@ pub mod item_payload {
         pub uuid: String,
         pub payload: Vec<u8>,
     }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -92,6 +85,7 @@ pub mod sync_meta {
     use sea_orm::entity::prelude::*;
     use serde::{Deserialize, Serialize};
 
+    #[sea_orm::model]
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
     #[sea_orm(table_name = "sync_meta")]
     pub struct Model {
@@ -102,9 +96,6 @@ pub mod sync_meta {
         pub svk_ciphertext_blob: Vec<u8>,
     }
 
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
     impl ActiveModelBehavior for ActiveModel {}
 }
 
@@ -112,6 +103,7 @@ pub mod sync_meta {
 pub mod local_blacklist {
     use sea_orm::entity::prelude::*;
 
+    #[sea_orm::model]
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
     #[sea_orm(table_name = "local_blacklist")]
     pub struct Model {
@@ -121,9 +113,6 @@ pub mod local_blacklist {
         pub state: String, // DashMapState::as_db_str()
     }
 
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
     impl ActiveModelBehavior for ActiveModel {}
 }
 
@@ -131,6 +120,7 @@ pub mod local_blacklist {
 pub mod quarantine {
     use sea_orm::entity::prelude::*;
 
+    #[sea_orm::model]
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
     #[sea_orm(table_name = "quarantine")]
     pub struct Model {
@@ -140,9 +130,6 @@ pub mod quarantine {
         pub quarantine_until: i64,
         pub retries: i32,
     }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
 }
