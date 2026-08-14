@@ -27,8 +27,13 @@ live during implementation rather than through the flat `done/` set.
   open in the codebase.
 
 ## Open issues (the real backlog)
-**None.** As of 2026-08-14 the `open/` directory is empty and every tracked issue
-(VTR-001..VTR-070) is marked done or closed.
+As of 2026-08-14 two genuinely-open issues exist (all of VTR-001..VTR-070 are
+done/closed):
+
+| Issue | What's missing | Notes |
+|-------|----------------|-------|
+| VTR-071 | Audit-log viewer + export in web/desktop clients | Server `GET /audit` exists (VTR-053); no client surface (0 grep hits in apps/web, apps/desktop). ZK-safe (metadata only). |
+| VTR-072 | Complete VTR-060 self-hosting docs | VTR-060 is marked done but its `docs/self-hosting/` + `docker-compose.prod.yml` deliverables are absent; base compose/Dockerfile/scripts exist. |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`
