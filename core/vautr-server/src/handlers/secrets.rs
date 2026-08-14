@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::repository::secrets::{ProjectAccessLevel, SecretRow};
 
-use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
+use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 /// Create request: `{ project_uuid, key, value_ciphertext }`.
 #[derive(Deserialize)]
@@ -192,11 +192,7 @@ async fn list_secrets(
 ) -> Result<Json<SecretListResponse>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
     require_project_access(&st, &project_id, &user_id, false).await?;
-    let rows = st
-        .repo
-        .list_secrets(&project_id)
-        .await
-        .map_err(internal)?;
+    let rows = st.repo.list_secrets(&project_id).await.map_err(internal)?;
     Ok(Json(SecretListResponse {
         secrets: rows.iter().map(to_secret).collect(),
     }))
@@ -379,8 +375,9 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_state() -> AppState {
-        let pool =
-            crate::db::connect("sqlite::memory:").await.expect("connect + migrate");
+        let pool = crate::db::connect("sqlite::memory:")
+            .await
+            .expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000i64;
         repo.create_user(
@@ -445,7 +442,9 @@ mod tests {
     }
 
     async fn body_json(resp: axum::response::Response) -> serde_json::Value {
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         serde_json::from_slice(&body).unwrap()
     }
 

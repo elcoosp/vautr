@@ -95,7 +95,10 @@ async fn shutdown_signal() {
 /// Flush and truncate the SQLite WAL (server-scaling.md §4.4) so no committed
 /// writes are left in the WAL after shutdown.
 async fn flush_wal(pool: &SqlitePool) {
-    match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(pool).await {
+    match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(pool)
+        .await
+    {
         Ok(_) => tracing::info!("SQLite WAL flushed"),
         Err(e) => tracing::warn!(error = %e, "wal_checkpoint(TRUNCATE) failed"),
     }

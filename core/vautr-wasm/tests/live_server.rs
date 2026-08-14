@@ -28,7 +28,12 @@ fn b64(bytes: &[u8]) -> String {
     B64.encode(bytes)
 }
 
-fn json_request(method: &str, path: &str, body: serde_json::Value, token: Option<&str>) -> serde_json::Value {
+fn json_request(
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+    token: Option<&str>,
+) -> serde_json::Value {
     let url = format!("{API}{path}");
     let mut req = ureq::request(method, &url);
     if let Some(t) = token {
@@ -71,7 +76,8 @@ fn live_register_login_sync_roundtrip() {
     );
     let reg_finish = opaque_register_finish(
         &reg_state,
-        &B64.decode(reg_resp["registration_response"].as_str().unwrap()).unwrap(),
+        &B64.decode(reg_resp["registration_response"].as_str().unwrap())
+            .unwrap(),
         password,
         &username,
     )
@@ -100,7 +106,8 @@ fn live_register_login_sync_roundtrip() {
     );
     let (login_upload, _session_key) = opaque_login_finish(
         &login_state,
-        &B64.decode(login_resp["login_response"].as_str().unwrap()).unwrap(),
+        &B64.decode(login_resp["login_response"].as_str().unwrap())
+            .unwrap(),
         password,
         &username,
     )
@@ -111,15 +118,23 @@ fn live_register_login_sync_roundtrip() {
         json!({ "username": username, "login_finish": b64(&login_upload) }),
         None,
     );
-    let session_token = login_finish["session_token"].as_str().expect("token").to_string();
+    let session_token = login_finish["session_token"]
+        .as_str()
+        .expect("token")
+        .to_string();
     assert!(login_finish["expires_at"].is_i64(), "expires_at present");
 
     // --- 4. Recover the SVK via /account/status ---
     let status = json_request("GET", "/account/status", json!({}), Some(&session_token));
-    let blob = B64.decode(status["svk_ciphertext_blob"].as_str().expect("svk blob")).unwrap();
+    let blob = B64
+        .decode(status["svk_ciphertext_blob"].as_str().expect("svk blob"))
+        .unwrap();
     let min_gen = status["min_enc_key_gen"].as_i64().unwrap_or(1);
     let recovered_svk = unwrap_svk(&blob, &kek).expect("unwrap SVK");
-    assert_eq!(recovered_svk, svk, "recovered SVK matches the registered SVK");
+    assert_eq!(
+        recovered_svk, svk,
+        "recovered SVK matches the registered SVK"
+    );
 
     // --- 5. Add an item via push-batch + pull it back ---
     // The item payload is the AEAD envelope produced by the client (uuid+gen AD).
@@ -139,9 +154,17 @@ fn live_register_login_sync_roundtrip() {
         }),
         Some(&session_token),
     );
-    let status = push["results"][0]["status"].as_str().unwrap_or("?").to_string();
+    let status = push["results"][0]["status"]
+        .as_str()
+        .unwrap_or("?")
+        .to_string();
 
-    let pull = json_request("GET", "/sync/pull?cursor=0", json!({}), Some(&session_token));
+    let pull = json_request(
+        "GET",
+        "/sync/pull?cursor=0",
+        json!({}),
+        Some(&session_token),
+    );
     let pulled: Vec<String> = pull["items"]
         .as_array()
         .map(|arr| {
@@ -156,7 +179,11 @@ fn live_register_login_sync_roundtrip() {
     println!("  account username : {username}");
     println!("  session token    : {session_token}");
     println!("  min_enc_key_gen  : {min_gen}");
-    println!("  recovered SVK    : {} bytes (matches registered: {})", recovered_svk.len(), recovered_svk == svk);
+    println!(
+        "  recovered SVK    : {} bytes (matches registered: {})",
+        recovered_svk.len(),
+        recovered_svk == svk
+    );
     println!("  push-batch status: {status}");
     println!("  item uuid        : {item_uuid}");
     println!("  pull items       : {pulled:?}");
@@ -169,7 +196,10 @@ fn live_register_login_sync_roundtrip() {
     // UPDATE-only and has no INSERT path for new uuids, so a fresh item returns
     // `conflict`. If it is ever delivered, assert it comes back on pull.
     if status == "success" {
-        assert!(pulled.contains(&item_uuid), "pushed item returned by /sync/pull");
+        assert!(
+            pulled.contains(&item_uuid),
+            "pushed item returned by /sync/pull"
+        );
         eprintln!("NOTE: push-batch created the item (server supports creation).");
     } else {
         eprintln!(

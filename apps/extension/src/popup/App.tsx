@@ -12,6 +12,7 @@ import {
   Lock,
   Settings2,
   Ticket,
+  Users,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import * as browser from 'webextension-polyfill';
@@ -21,6 +22,7 @@ import { getApiUrl } from '../lib/apiUrl';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
+import { GroupsTab } from './components/GroupsTab';
 import { ImportExportTab } from './components/ImportExportTab';
 import { InboxTab } from './components/InboxTab';
 import { MachineAccountsTab } from './components/MachineAccountsTab';
@@ -42,6 +44,7 @@ const TABS = [
   { id: 'machine-accounts', label: 'Machines', icon: Bot },
   { id: 'tokens', label: 'Tokens', icon: Ticket },
   { id: 'inbox', label: 'Inbox', icon: Inbox },
+  { id: 'groups', label: 'Groups', icon: Users },
 ];
 
 export function App() {
@@ -155,12 +158,12 @@ export function App() {
       </header>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
-        <TabsList className="mx-4 mt-3 grid w-auto grid-cols-5">
+        <TabsList className="mx-4 mt-3 flex flex-wrap gap-1">
           {TABS.map((t) => (
             <TabsTrigger
               key={t.id}
               value={t.id}
-              className="flex flex-col items-center gap-0.5 py-1.5 text-[10px]"
+              className="flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px]"
             >
               <t.icon className="size-4" aria-hidden="true" />
               {t.label}
@@ -199,6 +202,9 @@ export function App() {
           </TabsContent>
           <TabsContent value="inbox" className="mt-0">
             {mlp && client ? <InboxTab mlp={mlp} client={client} /> : null}
+          </TabsContent>
+          <TabsContent value="groups" className="mt-0">
+            {mlp && client ? <GroupsTab client={client} mlp={mlp} /> : null}
           </TabsContent>
         </div>
       </Tabs>

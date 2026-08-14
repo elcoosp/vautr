@@ -14,7 +14,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::machine_accounts::MachineAccountRow;
 
 // Scope helpers shared with the tokens handler.
@@ -71,7 +71,9 @@ pub fn routes() -> Router<AppState> {
         .route("/machine-accounts", post(create_machine_account))
         .route(
             "/machine-accounts/{uuid}",
-            get(get_machine_account).patch(update_machine_account).delete(delete_machine_account),
+            get(get_machine_account)
+                .patch(update_machine_account)
+                .delete(delete_machine_account),
         )
 }
 
@@ -121,10 +123,16 @@ async fn create_machine_account(
     let user_id = auth_user(&st.repo, &auth.0).await?;
     let name = req.name.trim();
     if name.is_empty() {
-        return Err(ApiError::bad_request("invalid_name", "name must not be empty"));
+        return Err(ApiError::bad_request(
+            "invalid_name",
+            "name must not be empty",
+        ));
     }
     if name.len() > 128 {
-        return Err(ApiError::bad_request("invalid_name", "name must be <= 128 chars"));
+        return Err(ApiError::bad_request(
+            "invalid_name",
+            "name must be <= 128 chars",
+        ));
     }
     if req.scopes.is_empty() {
         return Err(ApiError::new(
@@ -221,7 +229,10 @@ async fn update_machine_account(
 
     let name = req.name.as_deref().unwrap_or(&current.name).to_string();
     if name.trim().is_empty() {
-        return Err(ApiError::bad_request("invalid_name", "name must not be empty"));
+        return Err(ApiError::bad_request(
+            "invalid_name",
+            "name must not be empty",
+        ));
     }
     let description = req
         .description
@@ -344,14 +355,20 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_state() -> AppState {
-        let path = std::env::temp_dir()
-            .join(format!("vautr_ma_http_test_{}.db", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_ma_http_test_{}.db", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000;
         repo.create_user(
-            "u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
         )
         .await
         .unwrap();
@@ -388,7 +405,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["name"], "ci-runner");
         assert_eq!(v["status"], "active");
@@ -399,12 +418,18 @@ mod tests {
         let resp = app
             .clone()
             .oneshot(
-                Request::builder().uri("/machine-accounts").header("authorization", "Bearer tok1").body(Body::empty()).unwrap(),
+                Request::builder()
+                    .uri("/machine-accounts")
+                    .header("authorization", "Bearer tok1")
+                    .body(Body::empty())
+                    .unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["machine_accounts"].as_array().unwrap().len(), 1);
 
@@ -423,7 +448,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["status"], "disabled");
 
@@ -477,7 +504,12 @@ mod tests {
         let app = routes().with_state(state);
         let resp = app
             .clone()
-            .oneshot(Request::builder().uri("/machine-accounts").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/machine-accounts")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);

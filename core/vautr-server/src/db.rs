@@ -23,7 +23,9 @@
 //! Postgres-compatible migrations** (the migrations directory is owned by
 //! another workstream — see docs/SELF-HOSTING.md §"Database").
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
 use std::str::FromStr;
@@ -46,7 +48,10 @@ pub async fn connect(db_url: &str) -> Result<SqlitePool, DbError> {
         .busy_timeout(std::time::Duration::from_millis(5000));
 
     let pool = if db_url.contains(":memory:") {
-        SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(opts)
+            .await?
     } else {
         SqlitePoolOptions::new().connect_with(opts).await?
     };
@@ -90,9 +95,7 @@ pub async fn connect_any(db_url: &str) -> Result<AnyPool, DbError> {
     match scheme {
         "sqlite" => Ok(AnyPool::Sqlite(connect(db_url).await?)),
         #[cfg(feature = "postgres")]
-        "postgres" | "postgresql" => {
-            Ok(AnyPool::Postgres(postgres::connect_pg(db_url).await?))
-        }
+        "postgres" | "postgresql" => Ok(AnyPool::Postgres(postgres::connect_pg(db_url).await?)),
         #[cfg(not(feature = "postgres"))]
         "postgres" | "postgresql" => Err(
             "PostgreSQL support is not compiled in: enable the vautr-server \

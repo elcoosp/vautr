@@ -273,8 +273,7 @@ pub fn decrypt_item_js(
 /// Begin OPAQUE registration. Returns `{ message, state }` (both `Uint8Array`).
 #[wasm_bindgen]
 pub fn opaque_register_start_js(password: &str) -> Result<JsValue, JsValue> {
-    let (message, state) =
-        opaque_register_start(password).map_err(|e| JsValue::from_str(&e))?;
+    let (message, state) = opaque_register_start(password).map_err(|e| JsValue::from_str(&e))?;
     let obj = js_sys::Object::new();
     js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &message.into()).unwrap();
     js_sys::Reflect::set(&obj, &JsValue::from_str("state"), &state.into()).unwrap();
@@ -365,8 +364,7 @@ mod tests {
         let m = recovery::decode_recovery_mnemonic(&mnemonic).unwrap();
         let kek_rk = recovery::derive_kek_rk(&m).unwrap();
         let svk_arr = to_arr32(&svk).unwrap();
-        let recovered =
-            recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &SVK_AD_USER).unwrap();
+        let recovered = recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &SVK_AD_USER).unwrap();
         assert_eq!(&*recovered, &svk_arr);
     }
 
@@ -392,7 +390,10 @@ mod tests {
             opaque_login_finish(&login_state, &login_resp, password, user).unwrap();
         let server_session = opaque::server_login_finish(&_sstate, &final_upload).unwrap();
 
-        assert_eq!(client_session, server_session, "client/server session keys match");
+        assert_eq!(
+            client_session, server_session,
+            "client/server session keys match"
+        );
         assert_eq!(client_session.len(), 64);
     }
 

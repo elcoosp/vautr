@@ -17,13 +17,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use vautr_crypto::opaque;
 use vautr_server::db;
-use vautr_server::handlers::{AppState, build_router};
+use vautr_server::handlers::{build_router, AppState};
 use vautr_server::repository::Repository;
 
 /// WORKAROUND (test-scoped, temp DB only): the committed `server_config`
@@ -103,7 +103,10 @@ async fn http(
         ));
     }
     req.push_str("Connection: close\r\n\r\n");
-    stream.write_all(req.as_bytes()).await.expect("write headers");
+    stream
+        .write_all(req.as_bytes())
+        .await
+        .expect("write headers");
     if !body_bytes.is_empty() {
         stream.write_all(&body_bytes).await.expect("write body");
     }
@@ -212,12 +215,12 @@ async fn projects_live_server_offboarding_e2e() {
     let state = AppState::new(repo);
 
     let app = build_router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
     let addr = listener.local_addr().expect("local addr");
     tokio::spawn(async move {
-        axum::serve(listener, app)
-            .await
-            .expect("serve");
+        axum::serve(listener, app).await.expect("serve");
     });
 
     // UUID-suffixed test usernames (no cross-run collisions).
@@ -261,7 +264,11 @@ async fn projects_live_server_offboarding_e2e() {
     // Member can now see the project.
     let (status, resp) = http(addr, "GET", "/projects", Some(&member_tok), None).await;
     assert_eq!(status, 200);
-    assert_eq!(resp["projects"].as_array().unwrap().len(), 1, "member sees project");
+    assert_eq!(
+        resp["projects"].as_array().unwrap().len(),
+        1,
+        "member sees project"
+    );
 
     // 5. Admin offboards the member.
     let (status, resp) = http(

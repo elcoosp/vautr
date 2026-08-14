@@ -217,6 +217,29 @@ pub struct ShareGroupKey {
 }
 
 impl ShareGroupKey {
+    /// Export the raw Group SIK (zeroized on drop). Callers must protect this at
+    /// rest (e.g. under the user's master key); it is the basis for decrypting
+    /// every item shared into the group.
+    pub fn secret_bytes(&self) -> &[u8] {
+        &self.group_sik[..]
+    }
+
+    /// Reconstruct a [`ShareGroupKey`] from exported metadata + Group SIK.
+    pub fn from_secret(group: ShareGroup, secret: &[u8]) -> Result<ShareGroupKey> {
+        if secret.len() != MK_LEN {
+            return Err(ShareError::Crypto(format!(
+                "group sik must be {MK_LEN} bytes, got {}",
+                secret.len()
+            )));
+        }
+        let mut sik = Zeroizing::new([0u8; MK_LEN]);
+        sik.copy_from_slice(secret);
+        Ok(ShareGroupKey {
+            group,
+            group_sik: sik,
+        })
+    }
+
     /// Encrypt a group item's payload under the Group SIK (DEM, §6.1).
     pub fn encrypt_item(&self, item_uuid: &Uuid, plaintext: &[u8]) -> Result<Vec<u8>> {
         let ad = payload_ad(item_uuid);

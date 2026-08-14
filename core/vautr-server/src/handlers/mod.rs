@@ -148,7 +148,11 @@ impl ApiError {
         )
     }
     pub(crate) fn internal(msg: &str) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", msg)
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_server_error",
+            msg,
+        )
     }
 }
 
@@ -165,7 +169,8 @@ impl IntoResponse for ApiError {
 const SETUP_KEY: &str = "opaque_server_setup";
 
 pub(crate) fn decode_b64(s: &str) -> Result<Vec<u8>, ApiError> {
-    B64.decode(s).map_err(|_| ApiError::bad_request("invalid_base64", "base64 decode failed"))
+    B64.decode(s)
+        .map_err(|_| ApiError::bad_request("invalid_base64", "base64 decode failed"))
 }
 
 pub(crate) fn b64(s: &[u8]) -> String {
@@ -247,9 +252,12 @@ mod tests {
     fn openapi_spec_is_valid_json() {
         // VTR-010 TDD #2: the embedded contract must be well-formed JSON so the
         // server's `GET /openapi.json` handler returns a parseable document.
-        let parsed: serde_json::Value =
-            serde_json::from_str(crate::OPENAPI_SPEC).expect("embedded openapi.json must be valid JSON");
-        assert!(parsed.get("openapi").is_some(), "spec must declare an openapi version");
+        let parsed: serde_json::Value = serde_json::from_str(crate::OPENAPI_SPEC)
+            .expect("embedded openapi.json must be valid JSON");
+        assert!(
+            parsed.get("openapi").is_some(),
+            "spec must declare an openapi version"
+        );
         assert!(parsed.get("paths").is_some(), "spec must define paths");
     }
 }

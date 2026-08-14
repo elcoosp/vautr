@@ -25,7 +25,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::projects::{AccessRow, ProjectRow, UserGroupRow};
 use vautr_domain::{
     GroupMemberRole, OffboardingRequest, OrgRole, Project, ProjectKind, ProjectPermission,
@@ -37,7 +37,9 @@ pub fn routes() -> Router<AppState> {
         .route("/projects", get(list_projects).post(create_project))
         .route(
             "/projects/{uuid}",
-            get(get_project).patch(update_project).delete(delete_project),
+            get(get_project)
+                .patch(update_project)
+                .delete(delete_project),
         )
         .route(
             "/projects/{uuid}/members",
@@ -335,7 +337,12 @@ async fn caller_role_in_project(
     caller: &str,
 ) -> Result<OrgRole, ApiError> {
     if let Some(org) = &p.org_id {
-        if let Some(r) = st.repo.get_org_role(org, caller).await.map_err(internal_err)? {
+        if let Some(r) = st
+            .repo
+            .get_org_role(org, caller)
+            .await
+            .map_err(internal_err)?
+        {
             return Ok(r);
         }
     }
@@ -384,7 +391,9 @@ async fn require_can_manage(st: &AppState, p: &ProjectRow, caller: &str) -> Resu
     if role.can_manage_org() {
         return Ok(());
     }
-    Err(forbidden("you do not have manage permission on this project"))
+    Err(forbidden(
+        "you do not have manage permission on this project",
+    ))
 }
 
 /// Rank enforcement (vautr-domain `OrgRole::rank`): a caller may only assign an
@@ -414,7 +423,11 @@ fn project_resp(p: &ProjectRow, role: OrgRole, perm: Option<ProjectPermission>) 
     }
 }
 
-async fn member_resp(st: &AppState, p: &ProjectRow, grant: &AccessRow) -> Result<ProjectMemberResp, ApiError> {
+async fn member_resp(
+    st: &AppState,
+    p: &ProjectRow,
+    grant: &AccessRow,
+) -> Result<ProjectMemberResp, ApiError> {
     let uid = grant.grantee_user_id.clone().unwrap_or_default();
     let display_name = st.repo.get_user_email(&uid).await.map_err(internal_err)?;
     let role = match &p.org_id {
@@ -437,7 +450,11 @@ async fn member_resp(st: &AppState, p: &ProjectRow, grant: &AccessRow) -> Result
 }
 
 async fn group_resp(st: &AppState, g: &UserGroupRow) -> Result<UserGroupResp, ApiError> {
-    let rows = st.repo.list_user_group_members(&g.id).await.map_err(internal_err)?;
+    let rows = st
+        .repo
+        .list_user_group_members(&g.id)
+        .await
+        .map_err(internal_err)?;
     let members = rows
         .into_iter()
         .map(|m| {
@@ -493,7 +510,10 @@ async fn create_project(
 ) -> Result<(StatusCode, Json<ProjectResp>), ApiError> {
     let caller = auth_user(&st.repo, &auth.0).await?;
     validate_name(&req.name)?;
-    let kind = req.proj_type.map(|t| t.to_kind()).unwrap_or(ProjectKind::Personal);
+    let kind = req
+        .proj_type
+        .map(|t| t.to_kind())
+        .unwrap_or(ProjectKind::Personal);
 
     let now = now_ms();
     let id = Uuid::new_v4();
@@ -524,11 +544,17 @@ async fn create_project(
                 ));
             }
             let org_uuid = Uuid::parse_str(&org).unwrap_or(Uuid::nil());
-            (Project::shared(id, req.name.trim(), org_uuid, None, caller_uuid, now), Some(org))
+            (
+                Project::shared(id, req.name.trim(), org_uuid, None, caller_uuid, now),
+                Some(org),
+            )
         }
     };
 
-    st.repo.create_project(&project).await.map_err(internal_err)?;
+    st.repo
+        .create_project(&project)
+        .await
+        .map_err(internal_err)?;
     if let Some(desc) = req.description.as_deref() {
         st.repo
             .update_project_meta(&id.to_string(), project.name.trim(), Some(desc), now)
@@ -543,7 +569,10 @@ async fn create_project(
         .map_err(internal_err)?
         .ok_or_else(not_found)?;
     let role = caller_role_in_project(&st, &row, &caller).await?;
-    Ok((StatusCode::CREATED, Json(project_resp(&row, role, Some(ProjectPermission::CanManage)))))
+    Ok((
+        StatusCode::CREATED,
+        Json(project_resp(&row, role, Some(ProjectPermission::CanManage))),
+    ))
 }
 
 /// GET /projects/{uuid} — project detail (only if visible).
@@ -670,11 +699,12 @@ async fn add_member(
         .get_user_by_id(&req.user_uuid)
         .await
         .map_err(internal_err)?
-        .ok_or_else(|| {
-            ApiError::new(StatusCode::NOT_FOUND, "not_found", "user not found")
-        })?;
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "user not found"))?;
 
-    let permission = req.permission.map(|p| p.to_domain()).unwrap_or(ProjectPermission::CanView);
+    let permission = req
+        .permission
+        .map(|p| p.to_domain())
+        .unwrap_or(ProjectPermission::CanView);
     let hide_password = req.hide_password.unwrap_or(false);
     let now = now_ms();
 
@@ -683,7 +713,11 @@ async fn add_member(
         let target_role = role_w.to_domain();
         let org = match &p.org_id {
             Some(o) => o.clone(),
-            None => st.repo.ensure_org_for_user(&caller, now).await.map_err(internal_err)?,
+            None => st
+                .repo
+                .ensure_org_for_user(&caller, now)
+                .await
+                .map_err(internal_err)?,
         };
         let caller_role = st
             .repo
@@ -699,7 +733,14 @@ async fn add_member(
     }
 
     st.repo
-        .grant_user_project_access(&p.id, &req.user_uuid, permission, hide_password, &caller, now)
+        .grant_user_project_access(
+            &p.id,
+            &req.user_uuid,
+            permission,
+            hide_password,
+            &caller,
+            now,
+        )
         .await
         .map_err(internal_err)?;
 
@@ -708,8 +749,17 @@ async fn add_member(
         .get_user_grant(&p.id, &req.user_uuid)
         .await
         .map_err(internal_err)?
-        .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", "grant missing"))?;
-    Ok((StatusCode::CREATED, Json(member_resp(&st, &p, &grant).await?)))
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_server_error",
+                "grant missing",
+            )
+        })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(member_resp(&st, &p, &grant).await?),
+    ))
 }
 
 /// PATCH /projects/{uuid}/members/{user_uuid} — update permission / role.
@@ -746,7 +796,11 @@ async fn update_member(
         let target_role = role_w.to_domain();
         let org = match &p.org_id {
             Some(o) => o.clone(),
-            None => st.repo.ensure_org_for_user(&caller, now).await.map_err(internal_err)?,
+            None => st
+                .repo
+                .ensure_org_for_user(&caller, now)
+                .await
+                .map_err(internal_err)?,
         };
         let caller_role = st
             .repo
@@ -795,7 +849,11 @@ async fn remove_member(
         .await
         .map_err(internal_err)?;
     if removed == 0 {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "not_found", "member not found"));
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "member not found",
+        ));
     }
     Ok(Json(StatusResp { status: "success" }))
 }
@@ -850,11 +908,22 @@ async fn create_group(
     let now = now_ms();
     let org = match &p.org_id {
         Some(o) => Some(o.clone()),
-        None => Some(st.repo.ensure_org_for_user(&caller, now).await.map_err(internal_err)?),
+        None => Some(
+            st.repo
+                .ensure_org_for_user(&caller, now)
+                .await
+                .map_err(internal_err)?,
+        ),
     };
     let gid = Uuid::new_v4().to_string();
     st.repo
-        .create_user_group(&gid, req.name.trim(), req.description.as_deref(), org.as_deref(), now)
+        .create_user_group(
+            &gid,
+            req.name.trim(),
+            req.description.as_deref(),
+            org.as_deref(),
+            now,
+        )
         .await
         .map_err(internal_err)?;
     // A freshly-created project group starts with view access so its members
@@ -957,7 +1026,10 @@ async fn add_group_member(
         .await
         .map_err(internal_err)?
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "user not found"))?;
-    let role = req.role.map(|r| r.to_domain()).unwrap_or(GroupMemberRole::Member);
+    let role = req
+        .role
+        .map(|r| r.to_domain())
+        .unwrap_or(GroupMemberRole::Member);
     st.repo
         .add_user_group_member(&group_id.to_string(), &req.user_uuid, role, now_ms())
         .await
@@ -985,7 +1057,11 @@ async fn remove_group_member(
         .await
         .map_err(internal_err)?;
     if removed == 0 {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "not_found", "group member not found"));
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "group member not found",
+        ));
     }
     Ok(Json(StatusResp { status: "success" }))
 }
@@ -1009,8 +1085,16 @@ async fn offboard(
 
     // Authorization + rank: the caller must outrank the target in every org the
     // target belongs to (Owner/Admin may offboard; cannot offboard an equal/higher role).
-    let caller_roles = st.repo.get_user_org_roles(&caller).await.map_err(internal_err)?;
-    let target_roles = st.repo.get_user_org_roles(&req.user_uuid).await.map_err(internal_err)?;
+    let caller_roles = st
+        .repo
+        .get_user_org_roles(&caller)
+        .await
+        .map_err(internal_err)?;
+    let target_roles = st
+        .repo
+        .get_user_org_roles(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
     if target_roles.is_empty() {
         if !caller_roles.iter().any(|(_, r)| r.can_offboard()) {
             return Err(forbidden("only Owner/Admin may offboard users"));
@@ -1019,11 +1103,9 @@ async fn offboard(
         for (org, trole) in &target_roles {
             match caller_roles.iter().find(|(o, _)| o == org) {
                 Some((_, c)) if c.can_offboard() && c.rank() > trole.rank() => {}
-                _ => {
-                    return Err(forbidden(
-                        "not authorized to offboard this user (role rank too high or out of your org)",
-                    ))
-                }
+                _ => return Err(forbidden(
+                    "not authorized to offboard this user (role rank too high or out of your org)",
+                )),
             }
         }
     }
@@ -1036,16 +1118,40 @@ async fn offboard(
         req.reason.clone(),
         now,
     );
-    st.repo.create_offboarding(&request).await.map_err(internal_err)?;
+    st.repo
+        .create_offboarding(&request)
+        .await
+        .map_err(internal_err)?;
 
     // Apply REVOKE_ALL: project grants, group memberships, sessions, org roles,
     // and sharing PKI keys.
-    let revoked_projects = st.repo.revoke_project_access_for_user(&req.user_uuid).await.map_err(internal_err)?;
-    let revoked_memberships = st.repo.revoke_group_memberships_for_user(&req.user_uuid).await.map_err(internal_err)?;
-    let revoked_tokens = st.repo.revoke_sessions_for_user(&req.user_uuid).await.map_err(internal_err)?;
-    st.repo.revoke_org_memberships_for_user(&req.user_uuid).await.map_err(internal_err)?;
-    st.repo.revoke_sharing_keys_for_user(&req.user_uuid).await.map_err(internal_err)?;
-    st.repo.complete_offboarding(&request.id.to_string(), now).await.map_err(internal_err)?;
+    let revoked_projects = st
+        .repo
+        .revoke_project_access_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    let revoked_memberships = st
+        .repo
+        .revoke_group_memberships_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    let revoked_tokens = st
+        .repo
+        .revoke_sessions_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    st.repo
+        .revoke_org_memberships_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    st.repo
+        .revoke_sharing_keys_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    st.repo
+        .complete_offboarding(&request.id.to_string(), now)
+        .await
+        .map_err(internal_err)?;
 
     st.repo
         .audit_org_event(
@@ -1075,30 +1181,38 @@ async fn offboard(
 mod tests {
     use super::*;
     use crate::repository::Repository;
-    use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode, header};
-    use serde_json::{Value, json};
+    use axum::body::{to_bytes, Body};
+    use axum::http::{header, Request, StatusCode};
+    use serde_json::{json, Value};
     use std::sync::Arc;
     use tower::util::ServiceExt;
 
     /// Build an in-memory app with three users (u1/u2/u3 + tok1/2/3) and sessions.
     async fn test_state() -> AppState {
-        let pool = crate::db::connect("sqlite::memory:").await.expect("connect+migrate");
+        let pool = crate::db::connect("sqlite::memory:")
+            .await
+            .expect("connect+migrate");
         let repo = Arc::new(Repository::new(pool));
         let now = now_ms();
         for (id, email, tok) in [
-            ("11111111-1111-4111-8111-111111111111", "a@example.com", "tok1"),
-            ("22222222-2222-4222-8222-222222222222", "b@example.com", "tok2"),
-            ("33333333-3333-4333-8333-333333333333", "c@example.com", "tok3"),
+            (
+                "11111111-1111-4111-8111-111111111111",
+                "a@example.com",
+                "tok1",
+            ),
+            (
+                "22222222-2222-4222-8222-222222222222",
+                "b@example.com",
+                "tok2",
+            ),
+            (
+                "33333333-3333-4333-8333-333333333333",
+                "c@example.com",
+                "tok3",
+            ),
         ] {
             repo.create_user(
-                id,
-                email,
-                &[0u8; 32],
-                &[1u8; 16],
-                &[2u8; 48],
-                &[3u8; 48],
-                now,
+                id, email, &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
             )
             .await
             .expect("create user");
@@ -1136,7 +1250,9 @@ mod tests {
         };
         let resp = router.clone().oneshot(req).await.expect("oneshot");
         let status = resp.status();
-        let bytes = to_bytes(resp.into_body(), 1_048_576).await.unwrap_or_default();
+        let bytes = to_bytes(resp.into_body(), 1_048_576)
+            .await
+            .unwrap_or_default();
         let json = if bytes.is_empty() {
             Value::Null
         } else {
@@ -1224,7 +1340,11 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["members"].as_array().unwrap().len(), 0, "no members left: {json}");
+        assert_eq!(
+            json["members"].as_array().unwrap().len(),
+            0,
+            "no members left: {json}"
+        );
     }
 
     #[tokio::test]
@@ -1263,7 +1383,11 @@ mod tests {
             Some(json!({ "user_uuid": "33333333-3333-4333-8333-333333333333", "role": "owner" })),
         )
         .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "rank escalation blocked: {json}");
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "rank escalation blocked: {json}"
+        );
     }
 
     #[tokio::test]
@@ -1360,6 +1484,10 @@ mod tests {
             Some(json!({ "user_uuid": "33333333-3333-4333-8333-333333333333", "permission": "can_view" })),
         )
         .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "can_view member cannot manage");
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "can_view member cannot manage"
+        );
     }
 }

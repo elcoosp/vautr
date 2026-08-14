@@ -29,16 +29,12 @@ impl Repository {
     }
 
     /// Fetch a session's user + expiry. Caller must check `expires_at`.
-    pub async fn get_session(
-        &self,
-        token: &str,
-    ) -> Result<Option<(String, i64)>, sqlx::Error> {
-        let row: Option<(String, i64)> = sqlx::query_as(
-            "SELECT user_id, expires_at FROM sessions WHERE token = ?",
-        )
-        .bind(token)
-        .fetch_optional(&self.pool)
-        .await?;
+    pub async fn get_session(&self, token: &str) -> Result<Option<(String, i64)>, sqlx::Error> {
+        let row: Option<(String, i64)> =
+            sqlx::query_as("SELECT user_id, expires_at FROM sessions WHERE token = ?")
+                .bind(token)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row)
     }
 }

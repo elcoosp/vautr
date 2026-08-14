@@ -23,10 +23,7 @@ impl Repository {
     }
 
     /// Read the stored RK Ed25519 public key, if any.
-    pub async fn get_rk_public_key(
-        &self,
-        user_id: &str,
-    ) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    pub async fn get_rk_public_key(&self, user_id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
         let row: Option<(Option<Vec<u8>>,)> =
             sqlx::query_as("SELECT rk_public_key FROM users WHERE id = ?")
                 .bind(user_id)

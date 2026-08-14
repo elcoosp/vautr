@@ -20,7 +20,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::machine_accounts::AccessTokenRow;
 use crate::repository::Repository;
 
@@ -205,14 +205,18 @@ fn not_found(uuid: &str) -> ApiError {
     )
 }
 
-fn validate_create(
-    req: &CreateRequest,
-) -> Result<(), ApiError> {
+fn validate_create(req: &CreateRequest) -> Result<(), ApiError> {
     if req.name.trim().is_empty() {
-        return Err(ApiError::bad_request("invalid_name", "name must not be empty"));
+        return Err(ApiError::bad_request(
+            "invalid_name",
+            "name must not be empty",
+        ));
     }
     if req.name.len() > 128 {
-        return Err(ApiError::bad_request("invalid_name", "name must be <= 128 chars"));
+        return Err(ApiError::bad_request(
+            "invalid_name",
+            "name must be <= 128 chars",
+        ));
     }
     if req.scopes.is_empty() {
         return Err(ApiError::new(
@@ -403,14 +407,20 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_state() -> AppState {
-        let path = std::env::temp_dir()
-            .join(format!("vautr_tok_http_test_{}.db", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_tok_http_test_{}.db", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(Repository::new(pool));
         let now = 1_700_000_000_000;
         repo.create_user(
-            "u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
         )
         .await
         .unwrap();
@@ -447,7 +457,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let secret = v["token"].as_str().unwrap().to_string();
         let token_id = v["token_id"].as_str().unwrap().to_string();
@@ -458,12 +470,18 @@ mod tests {
         let resp = app
             .clone()
             .oneshot(
-                Request::builder().uri("/tokens").header("authorization", "Bearer tok1").body(Body::empty()).unwrap(),
+                Request::builder()
+                    .uri("/tokens")
+                    .header("authorization", "Bearer tok1")
+                    .body(Body::empty())
+                    .unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let arr = v["tokens"].as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -474,7 +492,9 @@ mod tests {
         // Verify the raw secret authenticates; a random string does not.
         let vt = verify_access_token(&st.repo, &secret).await.unwrap();
         assert!(vt.scopes.contains(&"secrets:read".to_string()));
-        assert!(verify_access_token(&st.repo, "not-the-secret").await.is_err());
+        assert!(verify_access_token(&st.repo, "not-the-secret")
+            .await
+            .is_err());
 
         // Revoke, then the secret no longer authenticates.
         let resp = app
@@ -534,7 +554,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let secret = v["token"].as_str().unwrap().to_string();
 
@@ -553,7 +575,12 @@ mod tests {
         let app = routes().with_state(st.clone());
         let resp = app
             .clone()
-            .oneshot(Request::builder().uri("/tokens").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/tokens")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);

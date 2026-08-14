@@ -27,7 +27,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use totp_rs::{Algorithm, TOTP};
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::mfa::{MasterPasswordPolicy, MfaPolicy};
 
 /// TOTP enrollment lifetime before it expires (15 minutes).
@@ -119,10 +119,7 @@ async fn configured_methods(st: &AppState, user_id: &str) -> Result<Vec<String>,
 /// MFA enforcement hook for the auth flow. When the org policy makes MFA
 /// mandatory and the user has no configured method, returns a 403 `mfa_required`
 /// so the caller is rejected at login.
-pub(crate) async fn enforce_mfa_required(
-    st: &AppState,
-    user_id: &str,
-) -> Result<(), ApiError> {
+pub(crate) async fn enforce_mfa_required(st: &AppState, user_id: &str) -> Result<(), ApiError> {
     let policy = st.repo.mfa_get_policy().await.map_err(internal)?;
     if !policy.required {
         return Ok(());
@@ -360,7 +357,10 @@ pub(crate) async fn verify_totp(
                 return Err(ApiError::unauthorized());
             }
             if now_ms() > row.expires_at {
-                st.repo.delete_totp_enrollment(&enrollment_id).await.map_err(internal)?;
+                st.repo
+                    .delete_totp_enrollment(&enrollment_id)
+                    .await
+                    .map_err(internal)?;
                 return Err(ApiError::bad_request(
                     "unknown_enrollment",
                     "enrollment has expired; request a new one",
@@ -462,7 +462,10 @@ pub(crate) async fn policy_put(
         allowed_methods: req.allowed_methods,
         master_password_policy: req.master_password_policy,
     };
-    st.repo.mfa_set_policy(&policy, now_ms()).await.map_err(internal)?;
+    st.repo
+        .mfa_set_policy(&policy, now_ms())
+        .await
+        .map_err(internal)?;
     Ok(Json(policy))
 }
 
@@ -492,12 +495,24 @@ mod tests {
         let repo = Arc::new(Repository::new(pool));
         let now = 1_700_000_000_000i64;
         repo.create_user(
-            "u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
         )
         .await
         .unwrap();
         repo.create_user(
-            "u2", "bob@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+            "u2",
+            "bob@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
         )
         .await
         .unwrap();
@@ -563,7 +578,10 @@ mod tests {
         // Missing digit.
         assert!(!password_satisfies(&policy, "Correct-Horse-Battery!"));
         // Low-entropy long password is rejected by the entropy rule.
-        assert!(!password_satisfies(&policy, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        assert!(!password_satisfies(
+            &policy,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ));
         assert!(entropy_bits("abcdefghijklmnop") >= 60.0);
     }
 
@@ -594,14 +612,24 @@ mod tests {
         assert!(enforce_mfa_required(&st, "u2").await.is_ok());
 
         // Issue a TOTP enrollment.
-        let (s, issue) = request(app.clone(), "POST", "/mfa/totp/issue", Some("tok-alice"), None).await;
+        let (s, issue) = request(
+            app.clone(),
+            "POST",
+            "/mfa/totp/issue",
+            Some("tok-alice"),
+            None,
+        )
+        .await;
         assert_eq!(s, StatusCode::OK, "issue failed: {issue:?}");
         let enrollment_id = issue["enrollment_id"].as_str().unwrap().to_string();
         let secret_b32 = issue["secret"].as_str().unwrap().to_string();
         let otpauth_url = issue["otpauth_url"].as_str().unwrap();
         let qr = issue["qr_code_data_url"].as_str().unwrap();
         assert!(otpauth_url.starts_with("otpauth://totp/"));
-        assert!(otpauth_url.contains(&secret_b32), "uri must carry the secret");
+        assert!(
+            otpauth_url.contains(&secret_b32),
+            "uri must carry the secret"
+        );
         assert!(qr.starts_with("data:image/svg+xml;base64,"));
 
         // Compute a valid code with an INDEPENDENT implementation (otpauth crate,
@@ -629,7 +657,10 @@ mod tests {
         let (s, r) = request(app.clone(), "GET", "/mfa/status", Some("tok-alice"), None).await;
         assert_eq!(s, StatusCode::OK);
         assert!(
-            r["configured_methods"].as_array().unwrap().contains(&json!("totp")),
+            r["configured_methods"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("totp")),
             "configured_methods: {r:?}"
         );
 

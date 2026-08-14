@@ -191,11 +191,7 @@ impl Repository {
     }
 
     /// Remove a user's role from an organization. Returns rows deleted.
-    pub async fn remove_org_member(
-        &self,
-        org_id: &str,
-        user_id: &str,
-    ) -> Result<u64, sqlx::Error> {
+    pub async fn remove_org_member(&self, org_id: &str, user_id: &str) -> Result<u64, sqlx::Error> {
         let res = sqlx::query("DELETE FROM org_members WHERE org_id = ? AND user_id = ?")
             .bind(org_id)
             .bind(user_id)
@@ -210,34 +206,41 @@ impl Repository {
         org_id: &str,
         user_id: &str,
     ) -> Result<Option<OrgRole>, sqlx::Error> {
-        let role: Option<String> = sqlx::query_scalar("SELECT role FROM org_members WHERE org_id = ? AND user_id = ?")
-            .bind(org_id)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let role: Option<String> =
+            sqlx::query_scalar("SELECT role FROM org_members WHERE org_id = ? AND user_id = ?")
+                .bind(org_id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(role.and_then(|r| role_from_db(&r)))
     }
 
     /// The first organization the user belongs to, if any.
     pub async fn get_user_org_id(&self, user_id: &str) -> Result<Option<String>, sqlx::Error> {
-        sqlx::query_scalar("SELECT org_id FROM org_members WHERE user_id = ? ORDER BY created_at LIMIT 1")
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await
+        sqlx::query_scalar(
+            "SELECT org_id FROM org_members WHERE user_id = ? ORDER BY created_at LIMIT 1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
     }
 
     /// Every (org_id, role) the user holds (used for offboarding rank checks).
-    pub async fn get_user_org_roles(&self, user_id: &str) -> Result<Vec<(String, OrgRole)>, sqlx::Error> {
+    pub async fn get_user_org_roles(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<(String, OrgRole)>, sqlx::Error> {
         #[derive(FromRow)]
         struct OrgRoleRow {
             org_id: String,
             role: String,
         }
-        let rows: Vec<OrgRoleRow> =
-            sqlx::query_as::<_, OrgRoleRow>("SELECT org_id, role FROM org_members WHERE user_id = ?")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<OrgRoleRow> = sqlx::query_as::<_, OrgRoleRow>(
+            "SELECT org_id, role FROM org_members WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows
             .into_iter()
             .filter_map(|r| role_from_db(&r.role).map(|role| (r.org_id, role)))
@@ -246,13 +249,19 @@ impl Repository {
 
     /// Ensure the user belongs to an organization, creating a default one with
     /// them as `Owner` if they are not yet in any org. Returns the org id.
-    pub async fn ensure_org_for_user(&self, user_id: &str, now: i64) -> Result<String, sqlx::Error> {
+    pub async fn ensure_org_for_user(
+        &self,
+        user_id: &str,
+        now: i64,
+    ) -> Result<String, sqlx::Error> {
         if let Some(org) = self.get_user_org_id(user_id).await? {
             return Ok(org);
         }
         let org_id = uuid::Uuid::new_v4().to_string();
-        self.create_org(&org_id, "Default Organization", now).await?;
-        self.set_org_member(&org_id, user_id, OrgRole::Owner, now).await?;
+        self.create_org(&org_id, "Default Organization", now)
+            .await?;
+        self.set_org_member(&org_id, user_id, OrgRole::Owner, now)
+            .await?;
         Ok(org_id)
     }
 
@@ -298,15 +307,13 @@ impl Repository {
         description: Option<&str>,
         now: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(name)
-        .bind(description)
-        .bind(now)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?")
+            .bind(name)
+            .bind(description)
+            .bind(now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -329,7 +336,10 @@ impl Repository {
 
     /// All projects visible to `user_id`: owned, directly granted, granted via a
     /// group the user belongs to, or org-wide when the user is an org Owner/Admin.
-    pub async fn list_projects_for_user(&self, user_id: &str) -> Result<Vec<ProjectRow>, sqlx::Error> {
+    pub async fn list_projects_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<ProjectRow>, sqlx::Error> {
         let mut ids = std::collections::HashSet::new();
 
         // Owned.
@@ -475,7 +485,10 @@ impl Repository {
     }
 
     /// All per-user grants on a project (for the member list).
-    pub async fn list_project_members(&self, project_id: &str) -> Result<Vec<AccessRow>, sqlx::Error> {
+    pub async fn list_project_members(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<AccessRow>, sqlx::Error> {
         sqlx::query_as::<_, AccessRow>(
             "SELECT * FROM project_access WHERE project_id = ? AND grantee_user_id IS NOT NULL \
              ORDER BY granted_at",
@@ -505,11 +518,12 @@ impl Repository {
         project_id: &str,
         user_id: &str,
     ) -> Result<u64, sqlx::Error> {
-        let res = sqlx::query("DELETE FROM project_access WHERE project_id = ? AND grantee_user_id = ?")
-            .bind(project_id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
+        let res =
+            sqlx::query("DELETE FROM project_access WHERE project_id = ? AND grantee_user_id = ?")
+                .bind(project_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
         Ok(res.rows_affected())
     }
 
@@ -599,13 +613,15 @@ impl Repository {
         description: Option<&str>,
         now: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE user_groups SET name = ?, description = ?, updated_at = ? WHERE id = ?")
-            .bind(name)
-            .bind(description)
-            .bind(now)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE user_groups SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(name)
+        .bind(description)
+        .bind(now)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -676,7 +692,10 @@ impl Repository {
     }
 
     /// List the members of a user group.
-    pub async fn list_user_group_members(&self, group_id: &str) -> Result<Vec<GroupMemberRow>, sqlx::Error> {
+    pub async fn list_user_group_members(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<GroupMemberRow>, sqlx::Error> {
         sqlx::query_as::<_, GroupMemberRow>(
             "SELECT * FROM user_group_members WHERE group_id = ? ORDER BY created_at",
         )
@@ -743,7 +762,10 @@ impl Repository {
     }
 
     /// Remove the user from every user group. Returns count.
-    pub async fn revoke_group_memberships_for_user(&self, user_id: &str) -> Result<u64, sqlx::Error> {
+    pub async fn revoke_group_memberships_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<u64, sqlx::Error> {
         let res = sqlx::query("DELETE FROM user_group_members WHERE user_id = ?")
             .bind(user_id)
             .execute(&self.pool)

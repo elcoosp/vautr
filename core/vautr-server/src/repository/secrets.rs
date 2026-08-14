@@ -65,13 +65,12 @@ impl Repository {
         user_id: &str,
     ) -> Result<Option<ProjectAccessLevel>, sqlx::Error> {
         // Project owner always has full manage access.
-        let owned: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM projects WHERE id = ? AND owner_user_id = ?",
-        )
-        .bind(project_id)
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let owned: Option<String> =
+            sqlx::query_scalar("SELECT id FROM projects WHERE id = ? AND owner_user_id = ?")
+                .bind(project_id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
         if owned.is_some() {
             return Ok(Some(ProjectAccessLevel::Manage));
         }
@@ -213,13 +212,12 @@ impl Repository {
     /// Whether a user may reveal a project's secret VALUES: true for the project
     /// owner, or when the user holds a `secrets:reveal` grant on the project.
     pub async fn can_reveal(&self, project_id: &str, user_id: &str) -> Result<bool, sqlx::Error> {
-        let owned: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM projects WHERE id = ? AND owner_user_id = ?",
-        )
-        .bind(project_id)
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let owned: Option<String> =
+            sqlx::query_scalar("SELECT id FROM projects WHERE id = ? AND owner_user_id = ?")
+                .bind(project_id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
         if owned.is_some() {
             return Ok(true);
         }
@@ -298,10 +296,7 @@ mod tests {
         let now = 1_700_000_000_000i64;
 
         // u2 has no access yet.
-        assert_eq!(
-            repo.user_project_permission(&p1, "u2").await.unwrap(),
-            None
-        );
+        assert_eq!(repo.user_project_permission(&p1, "u2").await.unwrap(), None);
         assert!(!repo.can_reveal(&p1, "u2").await.unwrap());
 
         // Grant u2 CanEdit directly.

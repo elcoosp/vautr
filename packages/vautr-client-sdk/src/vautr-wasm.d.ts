@@ -85,4 +85,27 @@ declare module 'vautr-wasm' {
     plaintext: Uint8Array,
   ): string;
   export function accept_share(incomingJson: string, recipientSecretB64: string): Uint8Array;
+
+  // --- sharing.rs: group sharing (sharing-pki.md §6) ---
+  // `create_sharing_group` returns `{ group: {group_id, name, admin_uuid}, secret }`.
+  // `add_group_member` returns a WrappedGroupKey JSON. `unwrap_group_key` takes a
+  // group-inbox entry + recipient secret and returns the member's `{ group, secret }`.
+  // `encrypt_group_item` / `decrypt_group_item` operate under the Group SIK.
+  export function create_sharing_group(name: string, adminUuid: string): string;
+  export function add_group_member(
+    groupJson: string,
+    memberUuid: string,
+    memberPublicB64: string,
+  ): string;
+  export function unwrap_group_key(inboxJson: string, recipientSecretB64: string): string;
+  export function encrypt_group_item(
+    groupJson: string,
+    itemUuid: string,
+    plaintext: Uint8Array,
+  ): string;
+  export function decrypt_group_item(
+    groupJson: string,
+    itemUuid: string,
+    ciphertextB64: string,
+  ): Uint8Array;
 }

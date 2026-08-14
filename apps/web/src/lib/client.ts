@@ -118,3 +118,27 @@ export const acceptShare = (incoming: unknown): Promise<Uint8Array> =>
   getClient().acceptShare(getMlp(), incoming);
 export const revokeShare = (itemUuid: string): Promise<void> =>
   getClient().revokeShare(getMlp(), itemUuid);
+
+// --- group sharing (sharing-pki.md §6) ---
+export const createGroup = (name: string): Promise<string> =>
+  getClient().createGroup(getMlp(), name);
+export const addGroupMember = (groupJson: string, memberUserId: string): Promise<void> =>
+  getClient().addGroupMember(getMlp(), groupJson, memberUserId);
+export const getGroupInbox = () => getClient().getGroupInbox(getMlp());
+export const unwrapGroupKey = (inbox: unknown): Promise<string> =>
+  getClient().unwrapGroupKey(getMlp(), inbox);
+export const shareItemToGroup = (
+  groupJson: string,
+  itemUuid: string,
+  plaintext: Uint8Array,
+): Promise<void> => getClient().shareItemToGroup(getMlp(), groupJson, itemUuid, plaintext);
+export const getGroupItems = (groupId: string) => getClient().getGroupItems(getMlp(), groupId);
+export const acceptGroupItem = (
+  groupJson: string,
+  itemUuid: string,
+  payloadB64: string,
+): Promise<Uint8Array> => getClient().acceptGroupItem(groupJson, itemUuid, payloadB64);
+export const revokeGroupItem = (groupId: string, itemUuid: string): Promise<void> =>
+  getClient().revokeGroupItem(getMlp(), groupId, itemUuid);
+export const getGroupKey = (groupId: string): Promise<string | null> =>
+  getClient().getGroupKey(getMlp(), groupId);

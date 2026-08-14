@@ -20,7 +20,7 @@ use axum::{
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
+use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 /// Lifetime of a recovery session token (short-lived, per spec §2.3).
 const RECOVERY_TOKEN_TTL_MS: i64 = 600_000; // 10 minutes
@@ -120,20 +120,32 @@ pub(crate) async fn recover_verify(
         ));
     };
     if pk_bytes.len() != 32 {
-        return Err(ApiError::bad_request("invalid_rk_key", "malformed recovery key"));
+        return Err(ApiError::bad_request(
+            "invalid_rk_key",
+            "malformed recovery key",
+        ));
     }
     let nonce = decode_b64(&req.nonce)?;
     let sig_bytes = decode_b64(&req.signature)?;
     if sig_bytes.len() != 64 {
-        return Err(ApiError::bad_request("invalid_signature", "signature must be 64 bytes"));
+        return Err(ApiError::bad_request(
+            "invalid_signature",
+            "signature must be 64 bytes",
+        ));
     }
     let mut pk_arr = [0u8; 32];
     pk_arr.copy_from_slice(&pk_bytes);
     let Ok(verifying_key) = VerifyingKey::from_bytes(&pk_arr) else {
-        return Err(ApiError::bad_request("invalid_rk_key", "malformed recovery key"));
+        return Err(ApiError::bad_request(
+            "invalid_rk_key",
+            "malformed recovery key",
+        ));
     };
     let Ok(signature) = Signature::from_slice(&sig_bytes) else {
-        return Err(ApiError::bad_request("invalid_signature", "malformed signature"));
+        return Err(ApiError::bad_request(
+            "invalid_signature",
+            "malformed signature",
+        ));
     };
     // Signature over the exact challenge nonce bytes.
     if verifying_key.verify_strict(&nonce, &signature).is_err() {
@@ -178,12 +190,23 @@ pub(crate) async fn recover_complete(
     let svk_rk = decode_b64(&req.svk_ciphertext_blob_rk)?;
     let rk_pk = decode_b64(&req.rk_public_key)?;
     if rk_pk.len() != 32 {
-        return Err(ApiError::bad_request("invalid_rk_key", "RK public key must be 32 bytes"));
+        return Err(ApiError::bad_request(
+            "invalid_rk_key",
+            "RK public key must be 32 bytes",
+        ));
     }
 
     let now = now_ms();
     st.repo
-        .complete_recovery(&user_id, &opaque_record, &kdf_salt, &svk_mp, &svk_rk, &rk_pk, now)
+        .complete_recovery(
+            &user_id,
+            &opaque_record,
+            &kdf_salt,
+            &svk_mp,
+            &svk_rk,
+            &rk_pk,
+            now,
+        )
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
     // Force re-authentication everywhere: recovery rotates all credentials.
@@ -304,7 +327,15 @@ mod tests {
         let user_id = uuid::Uuid::new_v4().to_string();
         state
             .repo
-            .create_user(&user_id, email, &[0u8; 16], &[1u8; 32], &[2u8; 48], &[3u8; 48], now_ms())
+            .create_user(
+                &user_id,
+                email,
+                &[0u8; 16],
+                &[1u8; 32],
+                &[2u8; 48],
+                &[3u8; 48],
+                now_ms(),
+            )
             .await
             .unwrap();
         user_id
@@ -318,7 +349,11 @@ mod tests {
         let user_id = seed_user(&state, email).await;
         let signing = test_signing_key(1);
         let rk_pk = signing.verifying_key().to_bytes().to_vec();
-        state.repo.set_rk_public_key(&user_id, &rk_pk).await.unwrap();
+        state
+            .repo
+            .set_rk_public_key(&user_id, &rk_pk)
+            .await
+            .unwrap();
 
         let app = feature_router(state.clone());
 
@@ -385,7 +420,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK, "complete should succeed");
 
         // Credentials were atomically replaced.
-        let stored_pk = state.repo.get_rk_public_key(&user_id).await.unwrap().unwrap();
+        let stored_pk = state
+            .repo
+            .get_rk_public_key(&user_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stored_pk, new_pk);
 
         // The one-time token is consumed: reusing it must fail.
@@ -411,7 +451,11 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "token is one-time use");
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "token is one-time use"
+        );
     }
 
     /// A signature made with the wrong key must be rejected.
@@ -497,7 +541,10 @@ mod tests {
         .unwrap();
         let (token, suspended) = row;
         let token = token.unwrap();
-        assert!(suspended.unwrap() > now_ms(), "vault suspended for grace period");
+        assert!(
+            suspended.unwrap() > now_ms(),
+            "vault suspended for grace period"
+        );
 
         // Confirm reclaim via the token.
         let resp = app
@@ -507,7 +554,9 @@ mod tests {
                     .method(Method::POST)
                     .uri("/account/reclaim/confirm")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::json!({ "token": token }).to_string()))
+                    .body(axum::body::Body::from(
+                        serde_json::json!({ "token": token }).to_string(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -515,13 +564,12 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Token cleared.
-        let row = sqlx::query_as::<_, (Option<String>,)>(
-            "SELECT reclaim_token FROM users WHERE id = ?",
-        )
-        .bind(&user_id)
-        .fetch_one(state.repo.pool())
-        .await
-        .unwrap();
+        let row =
+            sqlx::query_as::<_, (Option<String>,)>("SELECT reclaim_token FROM users WHERE id = ?")
+                .bind(&user_id)
+                .fetch_one(state.repo.pool())
+                .await
+                .unwrap();
         assert!(row.0.is_none(), "reclaim token cleared");
     }
 }

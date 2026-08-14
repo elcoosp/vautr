@@ -408,6 +408,171 @@ export class VautrWebClient {
   }
 
   // -------------------------------------------------------------------------
+  // Group sharing (sharing-pki.md §6) — zero-knowledge 1:N item share relay
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a sharing group and persist its Group SIK locally. Returns the
+   * `{ group, secret }` JSON (the admin's ShareGroupKey) for immediate use.
+   */
+  async createGroup(mlp: VautrMlpClient, name: string): Promise<string> {
+    const state = await this.store.getState();
+    const sender = state.username;
+    if (!sender) {
+      throw new Error('no logged-in user');
+    }
+    const groupJson = this.crypto.createSharingGroup(name, sender);
+    const group = JSON.parse(groupJson) as { group: { group_id: string }; secret: string };
+    const created = await mlp.createGroup({ name });
+    // Persist the Group SIK keyed by the server-assigned group_id.
+    const groupKeys = { ...state.groupKeys, [created.group_id]: group.secret };
+    await this.store.setState({ groupKeys });
+    return JSON.stringify({
+      group: { ...group.group, group_id: created.group_id },
+      secret: group.secret,
+    });
+  }
+
+  /**
+   * Add a member to a group: wrap the Group SIK for them and upload the wrap.
+   * `groupJson` is the admin's persisted `{ group, secret }` (from createGroup or
+   * an admin's stored group key).
+   */
+  async addGroupMember(
+    mlp: VautrMlpClient,
+    groupJson: string,
+    memberUserId: string,
+  ): Promise<void> {
+    const state = await this.store.getState();
+    const sender = state.username;
+    if (!sender) {
+      throw new Error('no logged-in user');
+    }
+    const recipient = await mlp.getSharingPublicKey(memberUserId);
+    const wrappedJson = this.crypto.addGroupMember(groupJson, memberUserId, recipient.public_key);
+    const wrapped = JSON.parse(wrappedJson) as {
+      group_id: string;
+      wrapped_sik: string;
+      ephemeral_public_key: string;
+    };
+    await mlp.addGroupMember(wrapped.group_id, {
+      member_uuid: memberUserId,
+      wrapped_sik: wrapped.wrapped_sik,
+      ephemeral_public_key: wrapped.ephemeral_public_key,
+    });
+  }
+
+  /** List the groups the caller belongs to, with each member's wrapped Group SIK. */
+  async getGroupInbox(mlp: VautrMlpClient) {
+    return mlp.groupInbox();
+  }
+
+  /**
+   * Decapsulate + persist the Group SIK for a group from an inbox entry, using
+   * the caller's sharing secret. Returns the member's `{ group, secret }`.
+   */
+  async unwrapGroupKey(_mlp: VautrMlpClient, inbox: unknown): Promise<string> {
+    const state = await this.store.getState();
+    if (!state.sharingSecretKey) {
+      throw new Error('no sharing key; cannot unwrap group key');
+    }
+    const memberKeyJson = this.crypto.unwrapGroupKey(JSON.stringify(inbox), state.sharingSecretKey);
+    const memberKey = JSON.parse(memberKeyJson) as { group: { group_id: string }; secret: string };
+    const groupKeys = { ...state.groupKeys, [memberKey.group.group_id]: memberKey.secret };
+    await this.store.setState({ groupKeys });
+    return memberKeyJson;
+  }
+
+  /** Share an item (plaintext) into a group: encrypt once under the Group SIK. */
+  async shareItemToGroup(
+    mlp: VautrMlpClient,
+    groupJson: string,
+    itemUuid: string,
+    plaintext: Uint8Array,
+  ): Promise<void> {
+    const ctB64 = this.crypto.encryptGroupItem(groupJson, itemUuid, plaintext);
+    await mlp.addGroupItem(JSON.parse(groupJson).group.group_id, {
+      item_uuid: itemUuid,
+      payload: ctB64,
+    });
+  }
+
+  /** List a group's shared items (item_uuid + Group-SIK-encrypted payload). */
+  async getGroupItems(mlp: VautrMlpClient, groupId: string) {
+    return mlp.listGroupItems(groupId);
+  }
+
+  /** Decrypt a group item to plaintext. `groupJson` is the member's key. */
+  async acceptGroupItem(
+    groupJson: string,
+    itemUuid: string,
+    payloadB64: string,
+  ): Promise<Uint8Array> {
+    return this.crypto.decryptGroupItem(groupJson, itemUuid, payloadB64);
+  }
+
+  /** Remove an item from a group (admin). */
+  async revokeGroupItem(mlp: VautrMlpClient, groupId: string, itemUuid: string): Promise<void> {
+    await mlp.deleteGroupItem(groupId, itemUuid);
+  }
+
+  /** Rotate the Group SIK and re-wrap remaining members (admin). */
+  async rotateGroup(
+    mlp: VautrMlpClient,
+    groupJson: string,
+    members: Array<{ userId: string; publicKeyB64: string }>,
+  ): Promise<void> {
+    const wrapped = members.map((m) => {
+      const w = JSON.parse(this.crypto.addGroupMember(groupJson, m.userId, m.publicKeyB64)) as {
+        group_id: string;
+        wrapped_sik: string;
+        ephemeral_public_key: string;
+      };
+      return {
+        recipient_user_id: m.userId,
+        wrapped_sik: w.wrapped_sik,
+        ephemeral_public_key: w.ephemeral_public_key,
+      };
+    });
+    await mlp.rotateGroup(JSON.parse(groupJson).group.group_id, { wrapped_keys: wrapped });
+  }
+
+  /** Remove a member from a group (admin). */
+  async removeGroupMember(mlp: VautrMlpClient, groupId: string, memberUuid: string): Promise<void> {
+    await mlp.removeGroupMember(groupId, memberUuid);
+  }
+
+  /**
+   * Return the persisted `{ group, secret }` JSON for a group this client is an
+   * admin or member of (from local storage), or null if not available. Used to
+   * reconstruct the ShareGroupKey for adding members / decrypting items. The
+   * group's display metadata (name/admin_uuid) is pulled from the server inbox.
+   */
+  async getGroupKey(mlp: VautrMlpClient, groupId: string): Promise<string | null> {
+    const state = await this.store.getState();
+    const secret = state.groupKeys[groupId];
+    if (!secret) {
+      return null;
+    }
+    let name = '';
+    let adminUuid = '';
+    try {
+      const inbox = await this.getGroupInbox(mlp);
+      const entry = inbox.find((g) => g.group_id === groupId);
+      if (entry) {
+        name = entry.name;
+        adminUuid = entry.admin_uuid;
+      }
+    } catch {
+      // Fall back to empty metadata; the Group SIK still decrypts items.
+    }
+    return JSON.stringify({
+      group: { group_id: groupId, name, admin_uuid: adminUuid },
+      secret,
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Sync (api.md §4)
   // -------------------------------------------------------------------------
 

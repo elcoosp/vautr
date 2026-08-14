@@ -68,11 +68,10 @@ impl Repository {
 
     /// Read the user's current `min_enc_key_gen` (epoch gate source).
     pub async fn min_enc_key_gen(&self, user_id: &str) -> Result<Option<i64>, sqlx::Error> {
-        let row: Option<(i64,)> =
-            sqlx::query_as("SELECT min_enc_key_gen FROM users WHERE id = ?")
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<(i64,)> = sqlx::query_as("SELECT min_enc_key_gen FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.map(|r| r.0))
     }
 

@@ -167,8 +167,8 @@ impl WebClient {
             .borrow()
             .clone()
             .ok_or_else(|| JsValue::from_str("vault is locked"))?;
-        let uuid = uuid::Uuid::parse_str(&uuid)
-            .map_err(|e| JsValue::from_str(&format!("uuid: {e}")))?;
+        let uuid =
+            uuid::Uuid::parse_str(&uuid).map_err(|e| JsValue::from_str(&format!("uuid: {e}")))?;
         let pt = aead::decrypt(&dek, &uuid, enc_key_gen, &payload)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let handle = self.store.reveal(Zeroizing::new(pt));
@@ -216,8 +216,8 @@ impl WebClient {
             .borrow()
             .clone()
             .ok_or_else(|| JsValue::from_str("vault is locked"))?;
-        let uuid = uuid::Uuid::parse_str(&uuid)
-            .map_err(|e| JsValue::from_str(&format!("uuid: {e}")))?;
+        let uuid =
+            uuid::Uuid::parse_str(&uuid).map_err(|e| JsValue::from_str(&format!("uuid: {e}")))?;
         aead::encrypt(&dek, &uuid, enc_key_gen, &plaintext)
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }

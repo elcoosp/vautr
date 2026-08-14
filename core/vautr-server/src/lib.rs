@@ -12,8 +12,8 @@
 
 pub mod db;
 pub mod handlers;
-pub mod repository;
 pub mod middleware;
+pub mod repository;
 
 /// The canonical OpenAPI 3 spec (api.md), embedded at compile time so the
 /// server can serve it at `GET /openapi.json` (VTR-010 TDD #2) and the SPA /

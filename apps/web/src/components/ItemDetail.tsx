@@ -3,12 +3,20 @@ import { ArrowLeft, Copy, Eye, EyeOff, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   ensureSharingKey,
+  getGroupInbox,
+  getGroupKey,
   getItemPlaintext,
   performAction,
   release,
   reveal,
   shareItem,
+  shareItemToGroup,
 } from '../lib/client';
+
+interface GroupSummary {
+  group_id: string;
+  name: string;
+}
 
 interface ItemDetailProps {
   uuid: string;
@@ -28,6 +36,8 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareRecipient, setShareRecipient] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
+  const [adminGroups, setAdminGroups] = useState<GroupSummary[]>([]);
+  const [shareGroupId, setShareGroupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Reveal on mount, dispose on unmount (zeroization contract).
@@ -101,6 +111,44 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
     }
   }
 
+  async function openShareDialog(): Promise<void> {
+    setShareOpen(true);
+    setError(null);
+    setShareGroupId(null);
+    try {
+      const inbox = await getGroupInbox();
+      // Admin groups have no wrapped_sik in the inbox entry.
+      setAdminGroups(
+        inbox.filter((g) => !g.wrapped_sik).map((g) => ({ group_id: g.group_id, name: g.name })),
+      );
+    } catch {
+      setAdminGroups([]);
+    }
+  }
+
+  async function confirmShareToGroup(): Promise<void> {
+    if (!shareGroupId) {
+      setError('Select a group to share into.');
+      return;
+    }
+    setShareBusy(true);
+    setError(null);
+    try {
+      const groupJson = await getGroupKey(shareGroupId);
+      if (!groupJson) {
+        throw new Error('admin group key not found locally');
+      }
+      const plaintext = await getItemPlaintext(uuid);
+      await shareItemToGroup(groupJson, uuid, plaintext);
+      setShareOpen(false);
+      setShareGroupId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to share to group.');
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col bg-bg">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
@@ -160,7 +208,7 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setShareOpen(true)}
+                onClick={() => void openShareDialog()}
                 aria-label={`Share ${overview.title}`}
                 className="rounded-md border border-border px-3 py-2 font-medium text-text hover:bg-surface-raised"
               >
@@ -222,6 +270,28 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
               className="w-full rounded-md border border-border bg-bg px-3 py-2 text-text"
             />
             {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            {adminGroups.length > 0 ? (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-text-muted">Or share into a group</p>
+                <ul className="max-h-40 space-y-1 overflow-auto">
+                  {adminGroups.map((g) => (
+                    <li key={g.group_id}>
+                      <button
+                        type="button"
+                        onClick={() => setShareGroupId(g.group_id)}
+                        className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                          shareGroupId === g.group_id
+                            ? 'border-accent bg-surface-raised text-text'
+                            : 'border-border text-text-muted hover:text-text'
+                        }`}
+                      >
+                        {g.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -230,14 +300,25 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={() => void confirmShare()}
-                disabled={shareBusy}
-                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
-              >
-                {shareBusy ? 'Sharing…' : 'Share'}
-              </button>
+              {shareGroupId ? (
+                <button
+                  type="button"
+                  onClick={() => void confirmShareToGroup()}
+                  disabled={shareBusy}
+                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+                >
+                  {shareBusy ? 'Sharing…' : 'Share to group'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void confirmShare()}
+                  disabled={shareBusy || !shareRecipient}
+                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+                >
+                  {shareBusy ? 'Sharing…' : 'Share'}
+                </button>
+              )}
             </div>
           </div>
         </div>

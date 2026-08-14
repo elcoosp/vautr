@@ -69,30 +69,31 @@ impl Repository {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|(id, cred_id, label, serialized, counter, created_at, updated_at)| {
-                WebauthnCredentialRow {
-                    id,
-                    user_id: user_id.to_string(),
-                    cred_id,
-                    label,
-                    serialized,
-                    counter,
-                    created_at,
-                    updated_at,
-                }
-            })
+            .map(
+                |(id, cred_id, label, serialized, counter, created_at, updated_at)| {
+                    WebauthnCredentialRow {
+                        id,
+                        user_id: user_id.to_string(),
+                        cred_id,
+                        label,
+                        serialized,
+                        counter,
+                        created_at,
+                        updated_at,
+                    }
+                },
+            )
             .collect())
     }
 
     /// True when the user has registered at least one WebAuthn credential.
     /// Used to decide whether MP unlock must be gated behind a second factor.
     pub async fn webauthn_has_credentials(&self, user_id: &str) -> Result<bool, sqlx::Error> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(row.0 > 0)
     }
 

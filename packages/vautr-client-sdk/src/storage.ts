@@ -41,6 +41,8 @@ export interface StoredState {
   svk: Uint8Array | null;
   /** Sharing secret key (base64 of 32 raw bytes), persisted for inbox unwrap. */
   sharingSecretKey: string | null;
+  /** Base64 Group SIKs keyed by group_id (sharing-pki.md §6). Sensitive. */
+  groupKeys: Record<string, string>;
 }
 
 export const EMPTY_STATE: StoredState = {
@@ -52,6 +54,7 @@ export const EMPTY_STATE: StoredState = {
   sessionToken: null,
   svk: null,
   sharingSecretKey: null,
+  groupKeys: {},
 };
 
 const DB_NAME = 'vautr-client';

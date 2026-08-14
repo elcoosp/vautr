@@ -20,7 +20,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 
 /// Deterministic mock presigned URLs for each chunk. Real S3 presigning will
 /// replace this behind a `rustfs` feature / env toggle; the protocol shape is
@@ -296,15 +296,17 @@ pub fn routes() -> Router<AppState> {
 mod tests {
     use super::*;
     use crate::repository::Repository;
-    use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode, header};
+    use axum::body::{to_bytes, Body};
+    use axum::http::{header, Request, StatusCode};
     use serde_json::json;
     use std::sync::Arc;
     use tower::util::ServiceExt;
 
     /// Build an in-memory app state with one authed user and a valid session.
     async fn test_state() -> AppState {
-        let pool = crate::db::connect("sqlite::memory:").await.expect("connect+migrate");
+        let pool = crate::db::connect("sqlite::memory:")
+            .await
+            .expect("connect+migrate");
         let repo = Arc::new(Repository::new(pool));
         let now = now_ms();
         repo.create_user(

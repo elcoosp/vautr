@@ -19,7 +19,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
+use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 /// Build this feature's router. Merged into the main router in mod.rs.
 pub fn routes() -> Router<AppState> {
@@ -41,6 +41,13 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/groups/{group_id}/rotate", post(rotate_group))
         .route("/groups/inbox", get(group_inbox))
+        // Group items (§6)
+        .route("/groups/{group_id}/items", post(add_group_item))
+        .route("/groups/{group_id}/items", get(list_group_items))
+        .route(
+            "/groups/{group_id}/items/{item_uuid}",
+            delete(delete_group_item),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -62,8 +69,8 @@ pub(crate) struct PutPublicKeyReq {
 pub(crate) struct CreateShareReq {
     item_uuid: String,
     recipient_uuid: String,
-    wrapped_sik: String,           // base64
-    ephemeral_public_key: String,  // base64
+    wrapped_sik: String,          // base64
+    ephemeral_public_key: String, // base64
 }
 
 #[derive(Serialize)]
@@ -258,10 +265,7 @@ async fn upload_payload(
 }
 
 /// GET /shares/inbox
-async fn inbox(
-    State(st): State<AppState>,
-    auth: Bearer,
-) -> Result<Json<Vec<InboxItem>>, ApiError> {
+async fn inbox(State(st): State<AppState>, auth: Bearer) -> Result<Json<Vec<InboxItem>>, ApiError> {
     let recipient = auth_user(&st.repo, &auth.0).await?;
     let shares = st
         .repo
@@ -315,7 +319,9 @@ async fn revoke_share(
         .delete_share_payload(&sid)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(Json(serde_json::json!({ "share_id": sid, "status": "revoked" })))
+    Ok(Json(
+        serde_json::json!({ "share_id": sid, "status": "revoked" }),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +373,9 @@ async fn add_group_member(
         .store_group_wrapped_sik(&gid, &req.member_uuid, &wrapped_sik, &ephemeral_pk)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(Json(serde_json::json!({ "group_id": gid, "status": "member_added" })))
+    Ok(Json(
+        serde_json::json!({ "group_id": gid, "status": "member_added" }),
+    ))
 }
 
 /// DELETE /groups/{group_id}/members/{member_uuid}
@@ -388,7 +396,9 @@ async fn remove_group_member(
         .delete_group_wrapped_sik(&gid, &muid)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(Json(serde_json::json!({ "group_id": gid, "status": "member_removed" })))
+    Ok(Json(
+        serde_json::json!({ "group_id": gid, "status": "member_removed" }),
+    ))
 }
 
 /// POST /groups/{group_id}/rotate
@@ -413,7 +423,9 @@ async fn rotate_group(
         .replace_group_wrapped_siks(&gid, &wrapped)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(Json(serde_json::json!({ "group_id": gid, "status": "rotated" })))
+    Ok(Json(
+        serde_json::json!({ "group_id": gid, "status": "rotated" }),
+    ))
 }
 
 /// GET /groups/inbox
@@ -445,6 +457,110 @@ async fn group_inbox(
     Ok(Json(items))
 }
 
+// ---------------------------------------------------------------------------
+// Group items (§6) — Group-SIK-encrypted payload delivery
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub(crate) struct AddGroupItemReq {
+    item_uuid: String,
+    payload: String, // base64 (Group-SIK-encrypted ciphertext)
+}
+
+#[derive(Serialize)]
+pub(crate) struct GroupItemResp {
+    group_id: String,
+    item_uuid: String,
+    payload: String, // base64
+}
+
+#[derive(Serialize)]
+pub(crate) struct GroupItemListResp {
+    items: Vec<GroupItemResp>,
+}
+
+/// POST /groups/{group_id}/items
+///
+/// Admin uploads the item payload, encrypted once under the unified Group SIK.
+/// Every member decrypts it with the Group SIK they hold via their wrapped key.
+async fn add_group_item(
+    State(st): State<AppState>,
+    Path(group_id): Path<Uuid>,
+    auth: Bearer,
+    Json(req): Json<AddGroupItemReq>,
+) -> Result<Json<GroupItemResp>, ApiError> {
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    let gid = group_id.to_string();
+    require_admin(&st, &gid, &caller).await?;
+    let payload = decode_b64(&req.payload)?;
+    st.repo
+        .add_group_item(&gid, &req.item_uuid, &payload, now_ms())
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    Ok(Json(GroupItemResp {
+        group_id: gid,
+        item_uuid: req.item_uuid,
+        payload: b64(&payload),
+    }))
+}
+
+/// GET /groups/{group_id}/items
+///
+/// Any member lists the group's shared items (item_uuid + encrypted payload).
+async fn list_group_items(
+    State(st): State<AppState>,
+    Path(group_id): Path<Uuid>,
+    auth: Bearer,
+) -> Result<Json<GroupItemListResp>, ApiError> {
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    let gid = group_id.to_string();
+    // Membership is required (admin or ordinary member).
+    let member = st
+        .repo
+        .is_group_member(&gid, &caller)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if !member {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "only group members may read group items",
+        ));
+    }
+    let rows = st
+        .repo
+        .list_group_items(&gid)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    let items = rows
+        .into_iter()
+        .map(|(item_uuid, payload)| GroupItemResp {
+            group_id: gid.clone(),
+            item_uuid,
+            payload: b64(&payload),
+        })
+        .collect();
+    Ok(Json(GroupItemListResp { items }))
+}
+
+/// DELETE /groups/{group_id}/items/{item_uuid}
+async fn delete_group_item(
+    State(st): State<AppState>,
+    Path((group_id, item_uuid)): Path<(Uuid, String)>,
+    auth: Bearer,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    let gid = group_id.to_string();
+    require_admin(&st, &gid, &caller).await?;
+    st.repo
+        .delete_group_item(&gid, &item_uuid)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    Ok(Json(
+        serde_json::json!({ "group_id": gid, "item_uuid": item_uuid, "status": "removed" }),
+    ))
+}
+
 /// Enforce that `caller` is the admin of the group.
 async fn require_admin(st: &AppState, group_id: &str, caller: &str) -> Result<(), ApiError> {
     let Some(group) = st
@@ -473,15 +589,17 @@ async fn require_admin(st: &AppState, group_id: &str, caller: &str) -> Result<()
 mod tests {
     use super::*;
     use crate::repository::Repository;
-    use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode, header};
+    use axum::body::{to_bytes, Body};
+    use axum::http::{header, Request, StatusCode};
     use serde_json::json;
     use std::sync::Arc;
     use tower::util::ServiceExt;
 
     /// Build an in-memory app with two users (u1: tok1, u2: tok2) and sessions.
     async fn test_state() -> AppState {
-        let pool = crate::db::connect("sqlite::memory:").await.expect("connect+migrate");
+        let pool = crate::db::connect("sqlite::memory:")
+            .await
+            .expect("connect+migrate");
         let repo = Arc::new(Repository::new(pool));
         let now = now_ms();
         for (id, email, tok) in [
@@ -489,13 +607,7 @@ mod tests {
             ("u2", "b@example.com", "tok2"),
         ] {
             repo.create_user(
-                id,
-                email,
-                &[0u8; 32],
-                &[1u8; 16],
-                &[2u8; 48],
-                &[3u8; 48],
-                now,
+                id, email, &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
             )
             .await
             .expect("create user");
@@ -559,38 +671,17 @@ mod tests {
         let router = super::routes().with_state(state);
 
         // u1 fetches their own key back (round-trip).
-        let (status, json) = call(
-            &router,
-            "GET",
-            "/users/u1/public-key",
-            "tok1",
-            None,
-        )
-        .await;
+        let (status, json) = call(&router, "GET", "/users/u1/public-key", "tok1", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["user_id"], "u1");
         assert_eq!(json["public_key"], b64(&key));
 
         // A user with no published key -> 404.
-        let (status, _) = call(
-            &router,
-            "GET",
-            "/users/u2/public-key",
-            "tok1",
-            None,
-        )
-        .await;
+        let (status, _) = call(&router, "GET", "/users/u2/public-key", "tok1", None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // Unauthenticated -> 401.
-        let (status, _) = call(
-            &router,
-            "GET",
-            "/users/u1/public-key",
-            "bogus",
-            None,
-        )
-        .await;
+        let (status, _) = call(&router, "GET", "/users/u1/public-key", "bogus", None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
@@ -665,7 +756,14 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // u1 revokes; u2's inbox empties.
-        let (status, _) = call(&router, "DELETE", &format!("/shares/{item_uuid}"), "tok1", None).await;
+        let (status, _) = call(
+            &router,
+            "DELETE",
+            &format!("/shares/{item_uuid}"),
+            "tok1",
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         let (_, json) = call(&router, "GET", "/shares/inbox", "tok2", None).await;
         assert_eq!(json.as_array().unwrap().len(), 0);

@@ -23,8 +23,8 @@ pub mod backup;
 pub mod config;
 pub mod files;
 pub mod items;
-pub mod mfa;
 pub mod machine_accounts;
+pub mod mfa;
 pub mod projects;
 pub mod recovery;
 pub mod secrets;
@@ -36,9 +36,9 @@ pub mod users;
 pub mod webauthn;
 
 pub use items::{ItemRow, UpsertOutcome};
+pub use users::UserRow;
 #[cfg(feature = "webauthn")]
 pub use webauthn::WebauthnCredentialRow;
-pub use users::UserRow;
 
 /// The server repository: a thin, tenant-scoped wrapper over the SQLite pool.
 #[derive(Clone)]
@@ -86,7 +86,10 @@ mod tests {
             "server_config",
             "webauthn_credentials",
         ] {
-            assert!(names.contains(&expected), "missing table: {expected} (got {names:?})");
+            assert!(
+                names.contains(&expected),
+                "missing table: {expected} (got {names:?})"
+            );
         }
     }
 
@@ -95,7 +98,13 @@ mod tests {
         let repo = test_repo().await;
         let now = 1_700_000_000_000;
         repo.create_user(
-            "u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
         )
         .await
         .unwrap();

@@ -255,9 +255,17 @@ mod tests {
         let repo = test_repo().await;
         let now = 1_700_000_000_000;
         // user_id is FK to users(id); create the account first.
-        repo.create_user("u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
 
         repo.audit_log(Some("u1"), "rotate_key", Some("u1"), None, now)
             .await
@@ -293,9 +301,17 @@ mod tests {
     async fn audit_log_limit_offset() {
         let repo = test_repo().await;
         let now = 1_700_000_000_000;
-        repo.create_user("u2", "bob@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u2",
+            "bob@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         for i in 0..5 {
             repo.audit_log(Some("u2"), "login", Some("u2"), None, now + i)
                 .await
@@ -315,12 +331,28 @@ mod tests {
     async fn org_and_secret_access_events_recorded_and_queryable() {
         let repo = test_repo().await;
         let now = 1_700_000_000_000;
-        repo.create_user("owner", "owner@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
-        repo.create_user("dev", "dev@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "owner",
+            "owner@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
+        repo.create_user(
+            "dev",
+            "dev@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
 
         let proj = uuid::Uuid::new_v4().to_string();
         let secret = uuid::Uuid::new_v4().to_string();
@@ -364,14 +396,24 @@ mod tests {
         .unwrap();
 
         // Secret access: who read which secret and when.
-        repo.audit_secret_access("dev", &secret, Some(&proj), "read", Some("10.0.0.9"), now + 3)
-            .await
-            .unwrap();
+        repo.audit_secret_access(
+            "dev",
+            &secret,
+            Some(&proj),
+            "read",
+            Some("10.0.0.9"),
+            now + 3,
+        )
+        .await
+        .unwrap();
 
         // Filter by event_type.
         let secret_events = repo
             .query_audit_events(
-                &AuditFilter { event_type: Some("secret_access"), ..AuditFilter::default() },
+                &AuditFilter {
+                    event_type: Some("secret_access"),
+                    ..AuditFilter::default()
+                },
                 100,
                 0,
             )
@@ -380,7 +422,10 @@ mod tests {
         assert_eq!(secret_events.len(), 1);
         assert_eq!(secret_events[0].action, "read");
         assert_eq!(secret_events[0].resource_type.as_deref(), Some("secret"));
-        assert_eq!(secret_events[0].resource_id.as_deref(), Some(secret.as_str()));
+        assert_eq!(
+            secret_events[0].resource_id.as_deref(),
+            Some(secret.as_str())
+        );
         assert_eq!(secret_events[0].actor.as_deref(), Some("dev"));
         assert_eq!(secret_events[0].ip_address.as_deref(), Some("10.0.0.9"));
 
@@ -404,20 +449,29 @@ mod tests {
         // Filter by time window.
         let in_window = repo
             .query_audit_events(
-                &AuditFilter { from: Some(now), to: Some(now + 2), ..AuditFilter::default() },
+                &AuditFilter {
+                    from: Some(now),
+                    to: Some(now + 2),
+                    ..AuditFilter::default()
+                },
                 100,
                 0,
             )
             .await
             .unwrap();
         assert_eq!(in_window.len(), 3); // offboard(now+2) + project_create(now+1) + role_change(now)
-        // Newest first within the window.
+                                        // Newest first within the window.
         assert_eq!(in_window[0].action, "offboard");
 
         // Metadata-only: secret value never stored, only its UUID.
-        let all = repo.query_audit_events(&AuditFilter::default(), 100, 0).await.unwrap();
+        let all = repo
+            .query_audit_events(&AuditFilter::default(), 100, 0)
+            .await
+            .unwrap();
         for row in &all {
-            assert!(row.detail.is_none() || !row.detail.as_deref().unwrap().contains("secret_value"));
+            assert!(
+                row.detail.is_none() || !row.detail.as_deref().unwrap().contains("secret_value")
+            );
             assert_ne!(row.user_id.as_deref(), Some("dev@example.com"));
         }
     }
@@ -430,7 +484,10 @@ mod tests {
         repo.audit_secret_access("svc-1", &secret, None, "create", None, now)
             .await
             .unwrap();
-        let rows = repo.query_audit_events(&AuditFilter::default(), 100, 0).await.unwrap();
+        let rows = repo
+            .query_audit_events(&AuditFilter::default(), 100, 0)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         // resource_id is the secret UUID only; the value is never stored.
         assert_eq!(rows[0].resource_id.as_deref(), Some(secret.as_str()));

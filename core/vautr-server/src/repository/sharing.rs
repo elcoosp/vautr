@@ -150,12 +150,13 @@ impl Repository {
         item_uuid: &str,
         owner_user_id: &str,
     ) -> Result<bool, sqlx::Error> {
-        let row: Option<(String,)> =
-            sqlx::query_as("SELECT item_uuid FROM shares WHERE item_uuid = ? AND owner_user_id = ?")
-                .bind(item_uuid)
-                .bind(owner_user_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT item_uuid FROM shares WHERE item_uuid = ? AND owner_user_id = ?",
+        )
+        .bind(item_uuid)
+        .bind(owner_user_id)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.is_some())
     }
 
@@ -249,10 +250,7 @@ impl Repository {
     }
 
     /// Fetch a DEM-encrypted shared payload.
-    pub async fn get_share_payload(
-        &self,
-        share_id: &str,
-    ) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    pub async fn get_share_payload(&self, share_id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
         self.ensure_payload_table().await?;
         let row: Option<(Vec<u8>,)> =
             sqlx::query_as("SELECT payload FROM share_payloads WHERE share_id = ?")
@@ -305,7 +303,10 @@ impl Repository {
     }
 
     /// List every group the user is a member of (group inbox).
-    pub async fn list_groups_for_member(&self, user_id: &str) -> Result<Vec<GroupRow>, sqlx::Error> {
+    pub async fn list_groups_for_member(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<GroupRow>, sqlx::Error> {
         sqlx::query_as::<_, GroupRow>(
             "SELECT g.* FROM sharing_groups g \
              JOIN group_members m ON m.group_id = g.id WHERE m.user_id = ?",
@@ -322,13 +323,15 @@ impl Repository {
         user_id: &str,
         now: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO group_members (group_id, user_id, created_at) VALUES (?, ?, ?) \
-                     ON CONFLICT(group_id, user_id) DO NOTHING")
-            .bind(group_id)
-            .bind(user_id)
-            .bind(now)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT INTO group_members (group_id, user_id, created_at) VALUES (?, ?, ?) \
+                     ON CONFLICT(group_id, user_id) DO NOTHING",
+        )
+        .bind(group_id)
+        .bind(user_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -416,13 +419,11 @@ impl Repository {
         group_id: &str,
         recipient_user_id: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM group_wrapped_sik WHERE group_id = ? AND recipient_user_id = ?",
-        )
-        .bind(group_id)
-        .bind(recipient_user_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("DELETE FROM group_wrapped_sik WHERE group_id = ? AND recipient_user_id = ?")
+            .bind(group_id)
+            .bind(recipient_user_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -455,32 +456,53 @@ impl Repository {
         Ok(())
     }
 
-    /// Record an item as shared into a group (§6).
+    /// Record an item as shared into a group and store its Group-SIK-encrypted
+    /// payload (§6). The payload is ciphertext; the server never sees the SIK
+    /// or plaintext.
     pub async fn add_group_item(
         &self,
         group_id: &str,
         item_uuid: &str,
+        payload: &[u8],
         now: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO group_items (group_id, item_uuid, created_at) VALUES (?, ?, ?) \
-             ON CONFLICT(group_id, item_uuid) DO NOTHING",
+            "INSERT INTO group_items (group_id, item_uuid, payload, created_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(group_id, item_uuid) DO UPDATE SET payload = excluded.payload",
         )
         .bind(group_id)
         .bind(item_uuid)
+        .bind(payload)
         .bind(now)
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
-    /// List item uuids shared into a group.
-    pub async fn list_group_items(&self, group_id: &str) -> Result<Vec<String>, sqlx::Error> {
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT item_uuid FROM group_items WHERE group_id = ?")
+    /// List (item_uuid, encrypted_payload) pairs shared into a group.
+    pub async fn list_group_items(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<(String, Vec<u8>)>, sqlx::Error> {
+        let rows: Vec<(String, Vec<u8>)> =
+            sqlx::query_as("SELECT item_uuid, payload FROM group_items WHERE group_id = ?")
                 .bind(group_id)
                 .fetch_all(&self.pool)
                 .await?;
-        Ok(rows.into_iter().map(|r| r.0).collect())
+        Ok(rows)
+    }
+
+    /// Remove an item from a group (admin revocation, §6).
+    pub async fn delete_group_item(
+        &self,
+        group_id: &str,
+        item_uuid: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM group_items WHERE group_id = ? AND item_uuid = ?")
+            .bind(group_id)
+            .bind(item_uuid)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }

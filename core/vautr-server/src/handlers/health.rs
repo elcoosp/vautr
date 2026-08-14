@@ -183,7 +183,8 @@ mod tests {
     async fn readiness_fails_when_db_down() {
         // Build the state separately so we can close its pool to simulate a
         // real database outage.
-        let path = std::env::temp_dir().join(format!("vautr_health_down_{}.db", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_health_down_{}.db", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let state = AppState::new(Arc::new(Repository::new(pool.clone())));

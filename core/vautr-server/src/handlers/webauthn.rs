@@ -34,7 +34,7 @@ use serde_json::Value;
 use webauthn_rs::prelude::*;
 use webauthn_rs::Webauthn;
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 
 /// In-memory, single-node WebAuthn service: the `Webauthn` instance plus the
 /// pending registration / authentication ceremony states (replay-safe, server
@@ -205,7 +205,11 @@ pub(crate) async fn register_start(
     let user_id = auth_user(&st.repo, &auth.0).await?;
 
     // Exclude already-registered credentials to prevent duplicates.
-    let existing = st.repo.list_webauthn_credentials(&user_id).await.map_err(internal)?;
+    let existing = st
+        .repo
+        .list_webauthn_credentials(&user_id)
+        .await
+        .map_err(internal)?;
     let exclude: Option<Vec<CredentialID>> = if existing.is_empty() {
         None
     } else {
@@ -252,7 +256,9 @@ pub(crate) async fn register_verify(
         .lock()
         .map_err(|_| ApiError::internal("ceremony lock"))?
         .remove(&req.request_id)
-        .ok_or_else(|| ApiError::bad_request("no_active_registration", "unknown or expired registration"))?;
+        .ok_or_else(|| {
+            ApiError::bad_request("no_active_registration", "unknown or expired registration")
+        })?;
     if cer_user != user_id {
         return Err(ApiError::unauthorized());
     }
@@ -284,7 +290,11 @@ pub(crate) async fn assert_start(
 ) -> Result<Json<AssertStartResp>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
 
-    let rows = st.repo.list_webauthn_credentials(&user_id).await.map_err(internal)?;
+    let rows = st
+        .repo
+        .list_webauthn_credentials(&user_id)
+        .await
+        .map_err(internal)?;
     if rows.is_empty() {
         return Err(ApiError::bad_request(
             "no_second_factor",
@@ -293,8 +303,8 @@ pub(crate) async fn assert_start(
     }
     let mut creds = Vec::with_capacity(rows.len());
     for row in &rows {
-        let sk: SecurityKey =
-            serde_json::from_slice(&row.serialized).map_err(|e| ApiError::internal(&e.to_string()))?;
+        let sk: SecurityKey = serde_json::from_slice(&row.serialized)
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
         creds.push(sk);
     }
 
@@ -331,7 +341,9 @@ pub(crate) async fn assert_verify(
         .lock()
         .map_err(|_| ApiError::internal("ceremony lock"))?
         .remove(&req.request_id)
-        .ok_or_else(|| ApiError::bad_request("no_active_assertion", "unknown or expired assertion"))?;
+        .ok_or_else(|| {
+            ApiError::bad_request("no_active_assertion", "unknown or expired assertion")
+        })?;
     if cer_user != user_id {
         return Err(ApiError::unauthorized());
     }
@@ -367,7 +379,13 @@ pub(crate) async fn assert_verify(
             sk.update_credential(&res);
             let new_serialized = serde_json::to_vec(&sk).map_err(internal)?;
             st.repo
-                .update_webauthn_counter(&user_id, &cred_id, res.counter() as i64, &new_serialized, now)
+                .update_webauthn_counter(
+                    &user_id,
+                    &cred_id,
+                    res.counter() as i64,
+                    &new_serialized,
+                    now,
+                )
                 .await
                 .map_err(internal)?;
         }
@@ -386,7 +404,11 @@ pub(crate) async fn webauthn_status(
     auth: Bearer,
 ) -> Result<Json<StatusResp2fa>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
-    let rows = st.repo.list_webauthn_credentials(&user_id).await.map_err(internal)?;
+    let rows = st
+        .repo
+        .list_webauthn_credentials(&user_id)
+        .await
+        .map_err(internal)?;
     let credentials = rows
         .iter()
         .map(|r| CredentialSummary {
@@ -406,7 +428,11 @@ pub(crate) async fn list_credentials(
     auth: Bearer,
 ) -> Result<Json<ListResp>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
-    let rows = st.repo.list_webauthn_credentials(&user_id).await.map_err(internal)?;
+    let rows = st
+        .repo
+        .list_webauthn_credentials(&user_id)
+        .await
+        .map_err(internal)?;
     Ok(Json(ListResp {
         credentials: rows
             .iter()
@@ -531,11 +557,11 @@ mod tests {
     /// COSE_Key for an EC2 P-256 (kty=2, alg=-7, crv=1) public key.
     fn cose_ec2(x: &[u8], y: &[u8]) -> Vec<u8> {
         cbor_map(vec![
-            (cbor_uint(1), cbor_uint(2)),   // kty: EC2
-            (cbor_uint(3), cbor_int(-7)),   // alg: ES256
-            (cbor_int(-1), cbor_uint(1)),   // crv: P-256
-            (cbor_int(-2), cbor_bstr(x)),   // x
-            (cbor_int(-3), cbor_bstr(y)),   // y
+            (cbor_uint(1), cbor_uint(2)), // kty: EC2
+            (cbor_uint(3), cbor_int(-7)), // alg: ES256
+            (cbor_int(-1), cbor_uint(1)), // crv: P-256
+            (cbor_int(-2), cbor_bstr(x)), // x
+            (cbor_int(-3), cbor_bstr(y)), // y
         ])
     }
 
@@ -624,9 +650,11 @@ mod tests {
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000i64;
-        repo.create_user("u1", "a@b.c", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1", "a@b.c", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
         )
@@ -639,11 +667,7 @@ mod tests {
     }
 
     /// Register a fresh credential, returning (st, cred_id, key).
-    async fn register_credential(
-        st: &AppState,
-        key: &TestKey,
-        cred_id: &[u8],
-    ) -> (String, String) {
+    async fn register_credential(st: &AppState, key: &TestKey, cred_id: &[u8]) -> (String, String) {
         let start = register_start(
             State(st.clone()),
             Bearer("tok1".into()),
@@ -724,9 +748,10 @@ mod tests {
 
     /// Returns `(second_factor_required, has_svk_blob)` from `/account/status`.
     async fn account_status_gated(st: &AppState) -> (bool, bool) {
-        let resp = crate::handlers::account::account_status(State(st.clone()), Bearer("tok1".into()))
-            .await
-            .unwrap();
+        let resp =
+            crate::handlers::account::account_status(State(st.clone()), Bearer("tok1".into()))
+                .await
+                .unwrap();
         let v = serde_json::to_value(resp.0).unwrap();
         let required = v
             .get("second_factor_required")
@@ -766,7 +791,10 @@ mod tests {
         let resp = assert_verify(
             State(st.clone()),
             Bearer("tok1".into()),
-            Json(AssertVerifyReq { request_id, credential }),
+            Json(AssertVerifyReq {
+                request_id,
+                credential,
+            }),
         )
         .await
         .expect("assert_verify should succeed");
@@ -803,7 +831,10 @@ mod tests {
         let res = assert_verify(
             State(st.clone()),
             Bearer("tok1".into()),
-            Json(AssertVerifyReq { request_id, credential }),
+            Json(AssertVerifyReq {
+                request_id,
+                credential,
+            }),
         )
         .await;
         assert!(res.is_err(), "assert_verify must fail with a bad signature");
@@ -862,7 +893,10 @@ mod tests {
         let resp = assert_verify(
             State(st.clone()),
             Bearer("tok1".into()),
-            Json(AssertVerifyReq { request_id, credential }),
+            Json(AssertVerifyReq {
+                request_id,
+                credential,
+            }),
         )
         .await
         .expect("backup key assertion succeeds");
@@ -873,4 +907,3 @@ mod tests {
         assert!(has_svk);
     }
 }
-

@@ -279,6 +279,83 @@ export class VautrMlpClient {
   revokeShare(itemUuid: string): Promise<{ share_id: string; status: string }> {
     return this.api.request('DELETE', `/shares/${itemUuid}`);
   }
+
+  // -------------------------------------------------------------------------
+  // Group sharing (sharing-pki.md §6) — zero-knowledge 1:N item share relay
+  // -------------------------------------------------------------------------
+
+  /** Create a sharing group; the caller becomes the admin. */
+  createGroup(request: {
+    name: string;
+  }): Promise<{ group_id: string; name: string; admin_uuid: string }> {
+    return this.api.request('POST', '/groups/', request);
+  }
+
+  /** Add a member: deliver their Group SIK wrap (KEM envelope). Admin-only. */
+  addGroupMember(
+    groupId: string,
+    request: { member_uuid: string; wrapped_sik: string; ephemeral_public_key: string },
+  ): Promise<{ group_id: string; status: string }> {
+    return this.api.request('POST', `/groups/${groupId}/members`, request);
+  }
+
+  /** List groups the caller belongs to, with the member's wrapped Group SIK. */
+  groupInbox(): Promise<
+    Array<{
+      group_id: string;
+      name: string;
+      admin_uuid: string;
+      wrapped_sik: string | null;
+      ephemeral_public_key: string | null;
+    }>
+  > {
+    return this.api.request('GET', '/groups/inbox');
+  }
+
+  /** Rotate the Group SIK: deliver re-wrapped keys for remaining members. Admin-only. */
+  rotateGroup(
+    groupId: string,
+    request: {
+      wrapped_keys: Array<{
+        recipient_user_id: string;
+        wrapped_sik: string;
+        ephemeral_public_key: string;
+      }>;
+    },
+  ): Promise<{ group_id: string; status: string }> {
+    return this.api.request('POST', `/groups/${groupId}/rotate`, request);
+  }
+
+  /** Remove a member from a group. Admin-only. */
+  removeGroupMember(
+    groupId: string,
+    memberUuid: string,
+  ): Promise<{ group_id: string; status: string }> {
+    return this.api.request('DELETE', `/groups/${groupId}/members/${memberUuid}`);
+  }
+
+  /** Upload a Group-SIK-encrypted item payload. Admin-only. */
+  addGroupItem(
+    groupId: string,
+    request: { item_uuid: string; payload: string },
+  ): Promise<{ group_id: string; item_uuid: string; payload: string }> {
+    return this.api.request('POST', `/groups/${groupId}/items`, request);
+  }
+
+  /** List a group's shared items (item_uuid + Group-SIK-encrypted payload). */
+  listGroupItems(
+    groupId: string,
+  ): Promise<Array<{ group_id: string; item_uuid: string; payload: string }>> {
+    return this.api.request('GET', `/groups/${groupId}/items`);
+  }
+
+  /** Remove an item from a group. Admin-only. */
+  deleteGroupItem(
+    groupId: string,
+    itemUuid: string,
+  ): Promise<{ group_id: string; item_uuid: string; status: string }> {
+    return this.api.request('DELETE', `/groups/${groupId}/items/${itemUuid}`);
+  }
 }
 
 /**

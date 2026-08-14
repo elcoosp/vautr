@@ -9,7 +9,7 @@ use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use vautr_crypto::opaque;
 
-use super::{ApiError, AppState, b64, decode_b64, now_ms, server_setup};
+use super::{b64, decode_b64, now_ms, server_setup, ApiError, AppState};
 
 /// In-memory OPAQUE server-login state, keyed by username.
 ///
@@ -35,10 +35,10 @@ pub(crate) struct RegisterStartResp {
 #[derive(Deserialize)]
 pub(crate) struct RegisterFinishReq {
     username: String,
-    registration_finish: String, // base64
-    server_public_key: String,   // base64 (opaque server setup, first-time)
-    kdf_salt: String,            // base64 (stored, never used server-side)
-    svk_ciphertext_blob: String, // base64 (MP-wrapped SVK)
+    registration_finish: String,    // base64
+    server_public_key: String,      // base64 (opaque server setup, first-time)
+    kdf_salt: String,               // base64 (stored, never used server-side)
+    svk_ciphertext_blob: String,    // base64 (MP-wrapped SVK)
     svk_ciphertext_blob_rk: String, // base64 (RK-wrapped SVK, REQ-RECOVERY-02)
 }
 #[derive(Serialize)]
@@ -85,8 +85,8 @@ pub(crate) async fn register_finish(
     let _setup = server_setup(&st.repo).await?;
     let _pk = decode_b64(&req.server_public_key)?;
     let cupload = decode_b64(&req.registration_finish)?;
-    let record = opaque::server_register_finish(&cupload)
-        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    let record =
+        opaque::server_register_finish(&cupload).map_err(|e| ApiError::internal(&e.to_string()))?;
 
     let kdf_salt = decode_b64(&req.kdf_salt)?;
     let svk = decode_b64(&req.svk_ciphertext_blob)?;
@@ -95,7 +95,15 @@ pub(crate) async fn register_finish(
     let user_id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
     st.repo
-        .create_user(&user_id, &req.username, &kdf_salt, &record, &svk, &svk_rk, now)
+        .create_user(
+            &user_id,
+            &req.username,
+            &kdf_salt,
+            &record,
+            &svk,
+            &svk_rk,
+            now,
+        )
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
     Ok(Json(StatusResp {
@@ -117,9 +125,13 @@ pub(crate) async fn login_start(
         return Err(ApiError::bad_request("not_found", "unknown user"));
     };
     let lreq = decode_b64(&req.login_start)?;
-    let (sresp, sstate) =
-        opaque::server_login_start(&setup, Some(&user.opaque_record), &lreq, req.username.as_bytes())
-            .map_err(|e| ApiError::internal(&e.to_string()))?;
+    let (sresp, sstate) = opaque::server_login_start(
+        &setup,
+        Some(&user.opaque_record),
+        &lreq,
+        req.username.as_bytes(),
+    )
+    .map_err(|e| ApiError::internal(&e.to_string()))?;
     // Persist the ephemeral login state for `login_finish`.
     LOGIN_STATE
         .lock()

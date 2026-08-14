@@ -128,3 +128,36 @@ export function share_item(
 export function accept_share(incoming_json: string, recipient_secret_b64: string): Uint8Array {
   return (raw as any).accept_share(incoming_json, recipient_secret_b64);
 }
+
+// --- group sharing (sharing-pki.md §6) ---
+export function create_sharing_group(name: string, admin_uuid: string): string {
+  return (raw as any).create_sharing_group(name, admin_uuid);
+}
+
+export function add_group_member(
+  group_json: string,
+  member_uuid: string,
+  member_public_b64: string,
+): string {
+  return (raw as any).add_group_member(group_json, member_uuid, member_public_b64);
+}
+
+export function unwrap_group_key(inbox_json: string, recipient_secret_b64: string): string {
+  return (raw as any).unwrap_group_key(inbox_json, recipient_secret_b64);
+}
+
+export function encrypt_group_item(
+  group_json: string,
+  item_uuid: string,
+  plaintext: Uint8Array,
+): string {
+  return (raw as any).encrypt_group_item(group_json, item_uuid, plaintext);
+}
+
+export function decrypt_group_item(
+  group_json: string,
+  item_uuid: string,
+  ciphertext_b64: string,
+): Uint8Array {
+  return (raw as any).decrypt_group_item(group_json, item_uuid, ciphertext_b64);
+}

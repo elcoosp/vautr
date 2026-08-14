@@ -230,7 +230,10 @@ impl Repository {
     }
 
     /// Look up an access token by its SHA-256 hash. This is the verify path.
-    pub async fn get_token_by_hash(&self, token_hash: &str) -> Result<Option<AccessTokenRow>, sqlx::Error> {
+    pub async fn get_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<AccessTokenRow>, sqlx::Error> {
         sqlx::query_as::<_, AccessTokenRow>("SELECT * FROM access_tokens WHERE token_hash = ?")
             .bind(token_hash)
             .fetch_optional(&self.pool)

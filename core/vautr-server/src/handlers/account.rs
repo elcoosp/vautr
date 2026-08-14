@@ -4,7 +4,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
+use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 #[derive(Serialize)]
 pub(crate) struct AccountStatusResp {
@@ -77,8 +77,18 @@ pub(crate) async fn account_status(
     // makes MFA mandatory and the user has a configured TOTP method (the server
     // enforces the same policy at login).
     let second_factor_method = {
-        let policy = st.repo.mfa_get_policy().await.map_err(|e| ApiError::internal(&e.to_string()))?;
-        if policy.required && st.repo.mfa_has_totp(&user_id).await.map_err(|e| ApiError::internal(&e.to_string()))? {
+        let policy = st
+            .repo
+            .mfa_get_policy()
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
+        if policy.required
+            && st
+                .repo
+                .mfa_has_totp(&user_id)
+                .await
+                .map_err(|e| ApiError::internal(&e.to_string()))?
+        {
             Some("totp".to_string())
         } else {
             None
@@ -149,7 +159,13 @@ pub(crate) async fn account_delete(
 ) -> Result<Json<DeleteResp>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
     st.repo
-        .audit_log(Some(&user_id), "account_deleted", Some(&user_id), None, now_ms())
+        .audit_log(
+            Some(&user_id),
+            "account_deleted",
+            Some(&user_id),
+            None,
+            now_ms(),
+        )
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
     Ok(Json(DeleteResp {
@@ -164,15 +180,16 @@ mod tests {
     use std::sync::Arc;
 
     async fn test_state() -> AppState {
-        let path =
-            std::env::temp_dir().join(format!("vautr_acc_test_{}.db", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("vautr_acc_test_{}.db", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000i64;
-        repo.create_user("u1", "a@b.c", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1", "a@b.c", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
         )

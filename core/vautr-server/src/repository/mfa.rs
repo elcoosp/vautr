@@ -100,13 +100,15 @@ impl Repository {
         .bind(enrollment_id)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|(user_id, secret, secret_base32, expires_at)| TotpEnrollmentRow {
-            enrollment_id: enrollment_id.to_string(),
-            user_id,
-            secret,
-            secret_base32,
-            expires_at,
-        }))
+        Ok(row.map(
+            |(user_id, secret, secret_base32, expires_at)| TotpEnrollmentRow {
+                enrollment_id: enrollment_id.to_string(),
+                user_id,
+                secret,
+                secret_base32,
+                expires_at,
+            },
+        ))
     }
 
     pub async fn delete_totp_enrollment(&self, enrollment_id: &str) -> Result<(), sqlx::Error> {
@@ -165,22 +167,20 @@ impl Repository {
         &self,
         user_id: &str,
     ) -> Result<Option<(Vec<u8>, String)>, sqlx::Error> {
-        let row: Option<(Vec<u8>, String)> = sqlx::query_as(
-            "SELECT secret, secret_base32 FROM mfa_totp_secrets WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<(Vec<u8>, String)> =
+            sqlx::query_as("SELECT secret, secret_base32 FROM mfa_totp_secrets WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row)
     }
 
     /// Whether the user has configured TOTP.
     pub async fn mfa_has_totp(&self, user_id: &str) -> Result<bool, sqlx::Error> {
-        let row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM mfa_totp_secrets WHERE user_id = ?")
-                .bind(user_id)
-                .fetch_one(&self.pool)
-                .await?;
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM mfa_totp_secrets WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row.0 > 0)
     }
 
@@ -223,7 +223,11 @@ impl Repository {
 
     /// Atomically redeem a recovery code. Returns true if the code existed,
     /// was unused, and is now marked used.
-    pub async fn redeem_recovery_code(&self, user_id: &str, code: &str) -> Result<bool, sqlx::Error> {
+    pub async fn redeem_recovery_code(
+        &self,
+        user_id: &str,
+        code: &str,
+    ) -> Result<bool, sqlx::Error> {
         let res = sqlx::query(
             "UPDATE mfa_recovery_codes SET used = 1 \
              WHERE user_id = ? AND code = ? AND used = 0",
@@ -240,14 +244,18 @@ impl Repository {
         &self,
         user_id: &str,
     ) -> Result<Vec<RecoveryCodeRow>, sqlx::Error> {
-        let rows: Vec<(String, i64)> =
-            sqlx::query_as("SELECT code, used FROM mfa_recovery_codes WHERE user_id = ? ORDER BY created_at ASC")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT code, used FROM mfa_recovery_codes WHERE user_id = ? ORDER BY created_at ASC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows
             .into_iter()
-            .map(|(code, used)| RecoveryCodeRow { code, used: used != 0 })
+            .map(|(code, used)| RecoveryCodeRow {
+                code,
+                used: used != 0,
+            })
             .collect())
     }
 
@@ -336,16 +344,25 @@ mod tests {
     use super::*;
 
     async fn test_repo() -> Repository {
-        let path = std::env::temp_dir().join(format!("vautr_mfa_repo_test_{}.db", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_mfa_repo_test_{}.db", uuid::Uuid::new_v4()));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         Repository::new(pool)
     }
 
     async fn seed_user(repo: &Repository) {
-        repo.create_user("u1", "a@b.c", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], 1_700_000_000_000)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1",
+            "a@b.c",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            1_700_000_000_000,
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -360,7 +377,9 @@ mod tests {
         assert_eq!(row.user_id, "u1");
         assert_eq!(row.secret, vec![7u8; 20]);
         // Activating the secret drops the pending enrollment.
-        repo.activate_totp_secret("u1", &[8u8; 20], "SECRETB32B", now).await.unwrap();
+        repo.activate_totp_secret("u1", &[8u8; 20], "SECRETB32B", now)
+            .await
+            .unwrap();
         assert!(repo.get_totp_enrollment("e1").await.unwrap().is_none());
         assert!(repo.mfa_has_totp("u1").await.unwrap());
         let (secret, _) = repo.get_totp_secret("u1").await.unwrap().unwrap();
@@ -397,7 +416,10 @@ mod tests {
         repo.mfa_set_policy(&p, 1_700_000_000_000).await.unwrap();
         let got = repo.mfa_get_policy().await.unwrap();
         assert!(got.required);
-        assert_eq!(got.allowed_methods, vec!["totp".to_string(), "webauthn".to_string()]);
+        assert_eq!(
+            got.allowed_methods,
+            vec!["totp".to_string(), "webauthn".to_string()]
+        );
         assert_eq!(got.master_password_policy.min_length, 16);
     }
 }

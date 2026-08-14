@@ -10,8 +10,8 @@
 //!   endpoints. Returns `429 rate_limited` with `Retry-After` when exceeded.
 //! - `cors()` — permissive CORS for the client core.
 
-use std::convert::Infallible;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -20,7 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
-use axum::http::{Request, Response, StatusCode, header};
+use axum::http::{header, Request, Response, StatusCode};
 use tower::{Layer, Service};
 use tower_http::cors::CorsLayer;
 
@@ -110,10 +110,10 @@ impl RateLimiter {
                 .retain(|_, w| w.start_secs + self.window_secs >= now_secs);
         }
 
-        let w = state
-            .windows
-            .entry(key.to_string())
-            .or_insert(Window { start_secs: window_start, count: 0 });
+        let w = state.windows.entry(key.to_string()).or_insert(Window {
+            start_secs: window_start,
+            count: 0,
+        });
         if w.start_secs != window_start {
             w.start_secs = window_start;
             w.count = 0;
@@ -187,7 +187,12 @@ fn client_key(req: &Request<Body>) -> String {
     }
     if let Some(xff) = req.headers().get("x-forwarded-for") {
         if let Ok(s) = xff.to_str() {
-            if let Some(ip) = s.split(',').next().map(str::trim).filter(|ip| !ip.is_empty()) {
+            if let Some(ip) = s
+                .split(',')
+                .next()
+                .map(str::trim)
+                .filter(|ip| !ip.is_empty())
+            {
                 return ip.to_string();
             }
         }
@@ -210,12 +215,16 @@ fn rate_limited_response(limited: &RateLimited) -> Response<Body> {
 
 impl<S> Service<Request<Body>> for RateLimitService<S>
 where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Infallible> + Clone + Send + 'static,
+    S: Service<Request<Body>, Response = Response<Body>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
     S::Future: Send + 'static,
 {
     type Response = Response<Body>;
     type Error = Infallible;
-    type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future =
+        Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -227,15 +236,9 @@ where
             Ok(info) => {
                 let mut inner = self.inner.clone();
                 Box::pin(async move {
-                    let mut resp = inner
-                        .call(req)
-                        .await
-                        .unwrap_or_else(|never| match never {});
+                    let mut resp = inner.call(req).await.unwrap_or_else(|never| match never {});
                     let headers = resp.headers_mut();
-                    headers.insert(
-                        "x-ratelimit-limit",
-                        info.limit.to_string().parse().unwrap(),
-                    );
+                    headers.insert("x-ratelimit-limit", info.limit.to_string().parse().unwrap());
                     headers.insert(
                         "x-ratelimit-remaining",
                         info.remaining.to_string().parse().unwrap(),
@@ -281,18 +284,16 @@ mod tests {
             .layer(RateLimitLayer::new(2, 60));
 
         for i in 0..2 {
-            let resp = app
-                .clone()
-                .oneshot(req("1.2.3.4"))
-                .await
-                .unwrap();
+            let resp = app.clone().oneshot(req("1.2.3.4")).await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "request {i} should pass");
         }
         let resp = app.clone().oneshot(req("1.2.3.4")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
         assert!(resp.headers().contains_key("retry-after"));
         // 429 body is the api.md error envelope.
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["error"], "rate_limited");
     }

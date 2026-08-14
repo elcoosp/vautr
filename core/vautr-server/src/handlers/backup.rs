@@ -18,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, AppState, Bearer, auth_user, now_ms};
+use super::{auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::backup::{BackupRun, BackupState};
 
 /// Stable logical vault id recorded in every archive manifest.
@@ -110,7 +110,10 @@ async fn export_backup(
     auth_user(&st.repo, &auth.0).await?;
     // include_secrets is accepted by the contract; in v1 the whole snapshot is
     // captured, so the flag is advisory and defaults to true.
-    let _include_secrets = body.as_ref().and_then(|b| b.include_secrets).unwrap_or(true);
+    let _include_secrets = body
+        .as_ref()
+        .and_then(|b| b.include_secrets)
+        .unwrap_or(true);
 
     let key = st
         .repo
@@ -264,15 +267,25 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_state(backup_dir: &str) -> AppState {
-        let path =
-            std::env::temp_dir().join(format!("vautr_backup_http_test_{}.db", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!(
+            "vautr_backup_http_test_{}.db",
+            uuid::Uuid::new_v4()
+        ));
         let url = format!("sqlite://{}", path.display());
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000;
-        repo.create_user("u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
         )
@@ -301,7 +314,8 @@ mod tests {
 
     #[tokio::test]
     async fn export_then_restore_test_passes() {
-        let backup_dir = std::env::temp_dir().join(format!("vautr_bk_dir_{}", uuid::Uuid::new_v4()));
+        let backup_dir =
+            std::env::temp_dir().join(format!("vautr_bk_dir_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&backup_dir).unwrap();
         let state = test_state(backup_dir.to_str().unwrap()).await;
         let app = routes().with_state(state.clone());
@@ -320,7 +334,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(export.status(), StatusCode::OK);
-        let export_body = axum::body::to_bytes(export.into_body(), usize::MAX).await.unwrap();
+        let export_body = axum::body::to_bytes(export.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let export_json: serde_json::Value = serde_json::from_slice(&export_body).unwrap();
         let backup_id = export_json["backup_id"].as_str().unwrap().to_string();
         assert!(export_json["checksum"].as_str().unwrap().len() == 64);
@@ -342,7 +358,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(restore.status(), StatusCode::OK);
-        let restore_body = axum::body::to_bytes(restore.into_body(), usize::MAX).await.unwrap();
+        let restore_body = axum::body::to_bytes(restore.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let restore_json: serde_json::Value = serde_json::from_slice(&restore_body).unwrap();
         assert_eq!(restore_json["status"], "success", "restore test must pass");
         assert_eq!(restore_json["restored_records"], 2);
@@ -353,7 +371,10 @@ mod tests {
             .fetch_one(state.repo.pool())
             .await
             .unwrap();
-        assert_eq!(live_count, 2, "live DB must not be modified by restore test");
+        assert_eq!(
+            live_count, 2,
+            "live DB must not be modified by restore test"
+        );
 
         // 4. Status reflects the backup + restore test.
         let status = app
@@ -367,7 +388,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(status.status(), StatusCode::OK);
-        let status_body = axum::body::to_bytes(status.into_body(), usize::MAX).await.unwrap();
+        let status_body = axum::body::to_bytes(status.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let status_json: serde_json::Value = serde_json::from_slice(&status_body).unwrap();
         assert_eq!(status_json["enabled"], true);
         assert!(status_json["last_backup_at"].is_number());

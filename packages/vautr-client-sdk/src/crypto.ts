@@ -111,6 +111,22 @@ export class AsyncCryptoAdapter {
   acceptShare(incomingJson: string, recipientSecretB64: string): Uint8Array {
     return this.m().accept_share(incomingJson, recipientSecretB64);
   }
+  // --- group sharing (sharing-pki.md §6) ---
+  createSharingGroup(name: string, adminUuid: string): string {
+    return this.m().create_sharing_group(name, adminUuid);
+  }
+  addGroupMember(groupJson: string, memberUuid: string, memberPublicB64: string): string {
+    return this.m().add_group_member(groupJson, memberUuid, memberPublicB64);
+  }
+  unwrapGroupKey(inboxJson: string, recipientSecretB64: string): string {
+    return this.m().unwrap_group_key(inboxJson, recipientSecretB64);
+  }
+  encryptGroupItem(groupJson: string, itemUuid: string, plaintext: Uint8Array): string {
+    return this.m().encrypt_group_item(groupJson, itemUuid, plaintext);
+  }
+  decryptGroupItem(groupJson: string, itemUuid: string, ciphertextB64: string): Uint8Array {
+    return this.m().decrypt_group_item(groupJson, itemUuid, ciphertextB64);
+  }
   opaqueRegisterStart(password: string): OpaqueStart {
     return this.m().opaque_register_start_js(password);
   }

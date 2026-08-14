@@ -110,3 +110,13 @@ export const share_item =
   >();
 export const accept_share =
   stub<(incomingJson: string, recipientSecretB64: string) => Uint8Array>();
+
+// --- group sharing (sharing-pki.md §6) ---
+export const create_sharing_group = stub<(name: string, adminUuid: string) => string>();
+export const add_group_member =
+  stub<(groupJson: string, memberUuid: string, memberPublicB64: string) => string>();
+export const unwrap_group_key = stub<(inboxJson: string, recipientSecretB64: string) => string>();
+export const encrypt_group_item =
+  stub<(groupJson: string, itemUuid: string, plaintext: Uint8Array) => string>();
+export const decrypt_group_item =
+  stub<(groupJson: string, itemUuid: string, ciphertextB64: string) => Uint8Array>();

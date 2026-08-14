@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::repository::{ItemRow, UpsertOutcome};
 
-use super::{ApiError, AppState, Bearer, auth_user, b64, decode_b64, now_ms};
+use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 #[derive(Deserialize)]
 pub(crate) struct PullQuery {
@@ -119,13 +119,12 @@ pub(crate) async fn sync_pull(
     // pruned/aged out), the server can no longer serve a consistent delta and
     // MUST return 410 `cursor_expired` so the client drops its cursor and does
     // a full resync from version 0.
-    let min_ver: Option<i64> = sqlx::query_scalar(
-        "SELECT MIN(version) FROM items WHERE user_id = ?",
-    )
-    .bind(&user_id)
-    .fetch_optional(st.repo.pool())
-    .await
-    .map_err(|e| ApiError::internal(&e.to_string()))?;
+    let min_ver: Option<i64> =
+        sqlx::query_scalar("SELECT MIN(version) FROM items WHERE user_id = ?")
+            .bind(&user_id)
+            .fetch_optional(st.repo.pool())
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
     if let Some(min_ver) = min_ver {
         if (q.cursor as i64) < min_ver.saturating_sub(1) {
             return Err(ApiError::new(
@@ -326,9 +325,17 @@ mod tests {
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000;
-        repo.create_user("u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         // NB: insert the session directly (created_at is NOT NULL) rather than
         // via Repository::store_session, which is owned by another agent.
         sqlx::query(
@@ -365,9 +372,17 @@ mod tests {
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000;
-        repo.create_user("u2", "gap@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u2",
+            "gap@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok2', 'u2', ?, ?)",
         )
@@ -401,7 +416,10 @@ mod tests {
         while has_more {
             let resp = sync_pull(
                 State(st.clone()),
-                Query(PullQuery { cursor, limit: Some(100) }),
+                Query(PullQuery {
+                    cursor,
+                    limit: Some(100),
+                }),
                 Bearer(tok.clone()),
             )
             .await
@@ -422,7 +440,10 @@ mod tests {
         let (st, tok) = seed().await;
         let resp = sync_pull(
             State(st),
-            Query(PullQuery { cursor: 0, limit: Some(100) }),
+            Query(PullQuery {
+                cursor: 0,
+                limit: Some(100),
+            }),
             Bearer(tok),
         )
         .await
@@ -438,7 +459,10 @@ mod tests {
         let (st, tok) = seed().await;
         let res = sync_pull(
             State(st),
-            Query(PullQuery { cursor: 0, limit: Some(2000) }),
+            Query(PullQuery {
+                cursor: 0,
+                limit: Some(2000),
+            }),
             Bearer(tok),
         )
         .await;
@@ -456,7 +480,10 @@ mod tests {
         // window is expired.
         let res = sync_pull(
             State(st),
-            Query(PullQuery { cursor: 50, limit: Some(100) }),
+            Query(PullQuery {
+                cursor: 50,
+                limit: Some(100),
+            }),
             Bearer(tok),
         )
         .await;
@@ -473,14 +500,20 @@ mod tests {
         let in_cursor = 0u64;
         let resp = sync_pull(
             State(st),
-            Query(PullQuery { cursor: in_cursor, limit: Some(100) }),
+            Query(PullQuery {
+                cursor: in_cursor,
+                limit: Some(100),
+            }),
             Bearer(tok),
         )
         .await
         .unwrap()
         .0;
         assert!(resp.has_more);
-        assert!(resp.new_cursor > in_cursor, "new_cursor must advance past the input cursor on a non-final page");
+        assert!(
+            resp.new_cursor > in_cursor,
+            "new_cursor must advance past the input cursor on a non-final page"
+        );
     }
 
     // --- TDD instruction #5: 10k items at limit=1000 pulls in under 2s ------
@@ -492,9 +525,17 @@ mod tests {
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000i64;
-        repo.create_user("perf", "perf@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "perf",
+            "perf@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('perftok', 'perf', ?, ?)",
         )
@@ -525,7 +566,10 @@ mod tests {
         loop {
             let resp = sync_pull(
                 State(st.clone()),
-                Query(PullQuery { cursor, limit: Some(1000) }),
+                Query(PullQuery {
+                    cursor,
+                    limit: Some(1000),
+                }),
                 Bearer(tok.clone()),
             )
             .await

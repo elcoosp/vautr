@@ -59,13 +59,20 @@ impl Repository {
         sqlx::query("INSERT OR IGNORE INTO backup_state (id) VALUES (1)")
             .execute(&self.pool)
             .await?;
-        let row: (i64, Option<String>, String, Option<i64>, Option<i64>, Option<i64>, Option<String>) =
-            sqlx::query_as(
-                "SELECT enabled, location, schedule, last_backup_at, last_backup_size_bytes, \
+        let row: (
+            i64,
+            Option<String>,
+            String,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+        ) = sqlx::query_as(
+            "SELECT enabled, location, schedule, last_backup_at, last_backup_size_bytes, \
                  last_restore_test_at, last_restore_test_status FROM backup_state WHERE id = 1",
-            )
-            .fetch_one(&self.pool)
-            .await?;
+        )
+        .fetch_one(&self.pool)
+        .await?;
         Ok(BackupState {
             enabled: row.0 != 0,
             location: row.1,
@@ -90,11 +97,7 @@ impl Repository {
     }
 
     /// Record a completed backup run (insert row + update last-run state).
-    pub async fn record_backup_run(
-        &self,
-        run: &BackupRun,
-        now_ms: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn record_backup_run(&self, run: &BackupRun, now_ms: i64) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO backup_runs (id, created_at, size_bytes, checksum, archive_path, vault_id, entry_count) \
              VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -120,15 +123,7 @@ impl Repository {
 
     /// Look up a recorded backup run by id (to resolve an archive on disk).
     pub async fn get_backup_run(&self, id: &str) -> Result<Option<BackupRun>, sqlx::Error> {
-        let row: Option<(
-            String,
-            i64,
-            i64,
-            String,
-            String,
-            String,
-            i64,
-        )> = sqlx::query_as(
+        let row: Option<(String, i64, i64, String, String, String, i64)> = sqlx::query_as(
             "SELECT id, created_at, size_bytes, checksum, archive_path, vault_id, entry_count \
              FROM backup_runs WHERE id = ?",
         )
@@ -147,11 +142,7 @@ impl Repository {
     }
 
     /// Record the outcome of a one-click restore test.
-    pub async fn record_restore_test(
-        &self,
-        status: &str,
-        at_ms: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn record_restore_test(&self, status: &str, at_ms: i64) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO backup_state (id, last_restore_test_at, last_restore_test_status) \
              VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET \
@@ -200,7 +191,9 @@ mod tests {
             vault_id: "vault-1".to_string(),
             entry_count: 7,
         };
-        repo.record_backup_run(&run, 1_700_000_000_500).await.unwrap();
+        repo.record_backup_run(&run, 1_700_000_000_500)
+            .await
+            .unwrap();
         let fetched = repo.get_backup_run(&run.id).await.unwrap().unwrap();
         assert_eq!(fetched.id, run.id);
         assert_eq!(fetched.entry_count, 7);
@@ -209,7 +202,9 @@ mod tests {
         assert_eq!(state.last_backup_at, Some(1_700_000_000_500));
         assert_eq!(state.last_backup_size_bytes, Some(42));
 
-        repo.record_restore_test("passed", 1_700_000_000_900).await.unwrap();
+        repo.record_restore_test("passed", 1_700_000_000_900)
+            .await
+            .unwrap();
         let state = repo.backup_state().await.unwrap();
         assert_eq!(state.last_restore_test_at, Some(1_700_000_000_900));
         assert_eq!(state.last_restore_test_status.as_deref(), Some("passed"));

@@ -17,13 +17,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use vautr_crypto::opaque;
 use vautr_server::db;
-use vautr_server::handlers::{AppState, build_router};
+use vautr_server::handlers::{build_router, AppState};
 use vautr_server::repository::Repository;
 
 /// Workaround mirroring `projects_e2e.rs`: the committed `server_config` schema
@@ -87,7 +87,10 @@ async fn http(
         ));
     }
     req.push_str("Connection: close\r\n\r\n");
-    stream.write_all(req.as_bytes()).await.expect("write headers");
+    stream
+        .write_all(req.as_bytes())
+        .await
+        .expect("write headers");
     if !body_bytes.is_empty() {
         stream.write_all(&body_bytes).await.expect("write body");
     }
@@ -190,7 +193,9 @@ async fn machine_accounts_live_server_e2e() {
     let state = AppState::new(repo.clone());
 
     let app = build_router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
     let addr = listener.local_addr().expect("local addr");
     tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
@@ -276,16 +281,21 @@ async fn machine_accounts_live_server_e2e() {
     assert!(vt.scopes.contains(&"secrets:read".to_string()));
     assert!(!vt.scopes.contains(&"secrets:write".to_string()));
     // A wrong secret is denied.
-    assert!(vautr_server::handlers::tokens::verify_access_token(&repo, "bogus-secret")
-        .await
-        .is_err());
+    assert!(
+        vautr_server::handlers::tokens::verify_access_token(&repo, "bogus-secret")
+            .await
+            .is_err()
+    );
 
     // List token metadata: the secret must never appear.
     let (status, resp) = http(addr, "GET", "/tokens", Some(&tok), None).await;
     assert_eq!(status, 200);
     let arr = resp["tokens"].as_array().unwrap();
     assert_eq!(arr.len(), 1);
-    assert!(arr[0].get("token").is_none(), "secret never returned in list");
+    assert!(
+        arr[0].get("token").is_none(),
+        "secret never returned in list"
+    );
     assert_eq!(arr[0]["uuid"], token_id);
 
     // 5. Revoke via DELETE, then the token is denied.
@@ -299,9 +309,11 @@ async fn machine_accounts_live_server_e2e() {
     .await;
     assert_eq!(status, 200, "revoke: {resp}");
     assert_eq!(resp["status"], "revoked");
-    assert!(vautr_server::handlers::tokens::verify_access_token(&repo, &secret)
-        .await
-        .is_err());
+    assert!(
+        vautr_server::handlers::tokens::verify_access_token(&repo, &secret)
+            .await
+            .is_err()
+    );
 
     // Wave C audit seam: token create + revoke are recorded as org events.
     let token_audit = repo

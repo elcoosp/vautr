@@ -1,7 +1,8 @@
-import { Inbox, Lock, Plus, Vault } from 'lucide-react';
+import { Inbox, Lock, Plus, Users, Vault } from 'lucide-react';
 import { useState } from 'react';
 import { lock } from '../lib/client';
 import { AddItemForm } from './AddItemForm';
+import { GroupsView } from './GroupsView';
 import { InboxView } from './InboxView';
 import { ItemDetail } from './ItemDetail';
 import { ReadOnlyBanner } from './ReadOnlyBanner';
@@ -11,7 +12,7 @@ import { VaultList } from './VaultList';
 export function VaultView() {
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [tab, setTab] = useState<'vault' | 'inbox'>('vault');
+  const [tab, setTab] = useState<'vault' | 'inbox' | 'groups'>('vault');
 
   const onLock = () => {
     void lock();
@@ -48,6 +49,17 @@ export function VaultView() {
               <Inbox className="mr-1 inline size-4" aria-hidden="true" />
               Inbox
             </button>
+            <button
+              type="button"
+              onClick={() => setTab('groups')}
+              aria-pressed={tab === 'groups'}
+              className={`px-3 py-1.5 text-sm ${
+                tab === 'groups' ? 'bg-surface-raised text-text' : 'text-text-muted hover:text-text'
+              }`}
+            >
+              <Users className="mr-1 inline size-4" aria-hidden="true" />
+              Groups
+            </button>
           </div>
           <SyncIndicator />
           <button
@@ -78,6 +90,8 @@ export function VaultView() {
 
       {tab === 'inbox' ? (
         <InboxView />
+      ) : tab === 'groups' ? (
+        <GroupsView />
       ) : (
         <div className="flex min-h-0 flex-1">
           {/* List pane (hidden on small screens while an item is open). */}

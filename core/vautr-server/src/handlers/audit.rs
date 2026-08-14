@@ -12,7 +12,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, AppState, Bearer, auth_user};
+use super::{auth_user, ApiError, AppState, Bearer};
 use crate::repository::audit::AuditFilter;
 
 fn default_limit() -> u32 {
@@ -117,9 +117,17 @@ mod tests {
         let pool = crate::db::connect(&url).await.expect("connect + migrate");
         let repo = Arc::new(crate::repository::Repository::new(pool));
         let now = 1_700_000_000_000;
-        repo.create_user("u1", "alice@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
-            .await
-            .unwrap();
+        repo.create_user(
+            "u1",
+            "alice@example.com",
+            &[0u8; 32],
+            &[1u8; 16],
+            &[2u8; 48],
+            &[3u8; 48],
+            now,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
         )
@@ -150,7 +158,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let arr = v.as_array().unwrap();
         assert_eq!(arr.len(), 1);
@@ -166,7 +176,12 @@ mod tests {
         let app = routes().with_state(state);
         let resp = app
             .clone()
-            .oneshot(Request::builder().uri("/audit").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/audit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -186,7 +201,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         serde_json::from_slice(&body).unwrap()
     }
 
@@ -197,19 +214,43 @@ mod tests {
         // The org event affects user u2; create it to satisfy the users FK.
         state
             .repo
-            .create_user("u2", "bob@example.com", &[0u8; 32], &[1u8; 16], &[2u8; 48], &[3u8; 48], now)
+            .create_user(
+                "u2",
+                "bob@example.com",
+                &[0u8; 32],
+                &[1u8; 16],
+                &[2u8; 48],
+                &[3u8; 48],
+                now,
+            )
             .await
             .unwrap();
         let secret = uuid::Uuid::new_v4().to_string();
         // Record a secret-access event and an org event (published API).
         state
             .repo
-            .audit_secret_access("u1", &secret, Some("proj-1"), "read", Some("10.0.0.9"), now + 10)
+            .audit_secret_access(
+                "u1",
+                &secret,
+                Some("proj-1"),
+                "read",
+                Some("10.0.0.9"),
+                now + 10,
+            )
             .await
             .unwrap();
         state
             .repo
-            .audit_org_event(Some("u1"), Some("u2"), "project_create", "project", Some("proj-1"), None, None, now + 20)
+            .audit_org_event(
+                Some("u1"),
+                Some("u2"),
+                "project_create",
+                "project",
+                Some("proj-1"),
+                None,
+                None,
+                now + 20,
+            )
             .await
             .unwrap();
 
@@ -252,12 +293,28 @@ mod tests {
         // "Perform" an org action + a secret access via the published API.
         state
             .repo
-            .audit_org_event(Some("u1"), Some("u1"), "project_create", "project", Some(&project), None, Some("127.0.0.1"), now)
+            .audit_org_event(
+                Some("u1"),
+                Some("u1"),
+                "project_create",
+                "project",
+                Some(&project),
+                None,
+                Some("127.0.0.1"),
+                now,
+            )
             .await
             .unwrap();
         state
             .repo
-            .audit_secret_access("u1", &secret, Some(&project), "read", Some("127.0.0.1"), now)
+            .audit_secret_access(
+                "u1",
+                &secret,
+                Some(&project),
+                "read",
+                Some("127.0.0.1"),
+                now,
+            )
             .await
             .unwrap();
 
@@ -274,14 +331,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let arr = v.as_array().unwrap();
         // rotate_key (test_state) + org event + secret-access event.
         assert!(arr.len() >= 3);
         let actions: Vec<&str> = arr.iter().map(|e| e["action"].as_str().unwrap()).collect();
-        assert!(actions.contains(&"project_create"), "org event recorded: {actions:?}");
-        assert!(actions.contains(&"read"), "secret-access event recorded: {actions:?}");
+        assert!(
+            actions.contains(&"project_create"),
+            "org event recorded: {actions:?}"
+        );
+        assert!(
+            actions.contains(&"read"),
+            "secret-access event recorded: {actions:?}"
+        );
 
         // Secret-access event carries who/what/when.
         let secret_ev = arr.iter().find(|e| e["action"] == "read").unwrap();
