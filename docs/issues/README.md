@@ -22,10 +22,11 @@ live during implementation rather than through the flat `done/` set.
   and closed as the features landed. VTR-073 added first-run guided onboarding
   (web + extension) via OnboardJS; the deferred feature/product *tour* is tracked
   as a follow-up (not yet a numbered issue).
-- `open/` — **VTR-076 only, as of 2026-08-15**. A dedicated Emergency Kit
-  generation/download surface on all four clients (server kit/PDF already
-  exists; clients only show MFA recovery codes today). The deferred anchored
-  *feature tour* (VTR-077) is now **delivered** in `closed/`.
+- `open/` — **VTR-076 + VTR-078, as of 2026-08-15**. VTR-076: a dedicated
+  Emergency Kit generation/download surface on all four clients (server kit/PDF
+  already exists; clients only show MFA recovery codes today). VTR-078: true
+  element-anchored feature tour on mobile (RN `measure()`) + desktop (GPUI
+  `bounds()`), upgrading the centered-card tour from VTR-077.
 
 ## Open issues (the real backlog)
 **One.** As of 2026-08-15 all tracked issues VTR-001..VTR-075 plus the deferred
@@ -37,6 +38,7 @@ step 3 deep-links to MFA today.
 | Issue | Open as | Notes |
 |-------|---------|-------|
 | VTR-076 | `open/VTR-076.md` | Dedicated Emergency Kit generation/download surface on all four clients (server kit/PDF already exists; clients only show MFA recovery codes). Onboarding step 3 deep-links here. |
+| VTR-078 | `open/VTR-078.md` | True element-anchored feature tour on mobile (RN `measure()`) + desktop (GPUI `bounds()`), upgrading the centered-card tour from VTR-077. |
 OnboardJS has no native spotlight/anchor API, so it is a separate piece of work
 tracked in `docs/onboarding/spec.md` §"Deferred".
 
