@@ -69,6 +69,8 @@ export const wrap_svk_js = stub<(svk: Uint8Array, kek: Uint8Array) => Uint8Array
 export const unwrap_svk_js = stub<(wrapped: Uint8Array, kek: Uint8Array) => Uint8Array>();
 export const generate_recovery_mnemonic_js = stub<() => string>();
 export const wrap_svk_with_rk_js = stub<(svk: Uint8Array, mnemonic: string) => Uint8Array>();
+export const seal_mnemonic_js = stub<(kek: Uint8Array, plaintext: Uint8Array) => Uint8Array>();
+export const open_mnemonic_js = stub<(kek: Uint8Array, ciphertext: Uint8Array) => Uint8Array>();
 export const derive_dek_js = stub<(svk: Uint8Array) => Uint8Array>();
 export const encrypt_item_js =
   stub<(uuid: string, encKeyGen: number, dek: Uint8Array, plaintext: Uint8Array) => Uint8Array>();

@@ -77,8 +77,15 @@ export class AsyncCryptoAdapter {
   generateRecoveryMnemonic(): string {
     return this.m().generate_recovery_mnemonic_js();
   }
-  wrapSvkWithRk(svk: Uint8Array, mnemonic: string): Uint8Array {
-    return this.m().wrap_svk_with_rk_js(svk, mnemonic);
+  wrapSvkWithRk(_svk: Uint8Array, mnemonic: string): Uint8Array {
+    return this.m().wrap_svk_with_rk_js(_svk, mnemonic);
+  }
+  // --- recovery mnemonic sealing (Emergency Kit, local-only under KEK) ---
+  sealMnemonic(kek: Uint8Array, plaintext: Uint8Array): Uint8Array {
+    return this.m().seal_mnemonic_js(kek, plaintext);
+  }
+  openMnemonic(kek: Uint8Array, ciphertext: Uint8Array): Uint8Array {
+    return this.m().open_mnemonic_js(kek, ciphertext);
   }
 
   // --- item DEK + AEAD (crypto.md §2 step 5, §3) ---

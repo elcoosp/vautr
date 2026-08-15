@@ -113,6 +113,23 @@ pub fn wrap_svk_with_rk(svk: &[u8], mnemonic: &str) -> Result<Vec<u8>, String> {
     recovery::wrap_svk_with_rk(&svk, &kek_rk, &SVK_AD_USER).map_err(|e| e.to_string())
 }
 
+/// Seal the recovery mnemonic under the KEK (local-only, for the Emergency Kit).
+///
+/// The mnemonic is arbitrary-length plaintext (24 BIP-39 words), so it cannot
+/// go through `wrap_svk`/`unwrap_svk` (which require a 32-byte SVK). Use the
+/// same AEAD as item crypto, keyed by the KEK, with the SVK AD so the envelope
+/// is bound to the same context as the rest of the vault key material.
+pub fn seal_mnemonic(kek: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let kek = to_arr32(kek)?;
+    aead::encrypt(&kek, &SVK_AD_USER, SVK_AD_ENC_GEN, plaintext).map_err(|e| e.to_string())
+}
+
+/// Open a KEK-sealed recovery mnemonic (inverse of `seal_mnemonic`).
+pub fn open_mnemonic(kek: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+    let kek = to_arr32(kek)?;
+    aead::decrypt(&kek, &SVK_AD_USER, SVK_AD_ENC_GEN, ciphertext).map_err(|e| e.to_string())
+}
+
 /// Derive the Data Encryption Key (DEK) from the SVK (crypto.md §2 step 5).
 /// Used to encrypt/decrypt item payloads (AD bound to uuid + enc_key_gen).
 pub fn derive_dek(svk: &[u8]) -> Result<Vec<u8>, String> {
@@ -243,6 +260,16 @@ pub fn generate_recovery_mnemonic_js() -> Result<String, JsValue> {
 #[wasm_bindgen]
 pub fn wrap_svk_with_rk_js(svk: Vec<u8>, mnemonic: &str) -> Result<Vec<u8>, JsValue> {
     wrap_svk_with_rk(&svk, mnemonic).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn seal_mnemonic_js(kek: Vec<u8>, plaintext: Vec<u8>) -> Result<Vec<u8>, JsValue> {
+    seal_mnemonic(&kek, &plaintext).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn open_mnemonic_js(kek: Vec<u8>, ciphertext: Vec<u8>) -> Result<Vec<u8>, JsValue> {
+    open_mnemonic(&kek, &ciphertext).map_err(|e| JsValue::from_str(&e))
 }
 
 #[wasm_bindgen]

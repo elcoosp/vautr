@@ -271,7 +271,7 @@ export class VautrWebClient {
 
     // Seal the recovery mnemonic under the KEK so it can be re-shown later
     // (Emergency Kit) without ever leaving the device in plaintext.
-    const mnemonicEnc = toBase64(this.crypto.wrapSvk(new TextEncoder().encode(mnemonic), kek));
+    const mnemonicEnc = toBase64(this.crypto.sealMnemonic(kek, new TextEncoder().encode(mnemonic)));
 
     // OPAQUE registration (api.md §3.1).
     const start = this.crypto.opaqueRegisterStart(password);
@@ -347,7 +347,9 @@ export class VautrWebClient {
     // Open the KEK-sealed Recovery Key mnemonic so the Emergency Kit can be
     // shown (ZK: mnemonic is opened locally, never sent anywhere).
     const sealed = state.recoveryMnemonicEnc ? fromBase64(state.recoveryMnemonicEnc) : null;
-    const mnemonic = sealed ? new TextDecoder().decode(this.crypto.unwrapSvk(sealed, kek)) : null;
+    const mnemonic = sealed
+      ? new TextDecoder().decode(this.crypto.openMnemonic(kek, sealed))
+      : null;
 
     this.svk = svk;
     this.dek = dek;

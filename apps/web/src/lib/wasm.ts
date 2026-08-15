@@ -63,6 +63,14 @@ export function decrypt_item_js(
   return (raw as any).decrypt_item_js(uuid, ensureBigInt(enc_key_gen), dek, payload);
 }
 
+export function seal_mnemonic_js(kek: Uint8Array, plaintext: Uint8Array): Uint8Array {
+  return (raw as any).seal_mnemonic_js(kek, plaintext);
+}
+
+export function open_mnemonic_js(kek: Uint8Array, ciphertext: Uint8Array): Uint8Array {
+  return (raw as any).open_mnemonic_js(kek, ciphertext);
+}
+
 export function opaque_register_start_js(password: string): {
   message: Uint8Array;
   state: Uint8Array;

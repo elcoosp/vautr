@@ -33,6 +33,8 @@ declare module 'vautr-wasm' {
   export function unwrap_svk_js(wrapped: Uint8Array, kek: Uint8Array): Uint8Array;
   export function generate_recovery_mnemonic_js(): string;
   export function wrap_svk_with_rk_js(svk: Uint8Array, mnemonic: string): Uint8Array;
+  export function seal_mnemonic_js(kek: Uint8Array, plaintext: Uint8Array): Uint8Array;
+  export function open_mnemonic_js(kek: Uint8Array, ciphertext: Uint8Array): Uint8Array;
 
   // --- auth.rs: item DEK + AEAD ---
   export function derive_dek_js(svk: Uint8Array): Uint8Array;

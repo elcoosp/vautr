@@ -27,6 +27,8 @@ export const {
   unwrap_svk_js,
   generate_recovery_mnemonic_js,
   wrap_svk_with_rk_js,
+  seal_mnemonic_js,
+  open_mnemonic_js,
   derive_dek_js,
 }: {
   generate_kdf_salt_js: () => Uint8Array;
@@ -37,6 +39,8 @@ export const {
   unwrap_svk_js: (wrapped: Uint8Array, kek: Uint8Array) => Uint8Array;
   generate_recovery_mnemonic_js: () => string;
   wrap_svk_with_rk_js: (svk: Uint8Array, mnemonic: string) => Uint8Array;
+  seal_mnemonic_js: (kek: Uint8Array, plaintext: Uint8Array) => Uint8Array;
+  open_mnemonic_js: (kek: Uint8Array, ciphertext: Uint8Array) => Uint8Array;
   derive_dek_js: (svk: Uint8Array) => Uint8Array;
 } = raw as any;
 
