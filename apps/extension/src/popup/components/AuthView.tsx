@@ -32,7 +32,11 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
       const { getPopupClient } = await import('../popupClient');
       const client = await getPopupClient();
       if (mode === 'register') {
-        await client.register(username, password);
+        const { recoveryMnemonic } = await client.register(username, password);
+        // Hand the Recovery Key to the onboarding flow (shown once). sessionStorage
+        // is cleared on popup close — never persisted in plaintext; the durable
+        // copy is KEK-sealed in IndexedDB.
+        sessionStorage.setItem('vautr:pending-kit', recoveryMnemonic);
       }
       await client.login(username, password);
       await client.sync();

@@ -19,6 +19,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { getEmergencyKit } from '@/lib/client';
+import { renderKitHtml } from '@/lib/kit';
 import { MlpApiError, mlp } from '@/lib/mlp';
 import { triggerReplayOnboarding } from '@/onboarding/OnboardingFlow';
 import { triggerReplayTour } from '@/tour/TourOverlay';
@@ -32,6 +34,21 @@ function SettingsPage() {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<OffboardResponse | null>(null);
+  const [kitRevealed, setKitRevealed] = useState(false);
+
+  const kit = getEmergencyKit();
+  const downloadKit = () => {
+    if (!kit) return;
+    const email = localStorage.getItem('vautr:username') || 'you';
+    const html = renderKitHtml(kit.mnemonic, email);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vautr-emergency-kit.html';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const onOffboard = async () => {
     if (!userUuid.trim()) {
@@ -92,6 +109,54 @@ function SettingsPage() {
               Replay tour
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Emergency Kit</CardTitle>
+          <CardDescription>
+            Your Recovery Key recovers this account if you forget your master password. It is stored
+            encrypted on this device and never sent to the server.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {kit ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-muted">24-word Recovery Key</span>
+                <Button variant="ghost" size="sm" onClick={() => setKitRevealed((v) => !v)}>
+                  {kitRevealed ? 'Hide' : 'Reveal'}
+                </Button>
+              </div>
+              {kitRevealed ? (
+                <p className="select-all break-words rounded-md border border-border bg-background p-3 font-mono text-sm text-text">
+                  {kit.mnemonic}
+                </p>
+              ) : (
+                <p className="font-mono text-sm text-text-muted">
+                  {'• '.repeat(kit.words.length).trim()}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void navigator.clipboard.writeText(kit.mnemonic)}
+                >
+                  Copy
+                </Button>
+                <Button variant="outline" size="sm" onClick={downloadKit}>
+                  Download
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-text-muted">
+              No Emergency Kit found for this account. If you registered before kits were enabled,
+              you can generate one from the CLI or by rotating your recovery key.
+            </p>
+          )}
         </CardContent>
       </Card>
 

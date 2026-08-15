@@ -29,6 +29,12 @@ pub struct VaultConfig {
     /// Defaults to true for configs written before this field existed.
     #[serde(default = "default_true")]
     pub auto_update_enabled: bool,
+    /// Recovery Key mnemonic sealed under the KEK (base64). ZK: the plaintext
+    /// mnemonic is never persisted; only this KEK-sealed blob is stored in the
+    /// config. `do_login` opens it (KEK available) so the Emergency Kit can be
+    /// shown. `None` for accounts registered before kits were enabled.
+    #[serde(default)]
+    pub recovery_mnemonic_enc: Option<String>,
 }
 
 /// `serde` default for `auto_update_enabled` (opt-out, not opt-in).

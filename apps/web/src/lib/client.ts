@@ -39,8 +39,11 @@ export function disposeClient(): void {
 }
 
 /** Register a brand-new account on the live server (OPAQUE, api.md §3.1). */
-export async function register(username: string, password: string): Promise<void> {
-  await getClient().register(username, password);
+export async function register(
+  username: string,
+  password: string,
+): Promise<{ recoveryMnemonic: string }> {
+  return getClient().register(username, password);
 }
 
 /** Log in (OPAQUE, api.md §3.2) → recover SVK → unlock the store → sync. */
@@ -104,6 +107,11 @@ export function getMlp(): VautrMlpClient {
     mlp = new VautrMlpClient(getClient().getApi());
   }
   return mlp;
+}
+
+/** Emergency Kit (Recovery Key) for display/download. ZK: opened locally. */
+export function getEmergencyKit(): { mnemonic: string; words: string[] } | null {
+  return getClient().getEmergencyKit();
 }
 
 // --- sharing (ADR-007) ---

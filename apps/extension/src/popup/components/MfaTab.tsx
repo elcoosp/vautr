@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { renderKitHtml } from '@/lib/kit';
 
 interface MfaTabProps {
   mlp: VautrMlpClient;
@@ -29,6 +30,21 @@ export function MfaTab({ mlp, client }: MfaTabProps) {
   const [keyGen, setKeyGen] = useState<number | null>(null);
   const [rotatePassword, setRotatePassword] = useState('');
   const [rotating, setRotating] = useState(false);
+  const [kitRevealed, setKitRevealed] = useState(false);
+
+  const kit = client.getEmergencyKit();
+  const downloadKit = () => {
+    if (!kit) return;
+    const email = sessionStorage.getItem('vautr:username') || 'you';
+    const html = renderKitHtml(kit.mnemonic, email);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vautr-emergency-kit.html';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     setKeyGen(client.getKeyGen());
@@ -182,6 +198,54 @@ export function MfaTab({ mlp, client }: MfaTabProps) {
               }}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Emergency Kit</CardTitle>
+          <CardDescription className="text-xs">
+            Your Recovery Key recovers this account if you forget your master password. It is stored
+            encrypted on this device and never sent to the server.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {kit ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">24-word Recovery Key</span>
+                <Button variant="ghost" size="sm" onClick={() => setKitRevealed((v) => !v)}>
+                  {kitRevealed ? 'Hide' : 'Reveal'}
+                </Button>
+              </div>
+              {kitRevealed ? (
+                <p className="select-all break-words rounded border border-border bg-background p-2 font-mono text-xs">
+                  {kit.mnemonic}
+                </p>
+              ) : (
+                <p className="font-mono text-xs text-muted-foreground">
+                  {'• '.repeat(kit.words.length).trim()}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void navigator.clipboard.writeText(kit.mnemonic)}
+                >
+                  Copy
+                </Button>
+                <Button variant="outline" size="sm" onClick={downloadKit}>
+                  Download
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No Emergency Kit found for this account. If you registered before kits were enabled,
+              you can generate one by rotating your recovery key.
+            </p>
+          )}
         </CardContent>
       </Card>
 

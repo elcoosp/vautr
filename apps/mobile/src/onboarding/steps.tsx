@@ -1,9 +1,10 @@
 import { type OnboardingStep, useOnboarding } from '@onboardjs/react';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Clipboard, Text, TextInput, View } from 'react-native';
 import { Button } from '../../components/ui/button';
 import { services } from '../../lib/client';
+import { shareKit } from '../lib/kit';
 
 /**
  * First-run guided onboarding steps (mobile). Each step renders its own content
@@ -70,15 +71,65 @@ function CreateVaultStep() {
 
 function EmergencyKitStep() {
   const navigate = useNavigate();
+  const { next } = useOnboarding();
+  const [revealed, setRevealed] = useState(false);
+  const mnemonic = services.auth.pendingRecoveryMnemonic;
+  const words = mnemonic ? mnemonic.split(/\s+/).filter(Boolean) : [];
+
+  const download = async () => {
+    if (!mnemonic) return;
+    const email = (await services.auth.getUsername()) || 'you';
+    await shareKit(mnemonic, email);
+    services.auth.pendingRecoveryMnemonic = null;
+  };
+
   return (
     <View className="gap-3">
       <Text className="text-xl font-semibold text-foreground">Save your Emergency Kit</Text>
       <Text className="text-sm text-muted-foreground">
-        The Emergency Kit lets you recover your account if you forget your master password. It is
-        generated and encrypted locally — store it somewhere safe (password manager, printed copy).
+        Your Recovery Key is the only way to recover your account if you forget your master
+        password. It was generated and encrypted on this device. Store it somewhere safe.
       </Text>
+      {mnemonic ? (
+        <View className="gap-2 rounded-lg border border-border bg-background p-3">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-xs font-medium text-muted-foreground">24-word Recovery Key</Text>
+            <Button variant="ghost" onPress={() => setRevealed((v) => !v)}>
+              <Text className="text-foreground">{revealed ? 'Hide' : 'Reveal'}</Text>
+            </Button>
+          </View>
+          {revealed ? (
+            <Text className="select-all font-mono text-sm text-foreground">{mnemonic}</Text>
+          ) : (
+            <Text className="font-mono text-sm text-muted-foreground">
+              {'• '.repeat(words.length).trim()}
+            </Text>
+          )}
+          <View className="flex-row gap-2">
+            <Button variant="outline" onPress={() => Clipboard.setString(mnemonic)}>
+              <Text className="text-foreground">Copy</Text>
+            </Button>
+            <Button variant="outline" onPress={download}>
+              <Text className="text-foreground">Download</Text>
+            </Button>
+          </View>
+        </View>
+      ) : (
+        <Text className="text-sm text-muted-foreground">
+          No kit is pending from this session. You can view or download your Emergency Kit anytime
+          from Settings → Emergency Kit.
+        </Text>
+      )}
       <Button variant="outline" onPress={() => navigate({ to: '/mfa' })}>
         <Text className="text-foreground">Open security settings</Text>
+      </Button>
+      <Button
+        onPress={() => {
+          services.auth.pendingRecoveryMnemonic = null;
+          next();
+        }}
+      >
+        <Text className="text-primary-foreground">Continue</Text>
       </Button>
     </View>
   );

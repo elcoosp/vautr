@@ -115,6 +115,8 @@ export class VautrWebClient {
   private svk: Uint8Array | null = null;
   private dek: Uint8Array | null = null;
   private localKeyGen = 1;
+  /** Decrypted Recovery Key mnemonic (opened from KEK-sealed store at login). */
+  private recoveryMnemonic: string | null = null;
 
   // Opaque handle table (plaintext never in React state).
   private handles = new Map<OpaqueHandle, ActiveSecret>();
@@ -255,7 +257,7 @@ export class VautrWebClient {
   // -------------------------------------------------------------------------
 
   /** Register a brand-new account. Persists the KDF salt; caller then logs in. */
-  async register(username: string, password: string): Promise<void> {
+  async register(username: string, password: string): Promise<{ recoveryMnemonic: string }> {
     await this.crypto.ready();
 
     // Local key material (crypto.md §2).
@@ -266,6 +268,10 @@ export class VautrWebClient {
     const svkWrapped = this.crypto.wrapSvk(svk, kek);
     const mnemonic = this.crypto.generateRecoveryMnemonic();
     const svkRkWrapped = this.crypto.wrapSvkWithRk(svk, mnemonic);
+
+    // Seal the recovery mnemonic under the KEK so it can be re-shown later
+    // (Emergency Kit) without ever leaving the device in plaintext.
+    const mnemonicEnc = toBase64(this.crypto.wrapSvk(new TextEncoder().encode(mnemonic), kek));
 
     // OPAQUE registration (api.md §3.1).
     const start = this.crypto.opaqueRegisterStart(password);
@@ -295,7 +301,10 @@ export class VautrWebClient {
       kdfSalt: toBase64(kdfSalt),
       svk: null,
       sessionToken: null,
+      recoveryMnemonicEnc: mnemonicEnc,
     });
+
+    return { recoveryMnemonic: mnemonic };
   }
 
   /** OPAQUE login → bearer token → recover SVK → unlock. */
@@ -335,8 +344,14 @@ export class VautrWebClient {
     const svk = this.crypto.unwrapSvk(fromBase64(status.svk_ciphertext_blob), kek);
     const dek = this.crypto.deriveDek(svk);
 
+    // Open the KEK-sealed Recovery Key mnemonic so the Emergency Kit can be
+    // shown (ZK: mnemonic is opened locally, never sent anywhere).
+    const sealed = state.recoveryMnemonicEnc ? fromBase64(state.recoveryMnemonicEnc) : null;
+    const mnemonic = sealed ? new TextDecoder().decode(this.crypto.unwrapSvk(sealed, kek)) : null;
+
     this.svk = svk;
     this.dek = dek;
+    this.recoveryMnemonic = mnemonic;
     this.localKeyGen = Math.max(1, state.localKeyGen);
     await this.store.setState({
       username,
@@ -353,8 +368,22 @@ export class VautrWebClient {
   async lock(): Promise<void> {
     this.svk = null;
     this.dek = null;
+    this.recoveryMnemonic = null;
     this.handles.clear();
     this.emit({ type: 'VaultLocked' });
+  }
+
+  /**
+   * Return the account's Emergency Kit (Recovery Key) for display/download.
+   * ZK: the mnemonic is opened locally from the KEK-sealed store; it is never
+   * transmitted. Returns null if the kit was never generated (legacy accounts).
+   */
+  getEmergencyKit(): { mnemonic: string; words: string[] } | null {
+    if (!this.recoveryMnemonic) return null;
+    return {
+      mnemonic: this.recoveryMnemonic,
+      words: this.recoveryMnemonic.split(/\s+/).filter(Boolean),
+    };
   }
 
   /** Forget the session entirely (logout): drop the stored token. */

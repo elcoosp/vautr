@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { renderKitHtml } from '@/lib/kit';
 import { getPopupMlpClient } from '@/popup/popupClient';
 import { usePopupStore } from '@/popup/store';
 
@@ -72,15 +73,78 @@ function CreateVaultStep() {
 
 function EmergencyKitStep() {
   const setActiveTab = usePopupStore((s) => s.setActiveTab);
+  const { next } = useOnboarding();
+  const [revealed, setRevealed] = useState(false);
+  const mnemonic =
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('vautr:pending-kit') : null;
+  const words = mnemonic ? mnemonic.split(/\s+/).filter(Boolean) : [];
+
+  const download = () => {
+    if (!mnemonic) return;
+    const email = sessionStorage.getItem('vautr:username') || 'you';
+    const html = renderKitHtml(mnemonic, email);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'vautr-emergency-kit.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    sessionStorage.removeItem('vautr:pending-kit');
+  };
+
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">Save your Emergency Kit</h2>
       <p className="text-sm text-muted-foreground">
-        The Emergency Kit lets you recover your account if you forget your master password. It is
-        generated and encrypted locally — store it somewhere safe.
+        Your Recovery Key is the only way to recover your account if you forget your master
+        password. It was generated and encrypted on this device. Store it somewhere safe.
       </p>
+      {mnemonic ? (
+        <div className="space-y-2 rounded-lg border border-border bg-background p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">24-word Recovery Key</span>
+            <Button variant="ghost" size="sm" onClick={() => setRevealed((v) => !v)}>
+              {revealed ? 'Hide' : 'Reveal'}
+            </Button>
+          </div>
+          {revealed ? (
+            <p className="select-all break-words font-mono text-sm">{mnemonic}</p>
+          ) : (
+            <p className="font-mono text-sm text-muted-foreground">
+              {'• '.repeat(words.length).trim()}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void navigator.clipboard.writeText(mnemonic)}
+            >
+              Copy
+            </Button>
+            <Button variant="outline" size="sm" onClick={download}>
+              Download
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No kit is pending from this session. You can view or download your Emergency Kit anytime
+          from MFA &amp; security.
+        </p>
+      )}
       <Button variant="outline" onClick={() => setActiveTab('mfa')} className="w-full">
         Open MFA &amp; security
+      </Button>
+      <Button
+        onClick={() => {
+          sessionStorage.removeItem('vautr:pending-kit');
+          next();
+        }}
+        className="w-full"
+      >
+        Continue
       </Button>
     </div>
   );

@@ -21,6 +21,7 @@ import { createCryptoProvider, type VautrCryptoProvider } from './crypto/provide
 const TOKEN_KEY = 'vautr.session_token';
 const SALT_KEY = 'vautr.kdf_salt';
 const USERNAME_KEY = 'vautr.username';
+const RECOVERY_ENC_KEY = 'vautr.recovery_mnemonic_enc';
 
 /** Minimal base64 codec that works in Node + RN. */
 export function toBase64(bytes: Uint8Array): string {
@@ -43,6 +44,13 @@ export interface TokenStore {
   setKdfSalt(salt: string | null): Promise<void>;
   getUsername(): Promise<string | null>;
   setUsername(username: string | null): Promise<void>;
+  /**
+   * Recovery Key mnemonic, sealed under the KEK (base64). ZK: the plaintext
+   * mnemonic is never persisted; only this KEK-sealed blob is stored in the
+   * keychain. `getEmergencyKit()` opens it after login (KEK available).
+   */
+  getRecoveryMnemonicEnc(): Promise<string | null>;
+  setRecoveryMnemonicEnc(enc: string | null): Promise<void>;
 }
 
 /** Keychain-backed store using expo-secure-store (device). */
@@ -70,6 +78,14 @@ export const secureTokenStore: TokenStore = {
     const ss = await getSecureStore();
     if (username === null) await ss.deleteItemAsync(USERNAME_KEY);
     else await ss.setItemAsync(USERNAME_KEY, username);
+  },
+  async getRecoveryMnemonicEnc() {
+    return (await getSecureStore()).getItemAsync(RECOVERY_ENC_KEY);
+  },
+  async setRecoveryMnemonicEnc(enc) {
+    const ss = await getSecureStore();
+    if (enc === null) await ss.deleteItemAsync(RECOVERY_ENC_KEY);
+    else await ss.setItemAsync(RECOVERY_ENC_KEY, enc);
   },
 };
 
@@ -99,6 +115,12 @@ export function createMemoryTokenStore(): TokenStore {
     async setUsername(username) {
       data.username = username;
     },
+    async getRecoveryMnemonicEnc() {
+      return data.recoveryEnc ?? null;
+    },
+    async setRecoveryMnemonicEnc(enc) {
+      data.recoveryEnc = enc;
+    },
   };
 }
 
@@ -112,6 +134,10 @@ export class VautrAuth {
   private readonly api: MobileApiClient;
   private readonly store: TokenStore;
   private readonly crypto: VautrCryptoProvider | null;
+  /** Decrypted Recovery Key mnemonic (opened at login). */
+  private cachedMnemonic: string | null = null;
+  /** Pending kit from the just-completed register (shown once in onboarding). */
+  pendingRecoveryMnemonic: string | null = null;
 
   constructor(options: {
     api: MobileApiClient;
@@ -139,6 +165,11 @@ export class VautrAuth {
     const mnemonic = await crypto.generateRecoveryMnemonic();
     const svkRkWrapped = await crypto.wrapSvkWithRk(svk, mnemonic);
 
+    // Seal the recovery mnemonic under the KEK so it can be re-shown later
+    // (Emergency Kit) without ever leaving the device in plaintext.
+    const mnemonicEnc = toBase64(await crypto.wrapSvk(new TextEncoder().encode(mnemonic), kek));
+    this.pendingRecoveryMnemonic = mnemonic;
+
     const start = await crypto.opaqueRegisterStart(password);
     const startResp = await this.api.authRegisterStart(username, toBase64(start.message));
     if (!startResp.registration_response) {
@@ -162,12 +193,22 @@ export class VautrAuth {
     // Persist the KDF salt so a later login can re-derive the master key.
     await this.store.setUsername(username);
     await this.store.setKdfSalt(toBase64(kdfSalt));
+    await this.store.setRecoveryMnemonicEnc(mnemonicEnc);
 
     // Register does not mint a session token; follow with login().
     return this.login(username, password);
   }
 
-  /** OPAQUE login → bearer token (api.md §3.2). */
+  /**
+   * Emergency Kit (Recovery Key) for display/download. ZK: the mnemonic is
+   * opened locally from the KEK-sealed keychain blob; never transmitted.
+   * Returns null if no kit was generated (legacy accounts).
+   */
+  getEmergencyKit(): { mnemonic: string; words: string[] } | null {
+    const m = this.cachedMnemonic;
+    if (!m) return null;
+    return { mnemonic: m, words: m.split(/\s+/).filter(Boolean) };
+  }
   async login(username: string, password: string): Promise<AuthResult> {
     const crypto = await this.readyCrypto();
 
@@ -187,6 +228,22 @@ export class VautrAuth {
     this.api.setToken(finishResp.session_token);
     await this.store.setToken(finishResp.session_token);
     await this.store.setUsername(username);
+
+    // Open the KEK-sealed Recovery Key mnemonic so the Emergency Kit can be
+    // shown. ZK: opened locally from the keychain blob; never sent anywhere.
+    try {
+      const saltB64 = await this.store.getKdfSalt();
+      const encB64 = await this.store.getRecoveryMnemonicEnc();
+      if (saltB64 && encB64) {
+        const mk = await crypto.deriveMasterKey(password, fromBase64(saltB64));
+        const kek = await crypto.deriveKek(mk);
+        const opened = await crypto.unwrapSvk(fromBase64(encB64), kek);
+        this.cachedMnemonic = new TextDecoder().decode(opened);
+      }
+    } catch {
+      this.cachedMnemonic = null;
+    }
+
     return { username, sessionToken: finishResp.session_token };
   }
 

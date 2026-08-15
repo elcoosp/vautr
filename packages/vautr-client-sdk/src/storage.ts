@@ -43,6 +43,13 @@ export interface StoredState {
   sharingSecretKey: string | null;
   /** Base64 Group SIKs keyed by group_id (sharing-pki.md §6). Sensitive. */
   groupKeys: Record<string, string>;
+  /**
+   * Recovery Key mnemonic, sealed under the KEK (base64). Zero-knowledge: the
+   * plaintext mnemonic never leaves the device and is stored only encrypted
+   * with a key derived from the user's master password. `getEmergencyKit()`
+   * opens it after login (KEK available).
+   */
+  recoveryMnemonicEnc: string | null;
 }
 
 export const EMPTY_STATE: StoredState = {
@@ -55,6 +62,7 @@ export const EMPTY_STATE: StoredState = {
   svk: null,
   sharingSecretKey: null,
   groupKeys: {},
+  recoveryMnemonicEnc: null,
 };
 
 const DB_NAME = 'vautr-client';

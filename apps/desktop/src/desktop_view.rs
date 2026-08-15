@@ -52,6 +52,39 @@ enum Section {
     Settings,
 }
 
+/// Render a self-contained, printable Emergency Kit HTML document holding the
+/// 24-word Recovery Key. ZK: the mnemonic is passed in from local storage
+/// (KEK-sealed at rest) and never sent to the server.
+fn render_kit_html(mnemonic: &str, email: &str) -> String {
+    let words: Vec<&str> = mnemonic.split_whitespace().collect();
+    let mut rows = String::new();
+    for (i, w) in words.iter().enumerate() {
+        rows.push_str(&format!(
+            "<li><span class=\"n\">{}</span> {}</li>\n",
+            i + 1,
+            w
+        ));
+    }
+    let esc_email = email
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!(
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\" />\
+<title>Vautr Emergency Kit</title><style>\
+body{{font-family:ui-sans-serif,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#111}}\
+h1{{font-size:22px}}.sub{{color:#555;font-size:14px}}\
+.words{{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin:24px 0;padding:16px;border:1px solid #ddd;border-radius:8px}}\
+.words li{{font-size:15px;list-style:none;font-family:ui-monospace,monospace}}\
+.words .n{{color:#888;margin-right:8px}}.warn{{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:12px 14px;border-radius:8px;font-size:13px}}\
+footer{{margin-top:32px;color:#888;font-size:12px}}</style></head>\
+<body><h1>Vautr Emergency Kit</h1><p class=\"sub\">Account: {esc_email}</p>\
+<div class=\"warn\">Store this Recovery Key somewhere safe and private. Anyone with these 24 words can recover this account. Vautr cannot reset it for you.</div>\
+<ol class=\"words\">\n{rows}</ol>\
+<footer>Generated locally by the Vautr client. No server received these words.</footer></body></html>"
+    )
+}
+
 /// Which login form mode is active (mirrors the web UnlockScreen).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LoginMode {
@@ -146,6 +179,9 @@ pub struct DesktopView {
     pub vault: VaultManagerState,
     client: Option<Arc<VautrClient>>,
     dek: Option<Zeroizing<[u8; 32]>>,
+    /// Decrypted Emergency Kit (Recovery Key) mnemonic, opened from the
+    /// KEK-sealed config at login. In-memory only; never persisted in plaintext.
+    recovery_mnemonic: Option<String>,
 
     // ── Revealed secret (vault items) ───────────────────────────────────
     revealed: Option<Zeroizing<String>>,
@@ -258,6 +294,10 @@ pub struct DesktopView {
     pending_share: Option<Uuid>,
     /// Recipient user UUID entered in the share modal.
     share_recipient_input: Entity<InputState>,
+
+    // ── Emergency Kit (VTR-076) ─────────────────────────────────────────
+    /// Whether the Emergency Kit mnemonic is revealed in Settings.
+    kit_revealed: bool,
     /// Status / error text shown in the share modal.
     share_text: String,
     /// Group sharing (VTR-070): name for a new group.
@@ -447,6 +487,8 @@ impl DesktopView {
             share_recipient_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("recipient user uuid")),
             share_text: String::new(),
+            kit_revealed: false,
+            recovery_mnemonic: None,
             key_gen: 1,
         }
     }
@@ -490,16 +532,40 @@ impl DesktopView {
 
             this.update(cx, |this, cx| match result {
                 Ok(reg) => {
+                    // Seal the Recovery Key mnemonic under the KEK so it can be
+                    // re-shown later (Emergency Kit) without ever leaving the device
+                    // in plaintext.
+                    let mk = match kdf::derive_master_key(&password, &reg.kdf_salt) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            this.login_state = FormState::Error(format!("MK derive: {e}"));
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    let kek = match key_tree::derive_kek(&mk) {
+                        Ok(k) => k,
+                        Err(e) => {
+                            this.login_state = FormState::Error(format!("KEK derive: {e}"));
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    let mnemonic_bytes = reg.recovery_mnemonic.as_bytes().to_vec();
+                    let sealed = aead::encrypt(&kek, &Uuid::nil(), 0, &mnemonic_bytes)
+                        .map_err(|e| format!("seal mnemonic: {e}"));
+                    let sealed_b64 = sealed.map(|s| B64.encode(&s)).ok();
+
                     let cfg = VaultConfig {
                         username: username.clone(),
                         kdf_salt_b64: B64.encode(&reg.kdf_salt),
                         auto_update_enabled: true,
+                        recovery_mnemonic_enc: sealed_b64,
                     };
                     let _ = cfg.save();
-                    this.login_state = FormState::Error(format!(
-                        "Registered. Recovery key (save this): {}",
-                        reg.recovery_mnemonic
-                    ));
+
+                    this.recovery_mnemonic = Some(reg.recovery_mnemonic.clone());
+                    this.login_state = FormState::Success;
                     cx.notify();
                 }
                 Err(e) => {
@@ -589,6 +655,14 @@ impl DesktopView {
                 }
             };
 
+            // Open the KEK-sealed Recovery Key mnemonic from the config so the
+            // Emergency Kit can be shown (ZK: opened locally; never transmitted).
+            let sealed_mnemonic = VaultConfig::load()
+                .and_then(|c| c.recovery_mnemonic_enc)
+                .and_then(|b| B64.decode(&b).ok())
+                .and_then(|ct| aead::decrypt(&kek, &Uuid::nil(), 0, &ct).ok())
+                .map(|pt| String::from_utf8_lossy(&pt).into_owned());
+
             let dek: Zeroizing<[u8; 32]> = match (|| -> Result<Zeroizing<[u8; 32]>, String> {
                 let svk_bytes = aead::decrypt(&kek, &Uuid::nil(), 0, &login.wrapped_svk)
                     .map_err(|_| "SVK unwrap failed".to_string())?;
@@ -646,6 +720,7 @@ impl DesktopView {
                 this.client = Some(client);
                 this.dek = Some(dek);
                 this.token = Some(login.session_token.clone());
+                this.recovery_mnemonic = sealed_mnemonic;
                 let _ = state::save_session(&state::PersistedSession {
                     token: login.session_token.clone(),
                     wrapped_svk_b64: B64.encode(&login.wrapped_svk),
@@ -6297,6 +6372,117 @@ impl DesktopView {
         cx.notify();
     }
 
+    /// Render the Emergency Kit (Recovery Key) card in Settings. ZK: the
+    /// mnemonic is opened locally from the KEK-sealed config; never transmitted.
+    fn render_emergency_kit(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mnemonic = self.recovery_mnemonic.clone().unwrap_or_default();
+        let words: Vec<&str> = mnemonic.split_whitespace().collect();
+        let revealed = self.kit_revealed;
+        let has_kit = !mnemonic.is_empty();
+
+        self.card(
+            "Emergency Kit",
+            "Your Recovery Key recovers this account if you forget your master password. It is stored encrypted on this device and never sent to the server.",
+        )
+        .child(
+            div().when(has_kit, |el| {
+                el.child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            h_flex()
+                                .justify_between()
+                                .items_center()
+                                .child(div().text_xs().text_color(theme::TEXT_MUTED).child(format!("{} Recovery Key", words.len())))
+                                .child(
+                                    Button::new("kit-reveal")
+                                        .compact()
+                                        .label(if revealed { "Hide" } else { "Reveal" })
+                                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.kit_revealed = !this.kit_revealed;
+                                            cx.notify();
+                                        })),
+                                ),
+                        )
+                        .when(revealed, |el| {
+                            el.child(
+                                div()
+                                    .p_2()
+                                    .rounded_md()
+                                    .border_1()
+                                    .border_color(theme::BORDER)
+                                    .bg(theme::SURFACE)
+                                    .text_sm()
+                                    .text_color(theme::TEXT)
+                                    .child(mnemonic.clone()),
+                            )
+                        })
+                        .when(!revealed, |el| {
+                            el.child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child("• ".repeat(words.len()).trim().to_string()),
+                            )
+                        })
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("kit-copy")
+                                        .compact()
+                                        .label("Copy")
+                                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                            if let Some(m) = &this.recovery_mnemonic {
+                                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(m.clone()));
+                                            }
+                                        })),
+                                )
+                                .child(
+                                    Button::new("kit-download")
+                                        .compact()
+                                        .label("Download")
+                                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.do_save_kit(cx);
+                                        })),
+                                ),
+                        ),
+                )
+            })
+            .when(!has_kit, |el| {
+                el.child(
+                    div()
+                        .text_sm()
+                        .text_color(theme::TEXT_MUTED)
+                        .child(
+                            "No Emergency Kit found for this account. If you registered before kits were enabled, generate one by rotating your recovery key.",
+                        ),
+                )
+            }),
+        )
+    }
+
+    /// Write the Emergency Kit as a printable HTML file to ~/Downloads.
+    fn do_save_kit(&mut self, cx: &mut Context<Self>) {
+        let Some(mnemonic) = self.recovery_mnemonic.clone() else {
+            return;
+        };
+        let username = VaultConfig::load()
+            .map(|c| c.username)
+            .unwrap_or_else(|| "you".into());
+        let html = render_kit_html(&mnemonic, &username);
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        let dir = std::path::Path::new(&home).join("Downloads");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("vautr-emergency-kit.html");
+        let msg = match std::fs::write(&path, html) {
+            Ok(()) => format!("Emergency Kit saved to {}", path.display()),
+            Err(e) => format!("Could not save kit: {e}"),
+        };
+        self.settings_text = msg;
+        cx.notify();
+    }
+
     fn render_settings(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let machines = self.machines.clone();
         let tokens = self.tokens.clone();
@@ -6327,6 +6513,7 @@ impl DesktopView {
                         ),
                     ),
             )
+            .child(self.render_emergency_kit(cx))
             .when(!text.is_empty(), |this| {
                 this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
             })

@@ -39,7 +39,11 @@ function RegisterPage() {
     setBusy(true);
     setError(null);
     try {
-      await register(username.trim(), password);
+      const { recoveryMnemonic } = await register(username.trim(), password);
+      // Hand the freshly-generated Recovery Key to the onboarding flow so it can
+      // be shown once. Stored in sessionStorage (cleared on tab close) — never
+      // persisted in plaintext; the durable copy is KEK-sealed in IndexedDB.
+      sessionStorage.setItem('vautr:pending-kit', recoveryMnemonic);
       await login(username.trim(), password);
       void navigate({ to: '/dashboard' });
     } catch (err) {
