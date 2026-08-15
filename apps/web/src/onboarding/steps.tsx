@@ -185,10 +185,17 @@ function DoneStep() {
 }
 
 export const onboardingSteps: OnboardingStep[] = [
-  { id: 'welcome', type: 'CUSTOM_COMPONENT', component: WelcomeStep, nextStep: 'create-vault' },
+  {
+    id: 'welcome',
+    type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'welcome' },
+    component: WelcomeStep,
+    nextStep: 'create-vault',
+  },
   {
     id: 'create-vault',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'create-vault' },
     component: CreateVaultStep,
     previousStep: 'welcome',
     nextStep: 'emergency-kit',
@@ -196,6 +203,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'emergency-kit',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'emergency-kit' },
     component: EmergencyKitStep,
     previousStep: 'create-vault',
     nextStep: 'add-secret',
@@ -205,6 +213,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'add-secret',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'add-secret' },
     component: AddSecretStep,
     previousStep: 'emergency-kit',
     nextStep: 'done',
@@ -214,8 +223,18 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'done',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'done' },
     component: DoneStep,
     previousStep: 'add-secret',
     nextStep: null,
   },
 ];
+
+/** Maps each onboarding step's `componentKey` to its React component. */
+export const onboardingComponents = {
+  welcome: WelcomeStep,
+  'create-vault': CreateVaultStep,
+  'emergency-kit': EmergencyKitStep,
+  'add-secret': AddSecretStep,
+  done: DoneStep,
+};

@@ -2,7 +2,7 @@ import { OnboardingProvider, useOnboarding } from '@onboardjs/react';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { onboardingSteps } from './steps';
+import { onboardingComponents, onboardingSteps } from './steps';
 
 const STORAGE_KEY = 'vautr_onboarding_v1';
 export const ONBOARDING_REPLAY_EVENT = 'vautr:replay-onboarding';
@@ -79,6 +79,7 @@ export function OnboardingFlow({ children }: { children: React.ReactNode }) {
       flowName="Vautr first-run setup"
       flowVersion="1.0.0"
       steps={onboardingSteps}
+      componentRegistry={onboardingComponents}
       localStoragePersistence={{ key: STORAGE_KEY }}
       onFlowComplete={() => {
         /* persistence already records completion */
