@@ -1,11 +1,11 @@
 import { type OnboardingStep, useOnboarding } from '@onboardjs/react';
-import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { renderKitHtml } from '@/lib/kit';
 import { MlpApiError, mlp } from '@/lib/mlp';
+import { router } from '@/router';
 
 /**
  * First-run guided onboarding steps (web). Each step renders its own content;
@@ -27,7 +27,6 @@ function WelcomeStep() {
 
 function CreateVaultStep() {
   const { next, updateContext, state } = useOnboarding();
-  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +37,7 @@ function CreateVaultStep() {
     try {
       const project = await mlp.createProject({ name: name.trim() || 'My Vault' });
       updateContext({ flowData: { vaultName: project.name } });
-      void navigate({ to: '/projects/$uuid', params: { uuid: project.uuid } });
+      void router.navigate({ to: '/projects/$uuid', params: { uuid: project.uuid } });
       next();
     } catch (err) {
       setError(err instanceof MlpApiError ? err.message : 'Could not create vault.');
@@ -71,7 +70,6 @@ function CreateVaultStep() {
 }
 
 function EmergencyKitStep() {
-  const navigate = useNavigate();
   const { next } = useOnboarding();
   const [revealed, setRevealed] = useState(false);
   const mnemonic =
@@ -135,7 +133,7 @@ function EmergencyKitStep() {
       )}
       <Button
         variant="outline"
-        onClick={() => void navigate({ to: '/settings' })}
+        onClick={() => void router.navigate({ to: '/settings' })}
         className="w-full"
       >
         Open security settings
@@ -154,7 +152,6 @@ function EmergencyKitStep() {
 }
 
 function AddSecretStep() {
-  const navigate = useNavigate();
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-semibold text-text">Add your first secret</h2>
@@ -163,7 +160,7 @@ function AddSecretStep() {
         your device.
       </p>
       <Button
-        onClick={() => void navigate({ to: '/projects', search: { create: false } })}
+        onClick={() => void router.navigate({ to: '/projects', search: { create: false } })}
         className="w-full"
       >
         Go to my vault
