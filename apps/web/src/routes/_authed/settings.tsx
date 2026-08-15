@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MlpApiError, mlp } from '@/lib/mlp';
+import { triggerReplayOnboarding } from '@/onboarding/OnboardingFlow';
 
 export const Route = createFileRoute('/_authed/settings')({
   component: SettingsPage,
@@ -60,6 +61,27 @@ function SettingsPage() {
         <h1 className="text-2xl font-semibold text-text">Settings</h1>
         <p className="text-sm text-text-muted">Organization and security administration.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Onboarding tour</CardTitle>
+          <CardDescription>
+            Re-run the first-run guided setup (create a vault, save your Emergency Kit, add a
+            secret).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            onClick={() => {
+              triggerReplayOnboarding();
+              toast.success('Onboarding tour restarted');
+            }}
+          >
+            Replay onboarding
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

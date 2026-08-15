@@ -1,6 +1,7 @@
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { router } from './router';
 import './index.css';
 
@@ -11,6 +12,8 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <OnboardingFlow>
+      <RouterProvider router={router} />
+    </OnboardingFlow>
   </StrictMode>,
 );

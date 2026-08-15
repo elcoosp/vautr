@@ -18,6 +18,8 @@
     "@tanstack/react-router": "^1.170.25",
     "@tanstack/react-virtual": "^3.14.9",
     "@tanstack/router-plugin": "^1.168.29",
+    "@onboardjs/core": "1.0.0-rc.4",
+    "@onboardjs/react": "1.0.0-rc.5",
     "@vautr/api-contract": "workspace:*",
     "@vautr/client-sdk": "workspace:*",
     "@vautr/ui-logic": "workspace:*",

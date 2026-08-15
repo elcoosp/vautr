@@ -18,24 +18,24 @@ live during implementation rather than through the flat `done/` set.
 - `done/` — VTR-001..VTR-065. Acceptance criteria satisfied by code that exists
   (verified by source grep, not by assertion). Each file has a
   `status: done (2026-08-13)` line. Kept for history/audit; do not re-implement.
-- `closed/` — VTR-066..VTR-070. The most recent workstream batch, tracked live
-  and closed as the features landed (see `closed/VTR-070.md` for the full
-  reconciled final state, including the iOS/Android native bridges that the
-  earlier "not verifiable in sandbox" note wrongly claimed could not be built —
-  both `xcodebuild` and `gradlew :app:assembleDebug` were executed and verified).
-- `open/` — **empty as of 2026-08-14**. No issue through VTR-072 is genuinely
+- `closed/` — VTR-066..VTR-073. The most recent workstream batches, tracked live
+  and closed as the features landed. VTR-073 added first-run guided onboarding
+  (web + extension) via OnboardJS; the deferred feature/product *tour* is tracked
+  as a follow-up (not yet a numbered issue).
+- `open/` — **empty as of 2026-08-15**. No issue through VTR-073 is genuinely
   open in the codebase.
 
 ## Open issues (the real backlog)
-**None.** As of 2026-08-14 all tracked issues VTR-001..VTR-072 are done/closed.
-The two last open items, VTR-071 (audit-log viewer + export in web/desktop
-clients) and VTR-072 (complete VTR-060 self-hosting docs), landed and were
-moved to `closed/` on 2026-08-14:
+**None.** As of 2026-08-15 all tracked issues VTR-001..VTR-073 are done/closed.
+VTR-073 (first-run guided onboarding in web + extension via OnboardJS) landed and
+was closed on 2026-08-15. The deferred *feature/product tour* (anchored tooltips)
+is a follow-up, not yet a numbered issue.
 
 | Issue | Delivered | Notes |
 |-------|-----------|-------|
 | VTR-071 | `closed/VTR-071.md` | SDK `auditList`, web `/_authed/audit` route, desktop `do_export_audit` + export card; `GET /audit` contract added to `openapi.json`. `hermes verify` green. |
 | VTR-072 | `closed/VTR-072.md` | `docs/self-hosting/README.md` runbook + `docker-compose.prod.yml` (validated `docker compose config` → VALID). |
+| VTR-073 | `closed/VTR-073.md` | `@onboardjs/core` + `@onboardjs/react` added to web + extension; `OnboardingFlow` (first-run, `localStoragePersistence`) with welcome → create-vault → Emergency Kit → add-secret → done steps; replay affordance in Settings (web) and popup footer (ext). `hermes verify` green. |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`

@@ -19,6 +19,7 @@ import * as browser from 'webextension-polyfill';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getApiUrl } from '../lib/apiUrl';
+import { triggerReplayOnboarding } from '../onboarding/OnboardingFlow';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
@@ -212,7 +213,13 @@ export function App() {
       </Tabs>
       {client ? <ConflictModal client={client} /> : null}
       <footer className="flex items-center justify-between border-t px-4 py-2 text-xs">
-        <span className="text-muted-foreground">Vault on this device</span>
+        <button
+          type="button"
+          className="rounded text-accent underline-offset-2 hover:underline focus-visible:outline-1 focus-visible:outline-ring"
+          onClick={() => triggerReplayOnboarding()}
+        >
+          Replay onboarding
+        </button>
         <button
           type="button"
           className="rounded text-accent underline-offset-2 hover:underline focus-visible:outline-1 focus-visible:outline-ring"
