@@ -22,14 +22,19 @@ live during implementation rather than through the flat `done/` set.
   and closed as the features landed. VTR-073 added first-run guided onboarding
   (web + extension) via OnboardJS; the deferred feature/product *tour* is tracked
   as a follow-up (not yet a numbered issue).
-- `open/` — **empty as of 2026-08-15**. No issue through VTR-073 is genuinely
-  open in the codebase.
+- `open/` — **VTR-074 + VTR-075 as of 2026-08-15**. Mobile + desktop onboarding to
+  match the web/extension flow (VTR-073). The shared step contract is
+  `docs/onboarding/spec.md`.
 
 ## Open issues (the real backlog)
-**None.** As of 2026-08-15 all tracked issues VTR-001..VTR-073 are done/closed.
-VTR-073 (first-run guided onboarding in web + extension via OnboardJS) landed and
-was closed on 2026-08-15. The deferred *feature/product tour* (anchored tooltips)
-is a follow-up, not yet a numbered issue.
+Two genuinely-open items, both extending the VTR-073 web/extension onboarding to
+the remaining clients. The step contract is `docs/onboarding/spec.md` (single
+source of truth for all four platforms).
+
+| Issue | Delivered when | Notes |
+|-------|---------------|-------|
+| VTR-074 | `open/VTR-074.md` | Mobile (Expo/RN/nativewind) reuses `@onboardjs/react` (same engine/steps), AsyncStorage persistence, replay in Settings. |
+| VTR-075 | `open/VTR-075.md` | Desktop (Rust/GPUI) native re-implementation of the same flow (no onboardjs possible in Rust), config-file first-run flag, replay in Settings. |
 
 | Issue | Delivered | Notes |
 |-------|-----------|-------|
