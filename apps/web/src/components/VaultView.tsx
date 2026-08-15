@@ -68,6 +68,7 @@ export function VaultView() {
               setAdding(true);
               setSelectedUuid(null);
             }}
+            data-tour="add-secret"
             aria-label="Add item"
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
           >

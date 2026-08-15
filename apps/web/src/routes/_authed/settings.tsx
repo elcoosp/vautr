@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { MlpApiError, mlp } from '@/lib/mlp';
 import { triggerReplayOnboarding } from '@/onboarding/OnboardingFlow';
+import { triggerReplayTour } from '@/tour/TourOverlay';
 
 export const Route = createFileRoute('/_authed/settings')({
   component: SettingsPage,
@@ -71,15 +72,26 @@ function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button
-            variant="outline"
-            onClick={() => {
-              triggerReplayOnboarding();
-              toast.success('Onboarding tour restarted');
-            }}
-          >
-            Replay onboarding
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                triggerReplayOnboarding();
+                toast.success('Onboarding tour restarted');
+              }}
+            >
+              Replay onboarding
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                triggerReplayTour();
+                toast.success('Feature tour started');
+              }}
+            >
+              Replay tour
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

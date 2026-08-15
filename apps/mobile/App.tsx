@@ -6,6 +6,7 @@ import { services } from './lib/client';
 import { useSession } from './lib/session';
 import { OnboardingFlow } from './src/onboarding/OnboardingFlow';
 import { router } from './src/router';
+import { TourOverlay } from './src/tour/TourOverlay';
 
 /**
  * App root. Boots by restoring any persisted OPAQUE session token onto the API
@@ -65,8 +66,11 @@ export function App() {
   }
 
   return (
-    <OnboardingFlow>
-      <RouterProvider router={router} />
-    </OnboardingFlow>
+    <>
+      <OnboardingFlow>
+        <RouterProvider router={router} />
+      </OnboardingFlow>
+      <TourOverlay />
+    </>
   );
 }

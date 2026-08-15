@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Card } from '../../components/ui/card';
 import { useSession } from '../../lib/session';
 import { triggerReplayOnboarding } from '../../src/onboarding/OnboardingFlow';
+import { triggerReplayTour } from '../../src/tour/TourOverlay';
 
 export const Route = createFileRoute('/_app/settings')({
   component: SettingsScreen,
@@ -36,6 +37,19 @@ function SettingsScreen() {
           onPress={() => triggerReplayOnboarding()}
         >
           <Text className="text-sm text-foreground">Replay onboarding</Text>
+        </Pressable>
+      </Card>
+
+      <Card className="gap-2 p-4">
+        <Text className="text-sm font-medium text-foreground">Feature tour</Text>
+        <Text className="text-xs text-muted-foreground">
+          A quick walkthrough of the main surfaces (vault, add a secret, Emergency Kit, audit log).
+        </Text>
+        <Pressable
+          className="mt-1 self-start rounded-md border border-input bg-background px-4 py-2 active:opacity-80"
+          onPress={() => triggerReplayTour()}
+        >
+          <Text className="text-sm text-foreground">Replay tour</Text>
         </Pressable>
       </Card>
     </View>

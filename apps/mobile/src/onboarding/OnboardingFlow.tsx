@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect } from 'react';
 import { Modal, Text, View } from 'react-native';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardFooter } from '../../components/ui/card';
+import { Card, CardFooter } from '../../components/ui/card';
 import { onboardingSteps } from './steps';
 
 const STORAGE_KEY = 'vautr_onboarding_v1';

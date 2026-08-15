@@ -37,6 +37,13 @@ const NAV = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
+// Maps nav routes to the `data-tour` anchors the feature tour highlights (VTR-077).
+const TOUR_ANCHORS: Record<string, string | undefined> = {
+  '/vault': 'vault',
+  '/mfa': 'emergency-kit',
+  '/audit': 'audit',
+};
+
 function AuthedLayout() {
   const isLocked = useIsLocked();
   const navigate = useNavigate();
@@ -65,6 +72,7 @@ function AuthedLayout() {
             <Link
               key={to}
               to={to}
+              data-tour={TOUR_ANCHORS[to]}
               className={cn(
                 'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-raised hover:text-text',
                 'data-[status=active]:bg-surface-raised data-[status=active]:text-text',

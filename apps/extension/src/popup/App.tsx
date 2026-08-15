@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getApiUrl } from '../lib/apiUrl';
 import { triggerReplayOnboarding } from '../onboarding/OnboardingFlow';
+import { triggerReplayTour } from '../tour/TourOverlay';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
@@ -47,6 +48,13 @@ const TABS = [
   { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'groups', label: 'Groups', icon: Users },
 ];
+
+// Maps popup tabs to the `data-tour` anchors the feature tour highlights (VTR-077).
+const TOUR_ANCHORS: Record<string, string | undefined> = {
+  vault: 'vault',
+  mfa: 'emergency-kit',
+  inbox: 'audit',
+};
 
 export function App() {
   const status = usePopupStore((s) => s.status);
@@ -166,6 +174,7 @@ export function App() {
             <TabsTrigger
               key={t.id}
               value={t.id}
+              data-tour={TOUR_ANCHORS[t.id]}
               className="flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px]"
             >
               <t.icon className="size-4" aria-hidden="true" />
@@ -219,6 +228,13 @@ export function App() {
           onClick={() => triggerReplayOnboarding()}
         >
           Replay onboarding
+        </button>
+        <button
+          type="button"
+          className="rounded text-accent underline-offset-2 hover:underline focus-visible:outline-1 focus-visible:outline-ring"
+          onClick={() => triggerReplayTour()}
+        >
+          Replay tour
         </button>
         <button
           type="button"

@@ -20,6 +20,7 @@ pub mod project_state;
 pub mod runtime;
 pub mod state;
 pub mod theme;
+pub mod tour;
 pub mod ui_states;
 pub mod updater;
 

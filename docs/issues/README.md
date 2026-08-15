@@ -22,19 +22,17 @@ live during implementation rather than through the flat `done/` set.
   and closed as the features landed. VTR-073 added first-run guided onboarding
   (web + extension) via OnboardJS; the deferred feature/product *tour* is tracked
   as a follow-up (not yet a numbered issue).
-- `open/` — **VTR-074 + VTR-075 as of 2026-08-15**. Mobile + desktop onboarding to
-  match the web/extension flow (VTR-073). The shared step contract is
-  `docs/onboarding/spec.md`.
+- `open/` — **VTR-076 only, as of 2026-08-15**. A dedicated Emergency Kit
+  generation/download surface on all four clients (server kit/PDF already
+  exists; clients only show MFA recovery codes today). The deferred anchored
+  *feature tour* (VTR-077) is now **delivered** in `closed/`.
 
 ## Open issues (the real backlog)
-**None.** As of 2026-08-15 all tracked issues VTR-001..VTR-075 are done/closed.
-VTR-074 (mobile onboarding via `@onboardjs/react` + nativewind) and VTR-075
-(desktop native Rust port of the same flow) both landed and were verified
-(`hermes verify` green; desktop `cargo check` clean) on 2026-08-15.
-
-VTR-076 (dedicated Emergency Kit surface) is newly open — see below. The
-intentionally-deferred *feature tour* (anchored product walkthrough) remains a
-separate piece of work tracked in `docs/onboarding/spec.md` §"Deferred".
+**One.** As of 2026-08-15 all tracked issues VTR-001..VTR-075 plus the deferred
+anchored *feature tour* (VTR-077) are done/closed. VTR-076 (dedicated Emergency
+Kit surface) remains genuinely open — the server already implements the kit
+(BIP-39 mnemonic + PDF) but no client exposes a dedicated surface, so onboarding
+step 3 deep-links to MFA today.
 
 | Issue | Open as | Notes |
 |-------|---------|-------|
@@ -49,6 +47,7 @@ tracked in `docs/onboarding/spec.md` §"Deferred".
 | VTR-073 | `closed/VTR-073.md` | `@onboardjs/core` + `@onboardjs/react` added to web + extension; `OnboardingFlow` (first-run, `localStoragePersistence`) with welcome → create-vault → Emergency Kit → add-secret → done steps; replay affordance in Settings (web) and popup footer (ext). `hermes verify` green. |
 | VTR-074 | `closed/VTR-074.md` | Mobile (Expo/RN/nativewind) reuses `@onboardjs/react` (same engine/steps) via `OnboardingFlow`; AsyncStorage persistence through onboardjs `customOnDataLoad`/`customOnDataPersist`; replay in Settings. `hermes verify` green. |
 | VTR-075 | `closed/VTR-075.md` | Desktop (Rust/GPUI) native port of the flow (`apps/desktop/src/onboarding.rs` + overlay in `desktop_view.rs`); first-run-once via `~/.config/vautr/onboarding.json`; replay in Settings. `cargo check` + `hermes verify` green. |
+| VTR-077 | `closed/VTR-077.md` | Anchored feature-tour (product walkthrough) on all four clients. Web + extension: real `[data-tour]` element anchoring (scrim + highlight ring + positioned card). Mobile + desktop: centered-card sequence (no element-measurement primitive). Replay affordance in each Settings surface. `hermes verify` green; `cargo test` + `cargo fmt --check` clean. |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`

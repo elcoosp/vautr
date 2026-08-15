@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from '@/components/ui/sonner';
 import { OnboardingFlow } from '../onboarding/OnboardingFlow';
+import { TourOverlay } from '../tour/TourOverlay';
 import { App } from './App';
 import '@/styles/globals.css';
 
@@ -13,6 +14,7 @@ if (root) {
         <App />
         <Toaster position="bottom-center" />
       </OnboardingFlow>
+      <TourOverlay />
     </React.StrictMode>,
   );
 }

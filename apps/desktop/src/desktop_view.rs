@@ -221,6 +221,10 @@ pub struct DesktopView {
     // `None` = not showing. First-run-once is enforced by the persisted
     // `seen_v1` flag in ~/.config/vautr/onboarding.json.
     onboarding_step: Option<usize>,
+
+    // ── Feature tour (VTR-077) ──────────────────────────────────────────
+    // `Some(index)` = feature-tour overlay is showing (centered card sequence).
+    tour_step: Option<usize>,
     next_toast_id: u64,
     /// Pending, signature-verified update offered to the user (None = no update).
     /// VTR-049: set by the background update check; surfaced via a modal.
@@ -421,6 +425,8 @@ impl DesktopView {
             } else {
                 Some(0)
             },
+            // Feature tour: never auto-shown; started from Settings.
+            tour_step: None,
             secrets_rows: Vec::new(),
             secrets_loading: false,
             secrets_error: None,
@@ -2861,6 +2867,9 @@ impl Render for DesktopView {
         if self.is_unlocked() {
             if self.onboarding_step.is_some() {
                 return self.render_onboarding(cx).into_any_element();
+            }
+            if self.tour_step.is_some() {
+                return self.render_tour(cx).into_any_element();
             }
             self.render_app(cx).into_any_element()
         } else {
@@ -6183,6 +6192,111 @@ impl DesktopView {
         cx.notify();
     }
 
+    /// Feature-tour overlay (VTR-077) — centered card sequence (GPUI has no
+    /// element-anchoring primitive). Steps mirror `crate::tour::STEPS`.
+    fn render_tour(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let idx = self.tour_step.unwrap_or(0);
+        let total = crate::tour::STEPS.len();
+        let step = &crate::tour::STEPS[idx];
+        let is_last = idx + 1 >= total;
+
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.5 })
+            .child(
+                div()
+                    .w(px(420.))
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_5()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("Step {} of {}", idx + 1, total)),
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child(step.title),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(step.body),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_between()
+                                    .child(
+                                        Button::new("tour-back")
+                                            .label("Back")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    if let Some(i) = this.tour_step {
+                                                        if i > 0 {
+                                                            this.tour_step = Some(i - 1);
+                                                            cx.notify();
+                                                        }
+                                                    }
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .child(
+                                                Button::new("tour-skip")
+                                                    .label("Skip")
+                                                    .on_click(cx.listener(
+                                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                                            this.tour_step = None;
+                                                            cx.notify();
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new("tour-next")
+                                                    .primary()
+                                                    .label(if is_last { "Finish" } else { "Next" })
+                                                    .on_click(cx.listener(
+                                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                                            let idx = this.tour_step.unwrap_or(0);
+                                                            if idx + 1 >= crate::tour::STEPS.len() {
+                                                                this.tour_step = None;
+                                                            } else {
+                                                                this.tour_step = Some(idx + 1);
+                                                            }
+                                                            cx.notify();
+                                                        },
+                                                    )),
+                                            ),
+                                    ),
+                            ),
+                    ),
+            )
+    }
+
+    /// Start the feature tour from Settings.
+    fn trigger_replay_tour(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.tour_step = Some(0);
+        cx.notify();
+    }
+
     fn render_settings(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let machines = self.machines.clone();
         let tokens = self.tokens.clone();
@@ -6197,6 +6311,18 @@ impl DesktopView {
                                 .label("Replay onboarding")
                                 .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
                                     this.trigger_replay_onboarding(window, cx);
+                                })),
+                        ),
+                    ),
+            )
+            .child(
+                self.card("Feature tour", "A quick walkthrough of the main surfaces.")
+                    .child(
+                        h_flex().justify_between().items_center().child(
+                            Button::new("settings-replay-tour")
+                                .label("Replay tour")
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.trigger_replay_tour(window, cx);
                                 })),
                         ),
                     ),

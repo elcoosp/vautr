@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { router } from './router';
+import { TourOverlay } from './tour/TourOverlay';
 import './index.css';
 
 const root = document.getElementById('root');
@@ -15,5 +16,6 @@ createRoot(root).render(
     <OnboardingFlow>
       <RouterProvider router={router} />
     </OnboardingFlow>
+    <TourOverlay />
   </StrictMode>,
 );
