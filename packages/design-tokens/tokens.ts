@@ -10,7 +10,7 @@ export const tokens = {
     "foreground-dim": {"dark":"#6b7480","light":"#8a929c"},
     "border": {"dark":"#21272f","light":"#d9dde2"},
     "input": {"dark":"#21272f","light":"#d9dde2"},
-    "accent": {"dark":"#ff0000","light":"#1f8f74"},
+    "accent": {"dark":"#42b59a","light":"#1f8f74"},
     "accent-foreground": {"dark":"#070e16","light":"#f3fbf8"},
     "accent-dim": {"dark":"#42b59a26","light":"#1f8f7426"},
     "danger": {"dark":"#e85f61","light":"#c23b3d"},

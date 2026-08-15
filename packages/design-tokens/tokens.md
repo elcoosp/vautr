@@ -14,7 +14,7 @@ Source: `tokens.json`. Regenerate with `pnpm --filter @vautr/design-tokens build
 | `color.foreground-dim` | `#6b7480` | `#8a929c` |
 | `color.border` | `#21272f` | `#d9dde2` |
 | `color.input` | `#21272f` | `#d9dde2` |
-| `color.accent` | `#ff0000` | `#1f8f74` |
+| `color.accent` | `#42b59a` | `#1f8f74` |
 | `color.accent-foreground` | `#070e16` | `#f3fbf8` |
 | `color.accent-dim` | `#42b59a26` | `#1f8f7426` |
 | `color.danger` | `#e85f61` | `#c23b3d` |
