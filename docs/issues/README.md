@@ -32,8 +32,13 @@ VTR-074 (mobile onboarding via `@onboardjs/react` + nativewind) and VTR-075
 (desktop native Rust port of the same flow) both landed and were verified
 (`hermes verify` green; desktop `cargo check` clean) on 2026-08-15.
 
-The only intentionally-deferred follow-up is the anchored *feature tour* (a
-lightweight product walkthrough distinct from the first-run guided setup) —
+VTR-076 (dedicated Emergency Kit surface) is newly open — see below. The
+intentionally-deferred *feature tour* (anchored product walkthrough) remains a
+separate piece of work tracked in `docs/onboarding/spec.md` §"Deferred".
+
+| Issue | Open as | Notes |
+|-------|---------|-------|
+| VTR-076 | `open/VTR-076.md` | Dedicated Emergency Kit generation/download surface on all four clients (server kit/PDF already exists; clients only show MFA recovery codes). Onboarding step 3 deep-links here. |
 OnboardJS has no native spotlight/anchor API, so it is a separate piece of work
 tracked in `docs/onboarding/spec.md` §"Deferred".
 
