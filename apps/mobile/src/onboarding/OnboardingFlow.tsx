@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Modal, Text, View } from 'react-native';
 import { Button } from '../../components/ui/button';
 import { Card, CardFooter } from '../../components/ui/card';
+import { useSession } from '../../lib/session';
 import { onboardingSteps } from './steps';
 
 const STORAGE_KEY = 'vautr_onboarding_v1';
@@ -73,6 +74,13 @@ function OnboardingOverlay({ children }: { children: React.ReactNode }) {
  * loads.
  */
 export function OnboardingFlow({ children }: { children: React.ReactNode }) {
+  const username = useSession((s) => s.username);
+
+  // Onboarding only mounts once the user is logged in: its first step creates
+  // a vault via the API (requires an authenticated session) and the app cannot
+  // be navigated before login anyway.
+  if (!username) return <>{children}</>;
+
   return (
     <OnboardingProvider
       flowId="vautr-setup"

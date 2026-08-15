@@ -53,6 +53,7 @@ export async function login(username: string, password: string): Promise<void> {
   localStorage.setItem('vautr:username', username);
   vaultStore.getState().unlock();
   await instance.sync();
+  window.dispatchEvent(new CustomEvent('vautr:auth-change'));
 }
 
 /** Lock the client (clear in-memory keys) and the store. */

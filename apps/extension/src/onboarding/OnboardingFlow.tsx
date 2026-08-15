@@ -2,6 +2,7 @@ import { OnboardingProvider, useOnboarding } from '@onboardjs/react';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { usePopupStore } from '../popup/store';
 import { onboardingSteps } from './steps';
 
 const STORAGE_KEY = 'vautr_onboarding_v1';
@@ -69,9 +70,16 @@ function OnboardingOverlay({ children }: { children: React.ReactNode }) {
 
 /**
  * Wraps the popup with the OnboardingProvider. The flow shows once (localStorage
- * persistence) after first unlock and never blocks the popup on later loads.
+ * persistence) after the first unlock and never blocks the popup on later loads.
+ * It only mounts when the vault is unlocked: onboarding's first step creates a
+ * vault via the API (requires an authenticated session), and the app cannot be
+ * navigated before login anyway.
  */
 export function OnboardingFlow({ children }: { children: React.ReactNode }) {
+  const unlocked = usePopupStore((s) => s.status === 'unlocked');
+
+  if (!unlocked) return <>{children}</>;
+
   return (
     <OnboardingProvider
       flowId="vautr-setup"

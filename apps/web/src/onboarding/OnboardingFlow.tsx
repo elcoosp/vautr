@@ -2,6 +2,7 @@ import { OnboardingProvider, useOnboarding } from '@onboardjs/react';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { useSession } from '@/lib/useSession';
 import { onboardingComponents, onboardingSteps } from './steps';
 
 const STORAGE_KEY = 'vautr_onboarding_v1';
@@ -69,10 +70,16 @@ function OnboardingOverlay({ children }: { children: React.ReactNode }) {
 
 /**
  * Wraps the app with the OnboardingProvider. The flow shows once (localStorage
- * persistence) after register/login and never blocks the dashboard on later
- * loads.
+ * persistence) after the user is logged in, and never blocks the dashboard on
+ * later loads. Crucially, it only mounts when a session exists: onboarding's
+ * first step creates a vault via the API, which requires an authenticated
+ * session, and the app cannot be navigated until login anyway.
  */
 export function OnboardingFlow({ children }: { children: React.ReactNode }) {
+  const authed = useSession();
+
+  if (!authed) return <>{children}</>;
+
   return (
     <OnboardingProvider
       flowId="vautr-setup"
