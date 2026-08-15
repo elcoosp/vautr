@@ -1,24 +1,64 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { Button, ButtonText } from '../../components/ui/button';
+import { getTourAnchor } from './anchors';
 import { TOUR_STEPS } from './steps';
 
 export const TOUR_REPLAY_EVENT = 'vautr:replay-tour';
 
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Feature-tour overlay (VTR-077, mobile). RN has no element-measurement
- * primitive, so this is a centered-card sequence (not pixel-anchored) — same
- * visual language as first-run onboarding. Anchored tours on RN would require
- * `measure()` and are a follow-up.
+ * Feature-tour overlay (VTR-078, mobile). Upgraded from the centered-card
+ * sequence (VTR-077) to a true element-anchored spotlight: the active step's
+ * target registers a ref via `registerTourAnchor`, and we `measure()` it to
+ * draw a dim scrim + highlight ring + positioned card. Steps without a mounted
+ * target (e.g. a surface not currently open) fall back to a centered card — the
+ * same graceful behaviour as the web overlay when no `[data-tour]` element
+ * exists.
+ *
+ * Rendered as a transparent Modal so the underlying screen stays mounted and
+ * measurable.
  */
 export function TourOverlay() {
   const [index, setIndex] = useState<number | null>(null);
+  const [rect, setRect] = useState<Rect | null>(null);
 
   useEffect(() => {
     const onReplay = () => setIndex(0);
     window.addEventListener(TOUR_REPLAY_EVENT, onReplay);
     return () => window.removeEventListener(TOUR_REPLAY_EVENT, onReplay);
   }, []);
+
+  // Measure the active step's anchor whenever the step changes (or the layout
+  // shifts). Mirrors the web `useLayoutEffect(measure, [index])` + resize/scroll
+  // listeners.
+  useLayoutEffect(() => {
+    if (index === null) {
+      setRect(null);
+      return;
+    }
+    const anchorId = TOUR_STEPS[index]?.anchor;
+    const ref = anchorId ? getTourAnchor(anchorId) : undefined;
+    if (ref?.current) {
+      ref.current.measure(
+        (_x: number, _y: number, width: number, height: number, pageX: number, pageY: number) => {
+          if (width > 0 && height > 0) {
+            setRect({ x: pageX, y: pageY, width, height });
+          } else {
+            setRect(null);
+          }
+        },
+      );
+    } else {
+      setRect(null);
+    }
+  }, [index]);
 
   if (index === null) return null;
   const step = TOUR_STEPS[index];
@@ -28,10 +68,53 @@ export function TourOverlay() {
   const next = () => (isLast ? finish() : setIndex(index + 1));
   const back = () => setIndex(Math.max(0, index - 1));
 
+  // Position the card below the highlighted element, clamped to the viewport.
+  const cardWidth = Math.min(320, (rect?.width ?? 0) + 40 || 320);
+  const cardTop = rect
+    ? Math.min(
+        rect.y + rect.height + 12,
+        (typeof window !== 'undefined' ? window.innerHeight : 700) - 200,
+      )
+    : (typeof window !== 'undefined' ? window.innerHeight : 700) / 2 - 100;
+  const cardLeft = rect
+    ? Math.max(
+        12,
+        Math.min(
+          rect.x,
+          (typeof window !== 'undefined' ? window.innerWidth : 360) - cardWidth - 12,
+        ),
+      )
+    : (typeof window !== 'undefined' ? window.innerWidth : 360) / 2 - cardWidth / 2;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 700;
+
   return (
     <Modal transparent animationType="fade" visible onRequestClose={finish}>
-      <Pressable className="flex-1 items-center justify-center bg-black/60" onPress={back}>
-        <Pressable className="w-[88%] max-w-[380px] rounded-2xl border border-border bg-surface p-5">
+      <Pressable className="flex-1 bg-black/60" onPress={back}>
+        {/* Highlight ring around the anchored element. */}
+        {rect && (
+          <View
+            pointerEvents="none"
+            className="absolute rounded-xl"
+            style={{
+              top: rect.y - 6,
+              left: rect.x - 6,
+              width: rect.width + 12,
+              height: rect.height + 12,
+              borderWidth: 2,
+              borderColor: '#42b59a',
+            }}
+          />
+        )}
+        {/* Tour card, positioned next to the anchor. */}
+        <View
+          className="absolute rounded-2xl border border-border bg-surface p-5"
+          style={{
+            top: cardTop,
+            left: Math.max(12, Math.min(cardLeft, vw - cardWidth - 12)),
+            width: cardWidth,
+          }}
+        >
           <Text className="mb-1 text-xs text-text-muted">
             Step {index + 1} of {TOUR_STEPS.length}
           </Text>
@@ -50,12 +133,15 @@ export function TourOverlay() {
               </Button>
             </View>
           </View>
-        </Pressable>
+        </View>
+        {/* Keep the whole overlay inside the viewport bounds. */}
+        <View style={{ position: 'absolute', width: vw, height: vh }} pointerEvents="none" />
       </Pressable>
     </Modal>
   );
 }
 
+/** Ask the TourOverlay to (re)start the tour from Settings. */
 export function triggerReplayTour() {
   window.dispatchEvent(new Event(TOUR_REPLAY_EVENT));
 }

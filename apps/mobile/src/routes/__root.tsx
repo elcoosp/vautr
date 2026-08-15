@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ToastProvider } from '../../components/ui/toast';
 import { bootVautrCore } from '../../lib/client';
+import { TourOverlay } from '../tour/TourOverlay';
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -25,6 +26,8 @@ function RootLayout() {
       <ToastProvider>
         <View className="flex-1 bg-background">
           <Outlet />
+          {/* Feature-tour overlay (VTR-078): anchored spotlight layer above the app. */}
+          <TourOverlay />
         </View>
       </ToastProvider>
     </SafeAreaProvider>

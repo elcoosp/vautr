@@ -39,7 +39,7 @@ use vautr_sharing::ShareGroupKey;
 
 /// Which post-login section is active.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Section {
+pub enum Section {
     Dashboard,
     Projects,
     Vault,
@@ -50,6 +50,18 @@ enum Section {
     Mfa,
     ImportExport,
     Settings,
+}
+
+impl Section {
+    /// Map a tour step `section` id (see `crate::tour`) to a `Section`.
+    pub(crate) fn from_tour_id(id: &str) -> Self {
+        match id {
+            "vault" => Section::Vault,
+            "mfa" => Section::Mfa,
+            "settings" => Section::Settings,
+            _ => Section::Vault,
+        }
+    }
 }
 
 /// Render a self-contained, printable Emergency Kit HTML document holding the
@@ -258,9 +270,17 @@ pub struct DesktopView {
     // `seen_v1` flag in ~/.config/vautr/onboarding.json.
     onboarding_step: Option<usize>,
 
-    // ── Feature tour (VTR-077) ──────────────────────────────────────────
-    // `Some(index)` = feature-tour overlay is showing (centered card sequence).
+    // ── Feature tour (VTR-077 / VTR-078) ───────────────────────────────────
+    // `Some(index)` = feature-tour overlay is showing. VTR-078 upgraded the
+    // tour from a blind centered card to a true element-anchored spotlight: the
+    // overlay renders on top of the live app, switches to the step's section so
+    // the target is visible, and measures that surface's bounds via `on_prepaint`
+    // to draw the highlight ring + position the card.
     tour_step: Option<usize>,
+    /// Measured bounds (px, window space) of the anchor surface for the active
+    /// tour step. Populated during prepaint; used to draw the highlight ring and
+    /// position the tour card.
+    tour_anchor_bounds: Option<Bounds<Pixels>>,
     next_toast_id: u64,
     /// Pending, signature-verified update offered to the user (None = no update).
     /// VTR-049: set by the background update check; surfaced via a modal.
@@ -467,6 +487,7 @@ impl DesktopView {
             },
             // Feature tour: never auto-shown; started from Settings.
             tour_step: None,
+            tour_anchor_bounds: None,
             secrets_rows: Vec::new(),
             secrets_loading: false,
             secrets_error: None,
@@ -2938,15 +2959,23 @@ impl DesktopView {
 }
 
 impl Render for DesktopView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.is_unlocked() {
             if self.onboarding_step.is_some() {
                 return self.render_onboarding(cx).into_any_element();
             }
-            if self.tour_step.is_some() {
-                return self.render_tour(cx).into_any_element();
+            let touring = self.tour_step.is_some();
+            let app = self.render_app(cx);
+            if touring {
+                // VTR-078: render the tour as a true element-anchored overlay
+                // ON TOP of the live app (the underlying view stays mounted so the
+                // anchor surface is measurable). See `render_tour`.
+                return div()
+                    .child(app)
+                    .child(self.render_tour(window, cx))
+                    .into_any_element();
             }
-            self.render_app(cx).into_any_element()
+            app.into_any_element()
         } else {
             self.render_login(cx).into_any_element()
         }
@@ -3156,6 +3185,8 @@ impl DesktopView {
     /// The post-login shell: a web-style left sidebar + active section content.
     fn render_app(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
+        let entity = cx.entity();
+        let touring = self.tour_step.is_some();
         let content = match section {
             Section::Dashboard => self.render_dashboard(cx).into_any_element(),
             Section::Projects => self.render_projects(cx).into_any_element(),
@@ -3174,10 +3205,41 @@ impl DesktopView {
             .size_full()
             .bg(theme::BG)
             .child(
-                h_flex()
-                    .size_full()
-                    .child(self.render_sidebar(cx))
-                    .child(div().flex_1().min_w_0().h_full().child(content)),
+                h_flex().size_full().child(self.render_sidebar(cx)).child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .relative()
+                        .child(content)
+                        // VTR-078: while the tour is active, measure this
+                        // content surface's post-layout bounds so the tour
+                        // overlay can draw a true element-anchored highlight
+                        // ring + position the card next to it. Only notify on
+                        // change to avoid a layout↔paint notification loop.
+                        .when(touring, |d| {
+                            d.child(
+                                canvas(
+                                    move |bounds: Bounds<Pixels>, _window, cx: &mut App| {
+                                        let changed = entity
+                                            .read(cx)
+                                            .tour_anchor_bounds
+                                            .map(|b| b != bounds)
+                                            .unwrap_or(true);
+                                        if changed {
+                                            entity.update(cx, |this, cx| {
+                                                this.tour_anchor_bounds = Some(bounds);
+                                                cx.notify();
+                                            });
+                                        }
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .inset_0(),
+                            )
+                        }),
+                ),
             )
             .when(self.vault_adding, |this| {
                 this.child(self.render_add_item_modal(cx))
@@ -6269,21 +6331,62 @@ impl DesktopView {
 
     /// Feature-tour overlay (VTR-077) — centered card sequence (GPUI has no
     /// element-anchoring primitive). Steps mirror `crate::tour::STEPS`.
-    fn render_tour(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_tour(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let idx = self.tour_step.unwrap_or(0);
         let total = crate::tour::STEPS.len();
         let step = &crate::tour::STEPS[idx];
         let is_last = idx + 1 >= total;
+        let anchor = self.tour_anchor_bounds;
+        let accent = theme::ACCENT;
+
+        // Scrim: a full-window dim layer (non-interactive; the card has explicit
+        // Back/Skip controls). Kept as a plain element so we don't need the
+        // InteractiveElement trait on a bare Div.
+        let scrim = h_flex().absolute().inset_0().bg(Rgba {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5,
+        });
+
+        // Highlight ring around the anchored surface (if measured). Uses gpui_component
+        // Div sizing (`.w`/`.h`); gpui::Div's `.width`/`.height` aren't in scope here.
+        let ring = anchor.map(|b| {
+            v_flex()
+                .absolute()
+                .top(b.origin.y - px(8.))
+                .left(b.origin.x - px(8.))
+                .w(b.size.width + px(16.))
+                .h(b.size.height + px(16.))
+                .rounded_lg()
+                .border_2()
+                .border_color(accent)
+        });
+
+        // Position the card below the highlighted surface, clamped to the window.
+        let win = window.bounds();
+        let (card_top, card_left) = match anchor {
+            Some(b) => {
+                let top = (b.origin.y + b.size.height + px(16.)).min(win.size.height - px(220.));
+                let left = b.origin.x.max(px(16.));
+                (top, left)
+            }
+            None => (
+                win.size.height / 2. - px(110.),
+                win.size.width / 2. - px(210.),
+            ),
+        };
 
         div()
             .absolute()
             .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.5 })
+            .child(scrim)
+            .children(ring)
             .child(
                 div()
+                    .absolute()
+                    .top(card_top)
+                    .left(card_left)
                     .w(px(420.))
                     .max_w_full()
                     .rounded_lg()
@@ -6322,11 +6425,11 @@ impl DesktopView {
                                             .label("Back")
                                             .on_click(cx.listener(
                                                 |this, _: &gpui::ClickEvent, _window, cx| {
-                                                    if let Some(i) = this.tour_step {
-                                                        if i > 0 {
-                                                            this.tour_step = Some(i - 1);
-                                                            cx.notify();
-                                                        }
+                                                    if this.tour_step.unwrap_or(0) > 0 {
+                                                        this.tour_step =
+                                                            Some(this.tour_step.unwrap_or(0) - 1);
+                                                        this.tour_anchor_bounds = None;
+                                                        cx.notify();
                                                     }
                                                 },
                                             )),
@@ -6340,6 +6443,7 @@ impl DesktopView {
                                                     .on_click(cx.listener(
                                                         |this, _: &gpui::ClickEvent, _window, cx| {
                                                             this.tour_step = None;
+                                                            this.tour_anchor_bounds = None;
                                                             cx.notify();
                                                         },
                                                     )),
@@ -6349,12 +6453,23 @@ impl DesktopView {
                                                     .primary()
                                                     .label(if is_last { "Finish" } else { "Next" })
                                                     .on_click(cx.listener(
-                                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                                        move |this, _: &gpui::ClickEvent, window, cx| {
                                                             let idx = this.tour_step.unwrap_or(0);
                                                             if idx + 1 >= crate::tour::STEPS.len() {
                                                                 this.tour_step = None;
+                                                                this.tour_anchor_bounds = None;
                                                             } else {
+                                                                // VTR-078: switch to the next step's
+                                                                // section so its surface is on-screen
+                                                                // and measurable before we anchor.
+                                                                let next = &crate::tour::STEPS[idx + 1];
                                                                 this.tour_step = Some(idx + 1);
+                                                                this.tour_anchor_bounds = None;
+                                                                this.activate_section(
+                                                                    next.resolve_section(),
+                                                                    window,
+                                                                    cx,
+                                                                );
                                                             }
                                                             cx.notify();
                                                         },
@@ -6367,8 +6482,12 @@ impl DesktopView {
     }
 
     /// Start the feature tour from Settings.
-    fn trigger_replay_tour(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn trigger_replay_tour(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let step = &crate::tour::STEPS[0];
+        self.section = step.resolve_section();
         self.tour_step = Some(0);
+        self.tour_anchor_bounds = None;
+        self.activate_section(self.section, window, cx);
         cx.notify();
     }
 

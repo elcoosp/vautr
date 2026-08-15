@@ -18,22 +18,20 @@ live during implementation rather than through the flat `done/` set.
 - `done/` — VTR-001..VTR-065. Acceptance criteria satisfied by code that exists
   (verified by source grep, not by assertion). Each file has a
   `status: done (2026-08-13)` line. Kept for history/audit; do not re-implement.
-- `closed/` — VTR-066..VTR-073. The most recent workstream batches, tracked live
+- `closed/` — VTR-066..VTR-078. The most recent workstream batches, tracked live
   and closed as the features landed. VTR-073 added first-run guided onboarding
   (web + extension) via OnboardJS; the deferred feature/product *tour* is tracked
-  as a follow-up (not yet a numbered issue).
-- `open/` — **VTR-078, as of 2026-08-15**. VTR-078: true
-  element-anchored feature tour on mobile (RN `measure()`) + desktop (GPUI
-  `bounds()`), upgrading the centered-card tour from VTR-077. VTR-076
-  (dedicated Emergency Kit surface) is now closed.
+  as VTR-078 (now also closed).
+- `open/` — **none, as of 2026-08-15**. VTR-078 (true element-anchored feature
+  tour on mobile + desktop) is now closed. VTR-076 (dedicated Emergency Kit
+  surface) is closed.
 
 ## Open issues (the real backlog)
-**One.** As of 2026-08-15 all tracked issues VTR-001..VTR-077 are done/closed.
-VTR-078 (true element-anchored feature tour) remains open.
+**None.** As of 2026-08-15 all tracked issues VTR-001..VTR-078 are done/closed.
 
 | Issue | Open as | Notes |
 |-------|---------|-------|
-| VTR-078 | `open/VTR-078.md` | True element-anchored feature tour on mobile (RN `measure()`) + desktop (GPUI `bounds()`), upgrading the centered-card tour from VTR-077. |
+| — | — | No open issues remain. |
 OnboardJS has no native spotlight/anchor API, so it is a separate piece of work
 tracked in `docs/onboarding/spec.md` §"Deferred".
 
@@ -46,6 +44,7 @@ tracked in `docs/onboarding/spec.md` §"Deferred".
 | VTR-075 | `closed/VTR-075.md` | Desktop (Rust/GPUI) native port of the flow (`apps/desktop/src/onboarding.rs` + overlay in `desktop_view.rs`); first-run-once via `~/.config/vautr/onboarding.json`; replay in Settings. `cargo check` + `hermes verify` green. |
 | VTR-077 | `closed/VTR-077.md` | Anchored feature-tour (product walkthrough) on all four clients. Web + extension: real `[data-tour]` element anchoring (scrim + highlight ring + positioned card). Mobile + desktop: centered-card sequence (no element-measurement primitive). Replay affordance in each Settings surface. `hermes verify` green; `cargo test` + `cargo fmt --check` clean. |
 | VTR-076 | `closed/VTR-076.md` | Dedicated Emergency Kit (Recovery Key) surface on all four clients. SDK `register()` returns + KEK-seals the BIP-39 mnemonic (persisted encrypted; server never sees it). Onboarding step 3 shows it once (copy/download). Settings surface: reveal/copy/download on web+ext+mobile; desktop reveals + writes `~/Downloads/vautr-emergency-kit.html`. ZK-safe at-rest. `hermes verify` green; `cargo test` + `cargo fmt --check` + biome clean. |
+| VTR-078 | `closed/VTR-078.md` | True element-anchored feature tour on mobile (RN `ref.measure()` via a `TourAnchor` ref registry overlay) + desktop (GPUI `canvas`/`on_prepaint` bounds measurement; tour renders as an overlay on the live view, switching `Section` per step). Upgrades the VTR-077 centered-card tour on those two clients to match the web/extension `[data-tour]` spotlight. `hermes verify` green; `cargo test` + `cargo fmt --check` + biome clean. |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`

@@ -30,6 +30,7 @@ import { useToast } from '../../components/ui/toast';
 import { requireBiometric } from '../../lib/biometrics';
 import { isLocalVaultActive, services } from '../../lib/client';
 import { useSession } from '../../lib/session';
+import { TourAnchor } from '../tour/anchors';
 
 export const Route = createFileRoute('/_app')({
   component: AppShell,
@@ -117,16 +118,22 @@ function AppShell() {
       {/* Bottom tab bar — three primary sections. */}
       <View className="flex-row items-center border-t border-border">
         {PRIMARY.map(({ to, label, icon: Icon }) => (
-          <Button
+          <TourAnchor
             key={to}
-            variant="ghost"
-            size="sm"
-            className="flex-1 flex-col gap-0.5 py-2"
-            onPress={go(to)}
+            id={
+              to === '/settings' ? 'settings-tab' : to === '/secrets' ? 'secrets-tab' : `tab-${to}`
+            }
           >
-            <Icon size={18} className="text-foreground" />
-            <ButtonText className="text-[11px]">{label}</ButtonText>
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 flex-col gap-0.5 py-2"
+              onPress={go(to)}
+            >
+              <Icon size={18} className="text-foreground" />
+              <ButtonText className="text-[11px]">{label}</ButtonText>
+            </Button>
+          </TourAnchor>
         ))}
         <Sheet>
           <SheetTrigger asChild>
@@ -141,16 +148,17 @@ function AppShell() {
             </SheetHeader>
             <View className="mt-2 flex-col gap-1">
               {MORE.map(({ to, label, icon: Icon }) => (
-                <Button
-                  key={to}
-                  variant="ghost"
-                  size="sm"
-                  className="flex-row justify-start gap-3 py-2"
-                  onPress={go(to)}
-                >
-                  <Icon size={18} className="text-foreground" />
-                  <ButtonText className="text-sm">{label}</ButtonText>
-                </Button>
+                <TourAnchor key={to} id={to === '/mfa' ? 'mfa-tab' : `tab-${to}`}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-row justify-start gap-3 py-2"
+                    onPress={go(to)}
+                  >
+                    <Icon size={18} className="text-foreground" />
+                    <ButtonText className="text-sm">{label}</ButtonText>
+                  </Button>
+                </TourAnchor>
               ))}
             </View>
           </SheetContent>
