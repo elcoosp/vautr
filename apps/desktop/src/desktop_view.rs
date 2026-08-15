@@ -178,6 +178,9 @@ pub struct DesktopView {
     // ── Login form inputs ───────────────────────────────────────────────
     username_input: Entity<InputState>,
     password_input: Entity<InputState>,
+    /// Register-mode only: "Confirm master password" field, mirrors the web
+    /// register form (which requires password confirmation).
+    confirm_password_input: Entity<InputState>,
     /// Keep subscriptions alive with the view.
     _subscriptions: Vec<Subscription>,
 
@@ -344,7 +347,19 @@ impl DesktopView {
 
         let username_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("you@example.com"));
-        let password_input = cx.new(|cx| InputState::new(window, cx).placeholder("••••••••"));
+        // VTR-088: master/confirm password must be masked (dots, not plaintext).
+        // `masked(true)` renders the value as dots; `mask_toggle()` adds the
+        // eye button so the user can reveal temporarily.
+        let password_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("••••••••")
+                .masked(true)
+        });
+        let confirm_password_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("••••••••")
+                .masked(true)
+        });
 
         // Pre-fill the stored username.
         if !stored_username.is_empty() {
@@ -408,6 +423,7 @@ impl DesktopView {
             focus_handle: cx.focus_handle(),
             username_input,
             password_input,
+            confirm_password_input,
             _subscriptions,
             login_state: FormState::Idle,
             login_mode: LoginMode::Login,
@@ -500,6 +516,10 @@ impl DesktopView {
         self.password_input.read(cx).value().to_string()
     }
 
+    fn confirm_password(&self, cx: &mut Context<Self>) -> String {
+        self.confirm_password_input.read(cx).value().to_string()
+    }
+
     fn api(&self) -> ApiClient {
         ApiClient::new(&self.server_url)
     }
@@ -509,7 +529,15 @@ impl DesktopView {
     fn do_register(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let username = self.username(cx);
         let password = self.password(cx);
+        let confirm = self.confirm_password(cx);
         let server_url = self.server_url.clone();
+
+        // Register requires a confirmed master password (mirrors the web form).
+        if password != confirm {
+            self.login_state = FormState::Error("Passwords do not match.".into());
+            cx.notify();
+            return;
+        }
 
         if username.is_empty() || password.is_empty() {
             self.login_state = FormState::Error("Username and password are required.".into());
@@ -525,24 +553,38 @@ impl DesktopView {
             let auth = AuthClient::new(&server_url);
             let result = auth.register(&username, &password).await;
 
-            this.update(cx, |this, cx| match result {
+            match result {
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.login_state = FormState::Error(format!("Registration failed: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
                 Ok(reg) => {
                     // Seal the Recovery Key mnemonic under the KEK so it can be
-                    // re-shown later (Emergency Kit) without ever leaving the device
-                    // in plaintext.
+                    // re-shown later (Emergency Kit) without ever leaving the
+                    // device in plaintext.
                     let mk = match kdf::derive_master_key(&password, &reg.kdf_salt) {
                         Ok(m) => m,
                         Err(e) => {
-                            this.login_state = FormState::Error(format!("MK derive: {e}"));
-                            cx.notify();
+                            this.update(cx, |this, cx| {
+                                this.login_state = FormState::Error(format!("MK derive: {e}"));
+                                cx.notify();
+                            })
+                            .ok();
                             return;
                         }
                     };
                     let kek = match key_tree::derive_kek(&mk) {
                         Ok(k) => k,
                         Err(e) => {
-                            this.login_state = FormState::Error(format!("KEK derive: {e}"));
-                            cx.notify();
+                            this.update(cx, |this, cx| {
+                                this.login_state = FormState::Error(format!("KEK derive: {e}"));
+                                cx.notify();
+                            })
+                            .ok();
                             return;
                         }
                     };
@@ -559,16 +601,36 @@ impl DesktopView {
                     };
                     let _ = cfg.save();
 
-                    this.recovery_mnemonic = Some(reg.recovery_mnemonic.clone());
-                    this.login_state = FormState::Success;
-                    cx.notify();
+                    // Log in immediately so a session token is minted and the
+                    // vault client is built — otherwise `is_unlocked()` stays
+                    // false and we'd remain on the register screen (web auto-
+                    // logs-in after register; the desktop must do the same).
+                    let login = match auth.login(&username, &password, &reg.kdf_salt).await {
+                        Ok(l) => l,
+                        Err(e) => {
+                            this.update(cx, |this, cx| {
+                                this.login_state =
+                                    FormState::Error(format!("Login after register failed: {e}"));
+                                cx.notify();
+                            })
+                            .ok();
+                            return;
+                        }
+                    };
+                    this.update(cx, |this, cx| {
+                        this.recovery_mnemonic = Some(reg.recovery_mnemonic.clone());
+                    })
+                    .ok();
+                    Self::apply_login(
+                        this.clone(),
+                        login,
+                        password.clone(),
+                        server_url.clone(),
+                        cx,
+                    )
+                    .await;
                 }
-                Err(e) => {
-                    this.login_state = FormState::Error(format!("Registration failed: {e}"));
-                    cx.notify();
-                }
-            })
-            .ok();
+            }
         })
         .detach();
     }
@@ -612,135 +674,17 @@ impl DesktopView {
                 }
             };
 
-            let db_path = state::db_path();
-            let client =
-                match state::build_client(&db_path, &server_url, &login.session_token).await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        this.update(cx, |this, cx| {
-                            this.login_state = FormState::Error(format!("Vault setup failed: {e}"));
-                            cx.notify();
-                        })
-                        .ok();
-                        return;
-                    }
-                };
-
-            let mp = Zeroizing::new(password);
-            let mk = match kdf::derive_master_key(&mp, &kdf_salt) {
-                Ok(m) => m,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_state = FormState::Error(format!("MK derive: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
-            let kek = match key_tree::derive_kek(&mk) {
-                Ok(k) => k,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_state = FormState::Error(format!("KEK derive: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
-
-            // Open the KEK-sealed Recovery Key mnemonic from the config so the
-            // Emergency Kit can be shown (ZK: opened locally; never transmitted).
-            let sealed_mnemonic = VaultConfig::load()
-                .and_then(|c| c.recovery_mnemonic_enc)
-                .and_then(|b| B64.decode(&b).ok())
-                .and_then(|ct| aead::decrypt(&kek, &Uuid::nil(), 0, &ct).ok())
-                .map(|pt| String::from_utf8_lossy(&pt).into_owned());
-
-            let dek: Zeroizing<[u8; 32]> = match (|| -> Result<Zeroizing<[u8; 32]>, String> {
-                let svk_bytes = aead::decrypt(&kek, &Uuid::nil(), 0, &login.wrapped_svk)
-                    .map_err(|_| "SVK unwrap failed".to_string())?;
-                if svk_bytes.len() != 32 {
-                    return Err("malformed SVK".into());
-                }
-                let mut svk = Zeroizing::new([0u8; 32]);
-                svk.copy_from_slice(&svk_bytes);
-                // VTR-040: pin the SVK into RAM so it cannot be swapped to disk.
-                // Best-effort — a denied mlock (e.g. no CAP_IPC_LOCK) only weakens
-                // the guarantee and must never break unlock.
-                let _ = lock_secret_memory(svk.as_slice());
-                key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
-            })() {
-                Ok(d) => d,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_state = FormState::Error(format!("DEK derive: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
-
-            let local_gen = login.min_enc_key_gen.max(1);
-            match client
-                .unlock_with_password(mp, &kdf_salt, &login.wrapped_svk, Uuid::nil(), local_gen)
-                .await
-            {
-                Ok(()) => {}
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_state = FormState::Error(format!("Unlock failed: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            }
-
-            let items = match client.search("").await {
-                Ok(items) => items,
-                Err(e) => {
-                    this.update(cx, |this, cx| {
-                        this.login_state = FormState::Error(format!("Search failed: {e}"));
-                        cx.notify();
-                    })
-                    .ok();
-                    return;
-                }
-            };
-
-            this.update(cx, |this, cx| {
-                this.client = Some(client);
-                this.dek = Some(dek);
-                this.token = Some(login.session_token.clone());
-                this.recovery_mnemonic = sealed_mnemonic;
-                let _ = state::save_session(&state::PersistedSession {
-                    token: login.session_token.clone(),
-                    wrapped_svk_b64: B64.encode(&login.wrapped_svk),
-                    min_enc_key_gen: login.min_enc_key_gen,
-                });
-                this.last_activity = Instant::now();
-                this.vault.set_items(items);
-                this.section = Section::Vault;
-                this.login_state = FormState::Success;
-                cx.notify();
-
-                // VTR-047: subscribe to the reactive event bus so quarantine
-                // reaper outcomes surface in the UI (recovery toast + refresh).
-                this.subscribe_quarantine_events(cx);
-
-                // VTR-056 parity: subscribe so 412/conflict events during sync
-                // surface the conflict-resolution modal in the desktop UI.
-                this.subscribe_conflict_events(cx);
-
-                // VTR-049: check for a signature-verified update in the
-                // background (never blocks the UI). Honors the auto-update
-                // preference loaded from VaultConfig.
-                this.check_for_updates(cx);
-            })
-            .ok();
+            // Hand off to the shared post-authentication setup: builds the
+            // VautrClient + session token, derives the vault keys, unlocks the
+            // local store, persists the session, and switches to the app view.
+            Self::apply_login(
+                this.clone(),
+                login,
+                password.clone(),
+                server_url.clone(),
+                cx,
+            )
+            .await;
         })
         .detach();
     }
@@ -829,8 +773,7 @@ impl DesktopView {
                 this.update(cx, |this, cx| {
                     this.login_state = FormState::Error(format!("Unlock failed: {e}"));
                     cx.notify();
-                })
-                .ok();
+                });
                 return;
             }
 
@@ -861,6 +804,157 @@ impl DesktopView {
             .ok();
         })
         .detach();
+    }
+
+    /// Shared post-authentication setup used by `do_login` and `do_register`.
+    ///
+    /// Builds the `VautrClient` from a successful OPAQUE login result, derives
+    /// the vault keys (MK → KEK → DEK), unlocks the local store, persists the
+    /// session, and switches to the main app view. `register` MUST also call
+    /// this so a session token is minted and `is_unlocked()` becomes true —
+    /// otherwise the login screen would remain after a successful register
+    /// (the web app auto-logs-in after register; the desktop must do the same).
+    async fn apply_login(
+        this: WeakEntity<DesktopView>,
+        login: crate::auth_client::LoginResult,
+        password: String,
+        server_url: String,
+        cx: &mut AsyncApp,
+    ) {
+        let db_path = state::db_path();
+        let client = match state::build_client(&db_path, &server_url, &login.session_token).await {
+            Ok(c) => c,
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("Vault setup failed: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        };
+
+        let kdf_salt = match VaultConfig::load().and_then(|c| c.kdf_salt_bytes().ok()) {
+            Some(s) => s,
+            None => {
+                this.update(cx, |this, cx| {
+                    this.login_state =
+                        FormState::Error("No local KDF salt found. Please register first.".into());
+                    cx.notify();
+                });
+                return;
+            }
+        };
+
+        let mp = Zeroizing::new(password);
+        let mk = match kdf::derive_master_key(&mp, &kdf_salt) {
+            Ok(m) => m,
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("MK derive: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        };
+        let kek = match key_tree::derive_kek(&mk) {
+            Ok(k) => k,
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("KEK derive: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        };
+
+        // Open the KEK-sealed Recovery Key mnemonic from the config so the
+        // Emergency Kit can be shown (ZK: opened locally; never transmitted).
+        let sealed_mnemonic = VaultConfig::load()
+            .and_then(|c| c.recovery_mnemonic_enc)
+            .and_then(|b| B64.decode(&b).ok())
+            .and_then(|ct| aead::decrypt(&kek, &Uuid::nil(), 0, &ct).ok())
+            .map(|pt| String::from_utf8_lossy(&pt).into_owned());
+
+        let dek: Zeroizing<[u8; 32]> = match (|| -> Result<Zeroizing<[u8; 32]>, String> {
+            let svk_bytes = aead::decrypt(&kek, &Uuid::nil(), 0, &login.wrapped_svk)
+                .map_err(|_| "SVK unwrap failed".to_string())?;
+            if svk_bytes.len() != 32 {
+                return Err("malformed SVK".into());
+            }
+            let mut svk = Zeroizing::new([0u8; 32]);
+            svk.copy_from_slice(&svk_bytes);
+            // VTR-040: pin the SVK into RAM so it cannot be swapped to disk.
+            // Best-effort — a denied mlock (e.g. no CAP_IPC_LOCK) only weakens
+            // the guarantee and must never break unlock.
+            let _ = lock_secret_memory(svk.as_slice());
+            key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
+        })() {
+            Ok(d) => d,
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("DEK derive: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        };
+
+        let local_gen = login.min_enc_key_gen.max(1);
+        match client
+            .unlock_with_password(mp, &kdf_salt, &login.wrapped_svk, Uuid::nil(), local_gen)
+            .await
+        {
+            Ok(()) => {}
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("Unlock failed: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        }
+
+        let items = match client.search("").await {
+            Ok(items) => items,
+            Err(e) => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(format!("Search failed: {e}"));
+                    cx.notify();
+                });
+                return;
+            }
+        };
+
+        this.update(cx, |this, cx| {
+            this.client = Some(client);
+            this.dek = Some(dek);
+            this.token = Some(login.session_token.clone());
+            this.recovery_mnemonic = sealed_mnemonic;
+            let _ = state::save_session(&state::PersistedSession {
+                token: login.session_token.clone(),
+                wrapped_svk_b64: B64.encode(&login.wrapped_svk),
+                min_enc_key_gen: login.min_enc_key_gen,
+            });
+            this.last_activity = Instant::now();
+            this.vault.set_items(items);
+            this.section = Section::Vault;
+            this.login_state = FormState::Success;
+            cx.notify();
+
+            // VTR-047: subscribe to the reactive event bus so quarantine
+            // reaper outcomes surface in the UI (recovery toast + refresh).
+            this.subscribe_quarantine_events(cx);
+
+            // VTR-056 parity: subscribe so 412/conflict events during sync
+            // surface the conflict-resolution modal in the desktop UI.
+            this.subscribe_conflict_events(cx);
+
+            // VTR-049: check for a signature-verified update in the
+            // background (never blocks the UI). Honors the auto-update
+            // preference loaded from VaultConfig.
+            let _ = this.check_for_updates(cx);
+        })
+        .ok();
     }
 
     // ── Toast system (§8: single transient-feedback channel) ────────────
@@ -1423,8 +1517,7 @@ impl DesktopView {
                 this.update(cx, |this, cx| {
                     this.vault.set_items(items);
                     cx.notify();
-                })
-                .ok();
+                });
             }
         })
         .detach();
@@ -1440,6 +1533,7 @@ impl DesktopView {
             .unwrap_or(true);
         let view_entity = cx.entity();
         cx.spawn(async move |_this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest (VTR-087: Handle::current panic otherwise)
             let updater = updater::Updater::new(env!("CARGO_PKG_VERSION"), auto);
             let decision = match updater.check().await {
                 Ok(d) => d,
@@ -1472,6 +1566,7 @@ impl DesktopView {
         cx.notify();
         let view_entity = cx.entity();
         cx.spawn(async move |_this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest (VTR-087)
             let updater = updater::Updater::new(env!("CARGO_PKG_VERSION"), true);
             match updater.download_and_verify(&info).await {
                 Ok(bytes) => {
@@ -2984,7 +3079,7 @@ impl DesktopView {
         let register_tab = self.render_login_tab(cx, LoginMode::Register, "Register");
 
         let username = Input::new(&self.username_input).w_full();
-        let password = Input::new(&self.password_input).w_full();
+        let password = Input::new(&self.password_input).w_full().mask_toggle();
 
         div()
             .size_full()
@@ -3048,7 +3143,23 @@ impl DesktopView {
                                     .text_color(theme::TEXT)
                                     .child("Master password"),
                             )
-                            .child(password),
+                            .child(password)
+                            .when(mode == LoginMode::Register, |this| {
+                                this.mt_2().child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(theme::TEXT)
+                                        .child("Confirm master password"),
+                                )
+                            })
+                            .when(mode == LoginMode::Register, |this| {
+                                this.child(
+                                    Input::new(&self.confirm_password_input)
+                                        .w_full()
+                                        .mask_toggle(),
+                                )
+                            }),
                     )
                     // Status / error.
                     .child(div().when(!status.is_empty(), |this| {
@@ -3613,6 +3724,7 @@ impl DesktopView {
     fn render_add_item_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .absolute()
+            .inset_0()
             .flex()
             .items_center()
             .justify_center()

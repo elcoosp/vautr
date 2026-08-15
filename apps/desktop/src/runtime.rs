@@ -31,3 +31,33 @@ fn rt() -> &'static tokio::runtime::Runtime {
 pub fn enter() -> tokio::runtime::EnterGuard<'static> {
     rt().enter()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // VTR-087 regression: GPUI's `cx.spawn` runs on GPUI's own executor, which
+    // is NOT a Tokio runtime. `reqwest`'s DNS resolver calls
+    // `tokio::runtime::Handle::current()` — on a foreign thread with no Tokio
+    // context that panics ("no reactor running"), aborting the whole desktop
+    // app (SIGABRT) on every register/login (the update check fires
+    // unconditionally). `enter()` installs the shared multi-threaded runtime as
+    // the thread-local Tokio context so the resolver finds a reactor.
+    //
+    // This test mimics that exact condition: a fresh OS thread with no Tokio
+    // context. Without `enter()`, `Handle::current()` would panic and `join()`
+    // would return `Err`. With it, the call succeeds.
+    #[test]
+    fn enter_installs_tokio_context_on_foreign_thread() {
+        let handle = std::thread::spawn(|| {
+            let _rt = crate::runtime::enter();
+            // Must not panic on a non-tokio-spawned thread.
+            let _flavor = tokio::runtime::Handle::current().runtime_flavor();
+        });
+        assert!(
+            handle.join().is_ok(),
+            "runtime::enter() failed to install a Tokio context on a foreign thread \
+             (this is what caused the VTR-087 SIGABRT in check_for_updates)"
+        );
+    }
+}

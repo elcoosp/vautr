@@ -22,6 +22,10 @@ path = "src/main.rs"
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+# Ships the SVG icon set used by `IconName`. MUST be registered as the GPUI
+# `AssetSource` (see app.rs `with_assets`) or every icon renders empty — this
+# was the cause of the flat, hierarchy-less UI (VTR-089).
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
 
 # --- core (workspace-pinned) ---
 zeroize.workspace = true

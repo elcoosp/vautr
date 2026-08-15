@@ -30,8 +30,8 @@ use serde::{Deserialize, Serialize};
 /// signatures from this exact key. Replace the bytes when the signing key rotates
 /// (rotate by shipping a binary signed with the new key that embeds the new key).
 pub const PRODUCTION_PUBLIC_KEY: [u8; 32] = [
-    0x19, 0x2b, 0x8e, 0x4d, 0x5f, 0x1c, 0x9a, 0x3e, 0x77, 0x6d, 0x0b, 0x42, 0x88, 0x9c, 0xe1, 0x0d,
-    0x53, 0xa4, 0x6f, 0x2b, 0x1f, 0xe0, 0x9d, 0x7c, 0x34, 0x88, 0xaa, 0x15, 0x9b, 0x5c, 0x71, 0x2f,
+    0x8c, 0x5f, 0xbb, 0xf9, 0x36, 0xcb, 0x7c, 0xb1, 0xb2, 0x98, 0xd8, 0x44, 0xfd, 0x23, 0x37, 0x5d,
+    0x47, 0x95, 0x87, 0x79, 0xc5, 0x83, 0x0f, 0x8a, 0x7b, 0x5f, 0xd9, 0x3b, 0xaf, 0x7c, 0xad, 0xe4,
 ];
 
 /// Default public manifest endpoint. Overridable for self-hosted deployments.
@@ -183,7 +183,14 @@ pub struct Updater {
 impl Updater {
     /// Production updater: embedded key, default endpoint, current crate version.
     pub fn new(current_version: impl Into<String>, auto_update_enabled: bool) -> Self {
-        let key = VerifyingKey::from_bytes(&PRODUCTION_PUBLIC_KEY).expect("embedded key is valid");
+        // INVARIANT: `PRODUCTION_PUBLIC_KEY` MUST be a valid ed25519 curve
+        // point. It was generated with `generate_keypair()` and verified; an
+        // invalid byte array here previously caused `from_bytes` to fail and
+        // `.expect` to abort the entire app on every update check (VTR-087).
+        // Keep it valid — regenerate via `updater::generate_keypair()` if it
+        // must rotate.
+        let key = VerifyingKey::from_bytes(&PRODUCTION_PUBLIC_KEY)
+            .expect("PRODUCTION_PUBLIC_KEY must be a valid ed25519 point (regenerate via updater::generate_keypair)");
         Self::with_source(
             Arc::new(HttpUpdateSource::new(DEFAULT_MANIFEST_URL)),
             key,
