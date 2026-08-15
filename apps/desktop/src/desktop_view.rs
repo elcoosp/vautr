@@ -288,6 +288,10 @@ pub struct DesktopView {
     /// FIFO queue of unresolved sync conflicts (VTR-056 parity with web). Each
     /// entry is a `ConflictDetected` event surfaced via the conflict modal.
     conflict_queue: Vec<ConflictEvent>,
+    /// One-time flag: window-level key handlers (`on_key_event`) may only be
+    /// registered during the paint phase, so they're set up in `render()`, not
+    /// in `new()` (registering in `new()` trips GPUI's `debug_assert_paint`).
+    key_handlers_registered: bool,
 
     // ── Secrets overview section ────────────────────────────────────────
     secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
@@ -377,40 +381,9 @@ impl DesktopView {
 
         let _subscriptions = vec![];
 
-        // Escape closes any open modal (add-item or delete confirmation).
-        let entity = cx.entity();
-        window.on_key_event(move |event: &gpui::KeyDownEvent, _phase, window, cx| {
-            if event.keystroke.key.as_str() == "escape" {
-                cx.update_entity::<DesktopView, _>(&entity, |this, cx| {
-                    if this.vault_adding
-                        || this.pending_delete.is_some()
-                        || this.pending_delete_project.is_some()
-                        || this.pending_delete_secret.is_some()
-                        || this.pending_offboard.is_some()
-                        || this.pending_create_project
-                    {
-                        this.vault_adding = false;
-                        this.pending_delete = None;
-                        this.pending_delete_project = None;
-                        this.pending_delete_secret = None;
-                        this.pending_offboard = None;
-                        this.pending_create_project = false;
-                        this.confirm_text_input
-                            .update(cx, |s, cx| s.set_value("", window, cx));
-                        cx.notify();
-                    }
-                });
-            }
-        });
-
-        // Any key press counts as activity and resets the idle auto-lock clock.
-        let activity_entity = cx.entity();
-        window.on_key_event(move |_event: &gpui::KeyDownEvent, _phase, _window, cx| {
-            cx.update_entity::<DesktopView, _>(&activity_entity, |this, _cx| {
-                this.last_activity = Instant::now();
-            });
-        });
-
+        // Window-level key handlers (escape-to-close, idle auto-lock clock) are
+        // registered once inside `render()` — GPUI only permits `on_key_event`
+        // during the paint phase, so it cannot run here in `new()`.
         // Idle auto-lock ticker: every few seconds, if unlocked and idle past
         // `auto_lock_seconds`, lock the vault (zeroize DEK/SVK + clear state).
         let lock_entity = cx.entity();
@@ -489,6 +462,8 @@ impl DesktopView {
             tour_step: None,
             tour_anchor_bounds: None,
             secrets_rows: Vec::new(),
+            conflict_queue: Vec::new(),
+            key_handlers_registered: false,
             secrets_loading: false,
             secrets_error: None,
             secrets_revealed: std::collections::HashMap::new(),
@@ -503,7 +478,6 @@ impl DesktopView {
             group_member_input,
             active_group_id: None,
             pending_update: None,
-            conflict_queue: Vec::new(),
             pending_share: None,
             share_recipient_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("recipient user uuid")),
@@ -3186,6 +3160,7 @@ impl DesktopView {
     fn render_app(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
         let entity = cx.entity();
+        let entity_prepaint = entity.clone();
         let touring = self.tour_step.is_some();
         let content = match section {
             Section::Dashboard => self.render_dashboard(cx).into_any_element(),
@@ -3220,20 +3195,69 @@ impl DesktopView {
                         .when(touring, |d| {
                             d.child(
                                 canvas(
-                                    move |bounds: Bounds<Pixels>, _window, cx: &mut App| {
-                                        let changed = entity
+                                    // Prepaint: capture the content surface's
+                                    // post-layout bounds (VTR-078 tour anchor).
+                                    move |bounds: Bounds<Pixels>, window, cx: &mut App| {
+                                        let changed = entity_prepaint
                                             .read(cx)
                                             .tour_anchor_bounds
                                             .map(|b| b != bounds)
                                             .unwrap_or(true);
                                         if changed {
-                                            entity.update(cx, |this, cx| {
-                                                this.tour_anchor_bounds = Some(bounds);
-                                                cx.notify();
+                                            // Defer the model write: mutating state
+                                            // during prepaint trips `debug_assert_paint`.
+                                            window.on_next_frame(move |_window, cx| {
+                                                let ep = entity_prepaint.clone();
+                                                ep.update(cx, |this, cx| {
+                                                    this.tour_anchor_bounds = Some(bounds);
+                                                    cx.notify();
+                                                });
+                                            });
+                                        }
+                                        () as ()
+                                    },
+                                    // Paint: register window-level key handlers
+                                    // ONCE. GPUI only permits `on_key_event` during
+                                    // the paint phase (not in `new()` or `render()`),
+                                    // so this is the correct place.
+                                    move |_bounds, (), window, cx: &mut App| {
+                                        let needs = !entity.read(cx).key_handlers_registered;
+                                        if needs {
+                                            entity.update(cx, |this, _cx| {
+                                                this.key_handlers_registered = true;
+                                            });
+                                            let esc_entity = entity.clone();
+                                            window.on_key_event(move |event: &gpui::KeyDownEvent, _phase, window, cx| {
+                                                if event.keystroke.key.as_str() == "escape" {
+                                                    cx.update_entity::<DesktopView, _>(&esc_entity, |this, cx| {
+                                                        if this.vault_adding
+                                                            || this.pending_delete.is_some()
+                                                            || this.pending_delete_project.is_some()
+                                                            || this.pending_delete_secret.is_some()
+                                                            || this.pending_offboard.is_some()
+                                                            || this.pending_create_project
+                                                        {
+                                                            this.vault_adding = false;
+                                                            this.pending_delete = None;
+                                                            this.pending_delete_project = None;
+                                                            this.pending_delete_secret = None;
+                                                            this.pending_offboard = None;
+                                                            this.pending_create_project = false;
+                                                            this.confirm_text_input
+                                                                .update(cx, |s, cx| s.set_value("", window, cx));
+                                                            cx.notify();
+                                                        }
+                                                    });
+                                                }
+                                            });
+                                            let act_entity = entity.clone();
+                                            window.on_key_event(move |_event: &gpui::KeyDownEvent, _phase, _window, cx| {
+                                                cx.update_entity::<DesktopView, _>(&act_entity, |this, _cx| {
+                                                    this.last_activity = Instant::now();
+                                                });
                                             });
                                         }
                                     },
-                                    |_, _, _, _| {},
                                 )
                                 .absolute()
                                 .inset_0(),
