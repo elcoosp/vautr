@@ -14,6 +14,40 @@ use vautr_auth::state;
 use vautr_crypto::{kdf, key_tree, recovery};
 use vautr_keyring::wrap;
 
+/// Server error envelope: `{ "error": "...", "message": "..." }`.
+#[derive(Deserialize)]
+struct ErrorEnvelope {
+    #[serde(default)]
+    error: String,
+    #[serde(default)]
+    message: String,
+}
+
+/// Send a request and decode the JSON body, but surface a clear error (with the
+/// server's `error`/`message` when present) on any non-2xx response instead of
+/// letting reqwest fail with a bare "parse error decoding response body".
+async fn send_json<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> Result<T, String> {
+    let status = resp.status();
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("read response: {e}"))?;
+    if !status.is_success() {
+        let msg = serde_json::from_slice::<ErrorEnvelope>(&bytes)
+            .ok()
+            .and_then(|e| {
+                if e.message.is_empty() {
+                    None
+                } else {
+                    Some(format!("{}: {}", e.error, e.message))
+                }
+            })
+            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned());
+        return Err(format!("HTTP {}: {}", status.as_u16(), msg));
+    }
+    serde_json::from_slice::<T>(&bytes).map_err(|e| format!("parse response: {e}"))
+}
+
 // ── JSON request/response types (api.md §3) ──────────────────────────────
 
 #[derive(Deserialize)]
@@ -111,19 +145,19 @@ impl AuthClient {
         // ── OPAQUE registration (api.md §3.1) ──────────────────────────
         let (cstate, creq) = state::registration_start(password);
 
-        let start_resp: RegisterStartResp = self
-            .client
-            .post(format!("{}/auth/register/start", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "registration_start": B64.encode(&creq),
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("register/start request: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("register/start parse: {e}"))?;
+        let start_resp: RegisterStartResp = send_json(
+            self.client
+                .post(format!("{}/auth/register/start", self.base_url))
+                .json(&serde_json::json!({
+                    "username": username,
+                    "registration_start": B64.encode(&creq),
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("register/start request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("register/start: {e}"))?;
 
         let sresp = B64
             .decode(&start_resp.registration_response)
@@ -131,23 +165,23 @@ impl AuthClient {
         let (upload, _export_key, _st) =
             state::registration_finish(&cstate, &sresp, password, username.as_bytes());
 
-        let _finish: RegisterFinishResp = self
-            .client
-            .post(format!("{}/auth/register/finish", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "registration_finish": B64.encode(&upload),
-                "server_public_key": B64.encode(&[0u8; 32]),
-                "kdf_salt": B64.encode(&kdf_salt),
-                "svk_ciphertext_blob": B64.encode(&svk_wrapped),
-                "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped),
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("register/finish request: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("register/finish parse: {e}"))?;
+        let _finish: RegisterFinishResp = send_json(
+            self.client
+                .post(format!("{}/auth/register/finish", self.base_url))
+                .json(&serde_json::json!({
+                    "username": username,
+                    "registration_finish": B64.encode(&upload),
+                    "server_public_key": B64.encode(&[0u8; 32]),
+                    "kdf_salt": B64.encode(&kdf_salt),
+                    "svk_ciphertext_blob": B64.encode(&svk_wrapped),
+                    "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped),
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("register/finish request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("register/finish: {e}"))?;
 
         Ok(RegisterResult {
             kdf_salt,
@@ -167,19 +201,19 @@ impl AuthClient {
         // ── OPAQUE login (api.md §3.2) ──────────────────────────────────
         let (cstate, lreq) = state::login_start(password);
 
-        let start_resp: LoginStartResp = self
-            .client
-            .post(format!("{}/auth/login/start", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "login_start": B64.encode(&lreq),
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("login/start request: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("login/start parse: {e}"))?;
+        let start_resp: LoginStartResp = send_json(
+            self.client
+                .post(format!("{}/auth/login/start", self.base_url))
+                .json(&serde_json::json!({
+                    "username": username,
+                    "login_start": B64.encode(&lreq),
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("login/start request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("login/start: {e}"))?;
 
         let sresp = B64
             .decode(&start_resp.login_response)
@@ -187,33 +221,33 @@ impl AuthClient {
         let (upload, _session_key, _st) =
             state::login_finish(&cstate, &sresp, password, username.as_bytes());
 
-        let finish_resp: LoginFinishResp = self
-            .client
-            .post(format!("{}/auth/login/finish", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "login_finish": B64.encode(&upload),
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("login/finish request: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("login/finish parse: {e}"))?;
+        let finish_resp: LoginFinishResp = send_json(
+            self.client
+                .post(format!("{}/auth/login/finish", self.base_url))
+                .json(&serde_json::json!({
+                    "username": username,
+                    "login_finish": B64.encode(&upload),
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("login/finish request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("login/finish: {e}"))?;
 
         let token = finish_resp.session_token;
 
         // ── Fetch wrapped SVK (api.md §5) ──────────────────────────────
-        let status: AccountStatusResp = self
-            .client
-            .get(format!("{}/account/status", self.base_url))
-            .bearer_auth(&token)
-            .send()
-            .await
-            .map_err(|e| format!("account/status request: {e}"))?
-            .json()
-            .await
-            .map_err(|e| format!("account/status parse: {e}"))?;
+        let status: AccountStatusResp = send_json(
+            self.client
+                .get(format!("{}/account/status", self.base_url))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .map_err(|e| format!("account/status request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("account/status: {e}"))?;
 
         let wrapped_svk = B64
             .decode(&status.svk_ciphertext_blob)
