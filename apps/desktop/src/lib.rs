@@ -15,6 +15,7 @@ pub mod api_client;
 pub mod app;
 pub mod auth_client;
 pub mod desktop_view;
+pub mod onboarding;
 pub mod project_state;
 pub mod runtime;
 pub mod state;

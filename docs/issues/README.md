@@ -27,20 +27,23 @@ live during implementation rather than through the flat `done/` set.
   `docs/onboarding/spec.md`.
 
 ## Open issues (the real backlog)
-Two genuinely-open items, both extending the VTR-073 web/extension onboarding to
-the remaining clients. The step contract is `docs/onboarding/spec.md` (single
-source of truth for all four platforms).
+**None.** As of 2026-08-15 all tracked issues VTR-001..VTR-075 are done/closed.
+VTR-074 (mobile onboarding via `@onboardjs/react` + nativewind) and VTR-075
+(desktop native Rust port of the same flow) both landed and were verified
+(`hermes verify` green; desktop `cargo check` clean) on 2026-08-15.
 
-| Issue | Delivered when | Notes |
-|-------|---------------|-------|
-| VTR-074 | `open/VTR-074.md` | Mobile (Expo/RN/nativewind) reuses `@onboardjs/react` (same engine/steps), AsyncStorage persistence, replay in Settings. |
-| VTR-075 | `open/VTR-075.md` | Desktop (Rust/GPUI) native re-implementation of the same flow (no onboardjs possible in Rust), config-file first-run flag, replay in Settings. |
+The only intentionally-deferred follow-up is the anchored *feature tour* (a
+lightweight product walkthrough distinct from the first-run guided setup) —
+OnboardJS has no native spotlight/anchor API, so it is a separate piece of work
+tracked in `docs/onboarding/spec.md` §"Deferred".
 
 | Issue | Delivered | Notes |
 |-------|-----------|-------|
 | VTR-071 | `closed/VTR-071.md` | SDK `auditList`, web `/_authed/audit` route, desktop `do_export_audit` + export card; `GET /audit` contract added to `openapi.json`. `hermes verify` green. |
 | VTR-072 | `closed/VTR-072.md` | `docs/self-hosting/README.md` runbook + `docker-compose.prod.yml` (validated `docker compose config` → VALID). |
 | VTR-073 | `closed/VTR-073.md` | `@onboardjs/core` + `@onboardjs/react` added to web + extension; `OnboardingFlow` (first-run, `localStoragePersistence`) with welcome → create-vault → Emergency Kit → add-secret → done steps; replay affordance in Settings (web) and popup footer (ext). `hermes verify` green. |
+| VTR-074 | `closed/VTR-074.md` | Mobile (Expo/RN/nativewind) reuses `@onboardjs/react` (same engine/steps) via `OnboardingFlow`; AsyncStorage persistence through onboardjs `customOnDataLoad`/`customOnDataPersist`; replay in Settings. `hermes verify` green. |
+| VTR-075 | `closed/VTR-075.md` | Desktop (Rust/GPUI) native port of the flow (`apps/desktop/src/onboarding.rs` + overlay in `desktop_view.rs`); first-run-once via `~/.config/vautr/onboarding.json`; replay in Settings. `cargo check` + `hermes verify` green. |
 
 The previous version of this index listed VTR-037/039/040/047/048/049/055/056 as
 "open". That table was stale: all eight already carry `status: done (2026-08-13)`

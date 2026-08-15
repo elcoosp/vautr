@@ -4,6 +4,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 
 import { services } from './lib/client';
 import { useSession } from './lib/session';
+import { OnboardingFlow } from './src/onboarding/OnboardingFlow';
 import { router } from './src/router';
 
 /**
@@ -63,5 +64,9 @@ export function App() {
     );
   }
 
-  return <RouterProvider router={router} />;
+  return (
+    <OnboardingFlow>
+      <RouterProvider router={router} />
+    </OnboardingFlow>
+  );
 }

@@ -215,6 +215,12 @@ pub struct DesktopView {
 
     // ── Toast system (single transient-feedback channel; §8 parity) ──────
     toasts: Vec<Toast>,
+
+    // ── First-run onboarding (VTR-075; native port of OnboardJS flow) ──
+    // `Some(index)` = onboarding overlay is showing at that step.
+    // `None` = not showing. First-run-once is enforced by the persisted
+    // `seen_v1` flag in ~/.config/vautr/onboarding.json.
+    onboarding_step: Option<usize>,
     next_toast_id: u64,
     /// Pending, signature-verified update offered to the user (None = no update).
     /// VTR-049: set by the background update check; surfaced via a modal.
@@ -409,6 +415,12 @@ impl DesktopView {
             dashboard_loading: false,
             toasts: Vec::new(),
             next_toast_id: 0,
+            // First-run onboarding: show at step 0 only if not already seen.
+            onboarding_step: if crate::onboarding::load_seen() {
+                None
+            } else {
+                Some(0)
+            },
             secrets_rows: Vec::new(),
             secrets_loading: false,
             secrets_error: None,
@@ -2847,6 +2859,9 @@ impl DesktopView {
 impl Render for DesktopView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.is_unlocked() {
+            if self.onboarding_step.is_some() {
+                return self.render_onboarding(cx).into_any_element();
+            }
             self.render_app(cx).into_any_element()
         } else {
             self.render_login(cx).into_any_element()
@@ -6026,12 +6041,166 @@ impl DesktopView {
             )
     }
 
+    // ── First-run onboarding (VTR-075) ──────────────────────────────────
+    // Native Rust port of the OnboardJS flow (docs/onboarding/spec.md). The
+    // overlay renders as a full-window modal above the app shell; steps are
+    // driven by `self.onboarding_step`. First-run-once is enforced by the
+    // persisted `seen_v1` flag (crate::onboarding); replay sets step 0 and
+    // bypasses the flag.
+
+    fn render_onboarding(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let idx = self.onboarding_step.unwrap_or(0);
+        let total = crate::onboarding::STEPS.len();
+        let step = &crate::onboarding::STEPS[idx];
+        let is_last = idx + 1 >= total;
+
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(Rgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.5,
+            })
+            .child(
+                div()
+                    .w(px(420.))
+                    .max_w_full()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .bg(theme::SURFACE)
+                    .p_5()
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("Step {} of {}", idx + 1, total)),
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme::TEXT)
+                                    .child(step.title),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(step.body),
+                            )
+                            .when(step.id == "create-vault", |el| {
+                                el.child(Input::new(&self.project_name_input).w_full())
+                            })
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_between()
+                                    .child(
+                                        Button::new("onboarding-back")
+                                            .label("Back")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    if let Some(i) = this.onboarding_step {
+                                                        if i > 0 {
+                                                            this.onboarding_step = Some(i - 1);
+                                                            cx.notify();
+                                                        }
+                                                    }
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .when(step.skippable, |el| {
+                                                el.child(
+                                                    Button::new("onboarding-skip")
+                                                        .label("Skip")
+                                                        .on_click(cx.listener(
+                                                            |this, _: &gpui::ClickEvent, _window, cx| {
+                                                                let last = crate::onboarding::STEPS.len() - 1;
+                                                                this.onboarding_step = Some(last);
+                                                                cx.notify();
+                                                            },
+                                                        )),
+                                                )
+                                            })
+                                            .child(
+                                                Button::new("onboarding-next")
+                                                    .primary()
+                                                    .label(if is_last { "Finish" } else { "Next" })
+                                                    .on_click(cx.listener(
+                                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                                            let idx = this.onboarding_step.unwrap_or(0);
+                                                            if crate::onboarding::STEPS[idx].id == "create-vault" {
+                                                                this.do_onboarding_create_vault(window, cx);
+                                                                return;
+                                                            }
+                                                            if idx + 1 >= crate::onboarding::STEPS.len() {
+                                                                crate::onboarding::mark_seen();
+                                                                this.onboarding_step = None;
+                                                            } else {
+                                                                this.onboarding_step = Some(idx + 1);
+                                                            }
+                                                            cx.notify();
+                                                        },
+                                                    )),
+                                            ),
+                                    ),
+                            ),
+                    ),
+            )
+    }
+
+    /// Create-vault step action: default the name if blank, then create the
+    /// project via the canonical path, and advance to the next step.
+    fn do_onboarding_create_vault(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = self.project_name_input.read(cx).value().to_string();
+        if name.trim().is_empty() {
+            self.project_name_input
+                .update(cx, |s, cx| s.set_value("My Vault", window, cx));
+        }
+        self.do_create_project(window, cx);
+        let idx = self.onboarding_step.unwrap_or(0);
+        if idx + 1 < crate::onboarding::STEPS.len() {
+            self.onboarding_step = Some(idx + 1);
+        }
+        cx.notify();
+    }
+
+    /// Replay the first-run flow from Settings (bypasses the seen flag).
+    fn trigger_replay_onboarding(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.onboarding_step = Some(0);
+        cx.notify();
+    }
+
     fn render_settings(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let machines = self.machines.clone();
         let tokens = self.tokens.clone();
         let text = self.settings_text.clone();
         self.page()
             .child(self.page_header("Settings", "Organization and security administration."))
+            .child(
+                self.card("Onboarding", "Replay the first-run guided setup tour.")
+                    .child(
+                        h_flex().justify_between().items_center().child(
+                            Button::new("settings-replay-onboarding")
+                                .label("Replay onboarding")
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.trigger_replay_onboarding(window, cx);
+                                })),
+                        ),
+                    ),
+            )
             .when(!text.is_empty(), |this| {
                 this.child(div().text_sm().text_color(theme::WARN).child(text.clone()))
             })
