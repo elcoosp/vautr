@@ -4761,6 +4761,9 @@ impl DesktopView {
             )
     }
 
+    /// Projects master-detail screen (VTR-092: card-style list rows matching
+    /// the web Projects page — icon badge, name, description, type/permission
+    /// badges, and a clear selected state).
     fn render_projects(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.projects.error_message.clone().unwrap_or_default();
         let status = self.projects.status.clone();
@@ -4773,18 +4776,71 @@ impl DesktopView {
             let kind = p.kind.clone();
             let role = p.role.clone();
             let perm = p.permission.clone().unwrap_or_else(|| "—".into());
-            let meta = format!("{kind} · {role} · {perm}");
+            let description = p.description.clone().unwrap_or_default();
             let row = div()
                 .id(SharedString::from(format!("project-row-{i}")))
+                .w_full()
                 .flex()
-                .flex_col()
-                .px_3()
-                .py_2()
-                .rounded_md()
-                .when(selected, |row| row.bg(theme::BORDER))
+                .items_start()
+                .gap_3()
+                .p_3()
+                .rounded_lg()
+                .border_1()
+                .when(selected, |row| {
+                    row.border_color(theme::ACCENT)
+                        .bg(theme::ACCENT_DIM)
+                })
+                .when(!selected, |row| {
+                    row.border_color(theme::BORDER).bg(theme::SURFACE)
+                })
                 .cursor_pointer()
-                .child(div().text_sm().font_weight(FontWeight::BOLD).child(name))
-                .child(div().text_xs().text_color(theme::TEXT_DIM).child(meta))
+                .child(
+                    div()
+                        .flex_none()
+                        .size_9()
+                        .rounded_lg()
+                        .bg(theme::ACCENT_DIM)
+                        .text_color(theme::ACCENT)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(Icon::new(IconName::Folder).size_5()),
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_1()
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    div().text_sm().font_weight(FontWeight::BOLD).child(name),
+                                )
+                                .child(status_badge(&kind)),
+                        )
+                        .when(!description.is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(description),
+                            )
+                        })
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(scope_pill(&perm))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme::TEXT_DIM)
+                                        .child(role),
+                                ),
+                        ),
+                )
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.do_select_project(i, cx);
                 }));
