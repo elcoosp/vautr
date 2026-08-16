@@ -2,6 +2,8 @@ import { RouterProvider } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
+import './global.css';
+
 import { services } from './lib/client';
 import { useSession } from './lib/session';
 import { OnboardingFlow } from './src/onboarding/OnboardingFlow';
