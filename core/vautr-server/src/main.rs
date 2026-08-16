@@ -44,10 +44,19 @@ async fn main() {
         .layer(middleware::rate_limiter())
         .layer(TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
-        .await
-        .expect("failed to bind 0.0.0.0:8080");
-    tracing::info!("vautr-server listening on :8080");
+    // Bind dual-stack on [::]:8080 so the server answers both IPv6 (e.g.
+    // `localhost` resolving to ::1) and IPv4 (127.0.0.1) clients. Binding
+    // IPv4-only (0.0.0.0) breaks `localhost` on systems where it resolves to
+    // ::1 first: reqwest does not Happy-Eyeball-fallback the way curl does,
+    // so the desktop fails with "error sending request for url" even though
+    // the server is up (VTR-097). Fall back to 0.0.0.0 if [::] is unavailable.
+    let listener = match tokio::net::TcpListener::bind("[::]:8080").await {
+        Ok(l) => l,
+        Err(_) => tokio::net::TcpListener::bind("0.0.0.0:8080")
+            .await
+            .expect("failed to bind [::]:8080 or 0.0.0.0:8080"),
+    };
+    tracing::info!("vautr-server listening on :8080 (dual-stack)");
 
     let server = axum::serve(
         listener,
