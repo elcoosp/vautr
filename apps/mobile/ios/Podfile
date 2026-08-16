@@ -27,13 +27,7 @@ prepare_react_native_project!
 target 'Vautr' do
   use_expo_modules!
 
-  # Vautr uniffi native bridge. Sourced from a real (non-symlinked) path so
-  # CocoaPods copies its headers and emits a `VautrNativeModule` clang module
-  # (pnpm symlinks under node_modules make CocoaPods skip modulemap
-  # generation, breaking `import VautrNativeModule` in ExpoModulesProvider).
-  pod 'VautrNativeModule', :path => '../VautrNativeModule-src'
-
-  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1' {
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
   else
     config_command = [

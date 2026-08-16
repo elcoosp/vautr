@@ -31,6 +31,7 @@ function LoginScreen() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsernameInput] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +39,16 @@ function LoginScreen() {
     if (!username || !password) {
       setError('Enter a username and password.');
       return;
+    }
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Master password must be at least 8 characters.');
+        return;
+      }
     }
     setBusy(true);
     setError(null);
@@ -106,6 +117,19 @@ function LoginScreen() {
                     placeholder="••••••••"
                   />
                 </View>
+
+                {mode === 'register' ? (
+                  <View className="gap-1.5">
+                    <Label htmlFor="confirmPassword">Confirm master password</Label>
+                    <Input
+                      id="confirmPassword"
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry
+                      placeholder="••••••••"
+                    />
+                  </View>
+                ) : null}
 
                 {error ? (
                   <Alert variant="destructive">

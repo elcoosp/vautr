@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { getEmergencyKit } from '@/lib/client';
+import { getClient, getEmergencyKit } from '@/lib/client';
 import { renderKitHtml } from '@/lib/kit';
 import { MlpApiError, mlp } from '@/lib/mlp';
 import { triggerReplayOnboarding } from '@/onboarding/OnboardingFlow';
@@ -35,6 +35,9 @@ function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<OffboardResponse | null>(null);
   const [kitRevealed, setKitRevealed] = useState(false);
+  const [rotatePassword, setRotatePassword] = useState('');
+  const [rotating, setRotating] = useState(false);
+  const [rotatedGen, setRotatedGen] = useState<number | null>(null);
 
   const kit = getEmergencyKit();
   const downloadKit = () => {
@@ -48,6 +51,25 @@ function SettingsPage() {
     a.download = 'vautr-emergency-kit.html';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const onRotateKey = async () => {
+    if (!rotatePassword.trim()) {
+      toast.error('Enter your master password to rotate the vault key.');
+      return;
+    }
+    setRotating(true);
+    setRotatedGen(null);
+    try {
+      const newGen = await getClient().rotateKey(rotatePassword.trim());
+      setRotatedGen(newGen);
+      setRotatePassword('');
+      toast.success(`Vault key rotated to generation ${newGen}.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRotating(false);
+    }
   };
 
   const onOffboard = async () => {
@@ -157,6 +179,43 @@ function SettingsPage() {
               you can generate one from the CLI or by rotating your recovery key.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Vault key rotation</CardTitle>
+          <CardDescription>
+            Rotating the vault key re-wraps your sealed key (SVK) under a new key generation using
+            your master password. Do this periodically or after a suspected exposure. You will stay
+            unlocked.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="rotate-mp">Master password</Label>
+            <Input
+              id="rotate-mp"
+              type="password"
+              value={rotatePassword}
+              onChange={(e) => setRotatePassword(e.target.value)}
+              placeholder="Confirm to rotate"
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => void onRotateKey()}
+              disabled={rotating || !rotatePassword.trim()}
+            >
+              {rotating ? 'Rotating…' : 'Rotate vault key'}
+            </Button>
+            {rotatedGen !== null ? (
+              <span className="text-sm text-text-muted">
+                Current key generation: <span className="font-mono text-text">{rotatedGen}</span>
+              </span>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
