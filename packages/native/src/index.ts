@@ -118,22 +118,12 @@ function arrayBufferToBase64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes.at(i) ?? 0);
   }
-  if (typeof btoa === 'function') return btoa(binary);
-  // React Native / Hermes fallback.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Buffer } = require('node:buffer');
-  return Buffer.from(binary, 'binary').toString('base64');
+  // `btoa`/`atob` are global on web, Node >=16, and React Native (Hermes).
+  return btoa(binary);
 }
 
 function base64ToArrayBuffer(b64: string): Uint8Array {
-  let binary: string;
-  if (typeof atob === 'function') {
-    binary = atob(b64);
-  } else {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Buffer } = require('node:buffer');
-    binary = Buffer.from(b64, 'base64').toString('binary');
-  }
+  const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);

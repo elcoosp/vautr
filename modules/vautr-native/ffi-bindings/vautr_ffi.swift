@@ -535,14 +535,45 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol MobileClientProtocol: AnyObject, Sendable {
     
     /**
+     * Decrypt an incoming 1:1 share using the persisted sharing secret.
+     */
+    func acceptShare(incomingJson: String) throws  -> Data
+    
+    /**
+     * Wrap the Group SIK for a new member.
+     */
+    func addGroupMember(groupJson: String, memberUuid: String, memberPubkeyB64: String) throws  -> FfiWrappedGroupKey
+    
+    /**
      * Connect sync transport to the server.
      */
     func connectSync(baseUrl: String, token: String, userId: String) async throws 
     
     /**
+     * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+     */
+    func createGroup(name: String, adminUuid: String) throws  -> FfiGroupKey
+    
+    /**
+     * Decrypt a group item's payload.
+     */
+    func decryptGroupItem(groupJson: String, itemUuid: String, ctB64: String) throws  -> Data
+    
+    /**
      * Delete an item by uuid.
      */
     func deleteItem(uuid: String) async throws 
+    
+    /**
+     * Encrypt a vault item's payload for a group.
+     */
+    func encryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data) throws  -> String
+    
+    /**
+     * Ensure a sharing keypair exists; generates + persists one on first use,
+     * returning the public key (base64) for publishing to the server PKI.
+     */
+    func ensureSharingKey() throws  -> String
     
     /**
      * Get a single overview by uuid string. Returns JSON `DecryptedOverview`.
@@ -622,6 +653,21 @@ public protocol MobileClientProtocol: AnyObject, Sendable {
     func setSecureEnclaveBridge(bridge: SecureEnclaveBridge) 
     
     /**
+     * Persist the sharing secret key (base64) loaded from the OS secure store.
+     */
+    func setSharingSecret(secretB64: String?) throws 
+    
+    /**
+     * Build a 1:1 share bundle for `recipient_pubkey_b64`.
+     */
+    func shareItem(senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: Data) throws  -> FfiShareBundle
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+    func sharingSecret()  -> String?
+    
+    /**
      * Run a metadata-first sync pull + selective payload download.
      */
     func sync() async throws 
@@ -642,6 +688,11 @@ public protocol MobileClientProtocol: AnyObject, Sendable {
      * Unlock directly with a raw 32-byte vault key + the local key generation.
      */
     func unlockWithRawKey(rawKey: Data, localGen: UInt64) async throws 
+    
+    /**
+     * Member-side: decapsulate the Group SIK from an inbox entry.
+     */
+    func unwrapGroupKey(inboxJson: String) throws  -> String
     
 }
 /**
@@ -734,6 +785,32 @@ public static func initialize(dbPath: String)async throws  -> MobileClient  {
 
     
     /**
+     * Decrypt an incoming 1:1 share using the persisted sharing secret.
+     */
+open func acceptShare(incomingJson: String)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_accept_share(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(incomingJson),$0
+    )
+})
+}
+    
+    /**
+     * Wrap the Group SIK for a new member.
+     */
+open func addGroupMember(groupJson: String, memberUuid: String, memberPubkeyB64: String)throws  -> FfiWrappedGroupKey  {
+    return try  FfiConverterTypeFfiWrappedGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_add_group_member(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(memberUuid),
+        FfiConverterString.lower(memberPubkeyB64),$0
+    )
+})
+}
+    
+    /**
      * Connect sync transport to the server.
      */
 open func connectSync(baseUrl: String, token: String, userId: String)async throws   {
@@ -754,6 +831,33 @@ open func connectSync(baseUrl: String, token: String, userId: String)async throw
 }
     
     /**
+     * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+     */
+open func createGroup(name: String, adminUuid: String)throws  -> FfiGroupKey  {
+    return try  FfiConverterTypeFfiGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_create_group(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(adminUuid),$0
+    )
+})
+}
+    
+    /**
+     * Decrypt a group item's payload.
+     */
+open func decryptGroupItem(groupJson: String, itemUuid: String, ctB64: String)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_decrypt_group_item(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterString.lower(ctB64),$0
+    )
+})
+}
+    
+    /**
      * Delete an item by uuid.
      */
 open func deleteItem(uuid: String)async throws   {
@@ -771,6 +875,32 @@ open func deleteItem(uuid: String)async throws   {
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeFfiError_lift
         )
+}
+    
+    /**
+     * Encrypt a vault item's payload for a group.
+     */
+open func encryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_encrypt_group_item(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+    
+    /**
+     * Ensure a sharing keypair exists; generates + persists one on first use,
+     * returning the public key (base64) for publishing to the server PKI.
+     */
+open func ensureSharingKey()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_ensure_sharing_key(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
     
     /**
@@ -1027,6 +1157,44 @@ open func setSecureEnclaveBridge(bridge: SecureEnclaveBridge)  {try! rustCall() 
 }
     
     /**
+     * Persist the sharing secret key (base64) loaded from the OS secure store.
+     */
+open func setSharingSecret(secretB64: String?)throws   {try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_set_sharing_secret(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(secretB64),$0
+    )
+}
+}
+    
+    /**
+     * Build a 1:1 share bundle for `recipient_pubkey_b64`.
+     */
+open func shareItem(senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: Data)throws  -> FfiShareBundle  {
+    return try  FfiConverterTypeFfiShareBundle_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_share_item(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(senderUuid),
+        FfiConverterString.lower(recipientUuid),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterString.lower(recipientPubkeyB64),
+        FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+open func sharingSecret() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_vautr_ffi_fn_method_mobileclient_sharing_secret(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
      * Run a metadata-first sync pull + selective payload download.
      */
 open func sync()async throws   {
@@ -1108,6 +1276,18 @@ open func unlockWithRawKey(rawKey: Data, localGen: UInt64)async throws   {
         )
 }
     
+    /**
+     * Member-side: decapsulate the Group SIK from an inbox entry.
+     */
+open func unwrapGroupKey(inboxJson: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobileclient_unwrap_group_key(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(inboxJson),$0
+    )
+})
+}
+    
 
     
 }
@@ -1151,6 +1331,164 @@ public func FfiConverterTypeMobileClient_lift(_ handle: UInt64) throws -> Mobile
 #endif
 public func FfiConverterTypeMobileClient_lower(_ value: MobileClient) -> UInt64 {
     return FfiConverterTypeMobileClient.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Thin wrapper holding the persisted sharing secret key for the mobile client.
+ */
+public protocol MobileSharingStoreProtocol: AnyObject, Sendable {
+    
+    /**
+     * Ensure a sharing keypair exists; if none is persisted, generate one and
+     * return its public key (for the app to publish to the server PKI).
+     */
+    func ensureSharingKey() throws  -> String
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+    func sharingSecret()  -> String?
+    
+}
+/**
+ * Thin wrapper holding the persisted sharing secret key for the mobile client.
+ */
+open class MobileSharingStore: MobileSharingStoreProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_vautr_ffi_fn_clone_mobilesharingstore(self.handle, $0) }
+    }
+    /**
+     * Construct a sharing-key store bound to a persisted secret (base64). The
+     * app loads/saves the secret from its secure store (Keychain/Keystore).
+     */
+public convenience init(sharingSecretB64: String?) {
+    let handle =
+        try! rustCall() {
+    uniffi_vautr_ffi_fn_constructor_mobilesharingstore_new(
+        FfiConverterOptionString.lower(sharingSecretB64),$0
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_vautr_ffi_fn_free_mobilesharingstore(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Ensure a sharing keypair exists; if none is persisted, generate one and
+     * return its public key (for the app to publish to the server PKI).
+     */
+open func ensureSharingKey()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_method_mobilesharingstore_ensure_sharing_key(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+open func sharingSecret() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_vautr_ffi_fn_method_mobilesharingstore_sharing_secret(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMobileSharingStore: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = MobileSharingStore
+
+    public static func lift(_ handle: UInt64) throws -> MobileSharingStore {
+        return MobileSharingStore(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: MobileSharingStore) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MobileSharingStore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: MobileSharingStore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMobileSharingStore_lift(_ handle: UInt64) throws -> MobileSharingStore {
+    return try FfiConverterTypeMobileSharingStore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMobileSharingStore_lower(_ value: MobileSharingStore) -> UInt64 {
+    return FfiConverterTypeMobileSharingStore.lower(value)
 }
 
 
@@ -1711,6 +2049,276 @@ public func FfiConverterTypeSecureEnclaveBridge_lower(_ value: SecureEnclaveBrid
 
 
 
+
+/**
+ * Admin-created group context (`{ group, secret_b64 }`).
+ */
+public struct FfiGroupKey: Equatable, Hashable {
+    public var groupId: String
+    public var name: String
+    public var adminUuid: String
+    /**
+     * Raw Group SIK (zeroized on drop in Rust); persist under the master key.
+     */
+    public var secretB64: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(groupId: String, name: String, adminUuid: String, 
+        /**
+         * Raw Group SIK (zeroized on drop in Rust); persist under the master key.
+         */secretB64: String) {
+        self.groupId = groupId
+        self.name = name
+        self.adminUuid = adminUuid
+        self.secretB64 = secretB64
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FfiGroupKey: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiGroupKey: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiGroupKey {
+        return
+            try FfiGroupKey(
+                groupId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                adminUuid: FfiConverterString.read(from: &buf), 
+                secretB64: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiGroupKey, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.groupId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.adminUuid, into: &buf)
+        FfiConverterString.write(value.secretB64, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiGroupKey_lift(_ buf: RustBuffer) throws -> FfiGroupKey {
+    return try FfiConverterTypeFfiGroupKey.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiGroupKey_lower(_ value: FfiGroupKey) -> RustBuffer {
+    return FfiConverterTypeFfiGroupKey.lower(value)
+}
+
+
+/**
+ * A 1:1 share bundle as handed to the untrusted relay (base64 fields).
+ */
+public struct FfiShareBundle: Equatable, Hashable {
+    public var shareId: String
+    public var senderUuid: String
+    public var recipientUuid: String
+    public var itemUuid: String
+    public var wrappedSik: String
+    public var ephemeralPublicKey: String
+    public var encryptedPayload: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(shareId: String, senderUuid: String, recipientUuid: String, itemUuid: String, wrappedSik: String, ephemeralPublicKey: String, encryptedPayload: String) {
+        self.shareId = shareId
+        self.senderUuid = senderUuid
+        self.recipientUuid = recipientUuid
+        self.itemUuid = itemUuid
+        self.wrappedSik = wrappedSik
+        self.ephemeralPublicKey = ephemeralPublicKey
+        self.encryptedPayload = encryptedPayload
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FfiShareBundle: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiShareBundle: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareBundle {
+        return
+            try FfiShareBundle(
+                shareId: FfiConverterString.read(from: &buf), 
+                senderUuid: FfiConverterString.read(from: &buf), 
+                recipientUuid: FfiConverterString.read(from: &buf), 
+                itemUuid: FfiConverterString.read(from: &buf), 
+                wrappedSik: FfiConverterString.read(from: &buf), 
+                ephemeralPublicKey: FfiConverterString.read(from: &buf), 
+                encryptedPayload: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiShareBundle, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.shareId, into: &buf)
+        FfiConverterString.write(value.senderUuid, into: &buf)
+        FfiConverterString.write(value.recipientUuid, into: &buf)
+        FfiConverterString.write(value.itemUuid, into: &buf)
+        FfiConverterString.write(value.wrappedSik, into: &buf)
+        FfiConverterString.write(value.ephemeralPublicKey, into: &buf)
+        FfiConverterString.write(value.encryptedPayload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareBundle_lift(_ buf: RustBuffer) throws -> FfiShareBundle {
+    return try FfiConverterTypeFfiShareBundle.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareBundle_lower(_ value: FfiShareBundle) -> RustBuffer {
+    return FfiConverterTypeFfiShareBundle.lower(value)
+}
+
+
+/**
+ * Result of `generate_sharing_keypair` (base64 for wire transport).
+ */
+public struct FfiSharingKeyPair: Equatable, Hashable {
+    public var publicKeyB64: String
+    public var secretKeyB64: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(publicKeyB64: String, secretKeyB64: String) {
+        self.publicKeyB64 = publicKeyB64
+        self.secretKeyB64 = secretKeyB64
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FfiSharingKeyPair: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSharingKeyPair: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharingKeyPair {
+        return
+            try FfiSharingKeyPair(
+                publicKeyB64: FfiConverterString.read(from: &buf), 
+                secretKeyB64: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSharingKeyPair, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.publicKeyB64, into: &buf)
+        FfiConverterString.write(value.secretKeyB64, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharingKeyPair_lift(_ buf: RustBuffer) throws -> FfiSharingKeyPair {
+    return try FfiConverterTypeFfiSharingKeyPair.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharingKeyPair_lower(_ value: FfiSharingKeyPair) -> RustBuffer {
+    return FfiConverterTypeFfiSharingKeyPair.lower(value)
+}
+
+
+/**
+ * A group SIK wrapped for a single member (uploaded to the server).
+ */
+public struct FfiWrappedGroupKey: Equatable, Hashable {
+    public var groupId: String
+    public var memberUuid: String
+    public var wrappedSik: String
+    public var ephemeralPublicKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(groupId: String, memberUuid: String, wrappedSik: String, ephemeralPublicKey: String) {
+        self.groupId = groupId
+        self.memberUuid = memberUuid
+        self.wrappedSik = wrappedSik
+        self.ephemeralPublicKey = ephemeralPublicKey
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FfiWrappedGroupKey: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiWrappedGroupKey: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiWrappedGroupKey {
+        return
+            try FfiWrappedGroupKey(
+                groupId: FfiConverterString.read(from: &buf), 
+                memberUuid: FfiConverterString.read(from: &buf), 
+                wrappedSik: FfiConverterString.read(from: &buf), 
+                ephemeralPublicKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiWrappedGroupKey, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.groupId, into: &buf)
+        FfiConverterString.write(value.memberUuid, into: &buf)
+        FfiConverterString.write(value.wrappedSik, into: &buf)
+        FfiConverterString.write(value.ephemeralPublicKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWrappedGroupKey_lift(_ buf: RustBuffer) throws -> FfiWrappedGroupKey {
+    return try FfiConverterTypeFfiWrappedGroupKey.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWrappedGroupKey_lower(_ value: FfiWrappedGroupKey) -> RustBuffer {
+    return FfiConverterTypeFfiWrappedGroupKey.lower(value)
+}
+
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
@@ -1898,6 +2506,30 @@ public func FfiConverterTypeFfiError_lower(_ value: FfiError) -> RustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias SwiftType = String?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
     typealias SwiftType = Data?
 
@@ -1990,6 +2622,112 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+/**
+ * Decrypt an incoming 1:1 share. `incoming_json` is the JSON `IncomingShare`
+ * (share_id, sender_uuid, item_uuid, wrapped_sik, ephemeral_public_key,
+ * encrypted_payload) returned by the server; `sharing_secret_b64` is the
+ * recipient's persisted sharing secret key. Returns the plaintext bytes (which
+ * the caller must zeroize after use).
+ */
+public func ffiAcceptShare(incomingJson: String, sharingSecretB64: String)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_accept_share(
+        FfiConverterString.lower(incomingJson),
+        FfiConverterString.lower(sharingSecretB64),$0
+    )
+})
+}
+/**
+ * Wrap the Group SIK for a new member. `group_json` is the admin's persisted
+ * `{ group, secret }` JSON; `member_pubkey_b64` is the member's sharing public
+ * key (from the server PKI).
+ */
+public func ffiAddGroupMember(groupJson: String, memberUuid: String, memberPubkeyB64: String)throws  -> FfiWrappedGroupKey  {
+    return try  FfiConverterTypeFfiWrappedGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_add_group_member(
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(memberUuid),
+        FfiConverterString.lower(memberPubkeyB64),$0
+    )
+})
+}
+/**
+ * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+ */
+public func ffiCreateGroup(name: String, adminUuid: String)throws  -> FfiGroupKey  {
+    return try  FfiConverterTypeFfiGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_create_group(
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(adminUuid),$0
+    )
+})
+}
+/**
+ * Decrypt a group item's payload. `group_json` is the member's key; `ct_b64`
+ * is the Group-SIK-encrypted payload from the server.
+ */
+public func ffiDecryptGroupItem(groupJson: String, itemUuid: String, ctB64: String)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_decrypt_group_item(
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterString.lower(ctB64),$0
+    )
+})
+}
+/**
+ * Encrypt a vault item's payload for a group (one encryption for N members).
+ * `group_json` is the admin/member's persisted `{ group, secret }`.
+ */
+public func ffiEncryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_encrypt_group_item(
+        FfiConverterString.lower(groupJson),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+/**
+ * Pure-crypto sharing primitives (no I/O). The mobile SDK layers the HTTP
+ * relay (publish/fetch public key, upload/download bundle, group inbox) on top
+ * of these. Returned/accepted values are base64 or JSON strings so they cross
+ * the uniffi bridge without leaking raw secret bytes into JS.
+ */
+public func ffiGenerateSharingKeypair() -> FfiSharingKeyPair  {
+    return try!  FfiConverterTypeFfiSharingKeyPair_lift(try! rustCall() {
+    uniffi_vautr_ffi_fn_func_ffi_generate_sharing_keypair($0
+    )
+})
+}
+/**
+ * Build a 1:1 share bundle for `recipient_pubkey_b64` (the recipient's sharing
+ * public key, fetched from the server PKI).
+ */
+public func ffiShareItem(senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: Data)throws  -> FfiShareBundle  {
+    return try  FfiConverterTypeFfiShareBundle_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_share_item(
+        FfiConverterString.lower(senderUuid),
+        FfiConverterString.lower(recipientUuid),
+        FfiConverterString.lower(itemUuid),
+        FfiConverterString.lower(recipientPubkeyB64),
+        FfiConverterData.lower(plaintext),$0
+    )
+})
+}
+/**
+ * Member-side: decapsulate the Group SIK from an inbox entry. `inbox_json` is
+ * the JSON `WrappedGroupKey`; `sharing_secret_b64` is the member's sharing
+ * secret key. Returns the member's `{ group, secret }` JSON for persistence.
+ */
+public func ffiUnwrapGroupKey(inboxJson: String, sharingSecretB64: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+    uniffi_vautr_ffi_fn_func_ffi_unwrap_group_key(
+        FfiConverterString.lower(inboxJson),
+        FfiConverterString.lower(sharingSecretB64),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -2006,10 +2744,52 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_vautr_ffi_checksum_func_ffi_accept_share() != 64222) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_add_group_member() != 24000) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_create_group() != 1705) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_decrypt_group_item() != 44026) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_encrypt_group_item() != 54880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_generate_sharing_keypair() != 9787) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_share_item() != 4325) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_func_ffi_unwrap_group_key() != 58918) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_accept_share() != 52184) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member() != 948) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 63846) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_create_group() != 44650) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item() != 58727) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 5566) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item() != 47572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key() != 51610) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 43421) {
@@ -2054,6 +2834,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge() != 41292) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_sharing_secret() != 17721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_share_item() != 62780) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret() != 55894) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 46351) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2064,6 +2853,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 21325) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key() != 62491) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_method_platformactionhandler_on_action() != 52603) {
@@ -2081,10 +2873,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_has_svk() != 8090) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_ensure_sharing_key() != 65297) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 1017) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_constructor_mobilesharingstore_new() != 65081) {
         return InitializationResult.apiChecksumMismatch
     }
 

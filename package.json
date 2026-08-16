@@ -17,5 +17,25 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
     "typescript": "^5.9.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "metro": "0.87.0",
+      "metro-transform-worker": "0.87.0",
+      "metro-transform-plugins": "0.87.0",
+      "metro-runtime": "0.87.0",
+      "metro-core": "0.87.0",
+      "metro-config": "0.87.0",
+      "metro-resolver": "0.87.0",
+      "metro-babel-transformer": "0.87.0",
+      "metro-cache": "0.87.0",
+      "metro-cache-key": "0.87.0",
+      "metro-file-map": "0.87.0",
+      "metro-source-map": "0.87.0",
+      "metro-minify-uglify": "0.87.0",
+      "metro-minify-terser": "0.87.0",
+      "metro-react-native-babel-preset": "0.87.0",
+      "metro-react-native-babel-transformer": "0.87.0"
+    }
   }
 }

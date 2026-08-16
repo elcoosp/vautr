@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Dimensions, Modal, Pressable, Text, View } from 'react-native';
 import { Button, ButtonText } from '../../components/ui/button';
 import { getTourAnchor } from './anchors';
 import { TOUR_STEPS } from './steps';
@@ -12,6 +12,9 @@ interface Rect {
   width: number;
   height: number;
 }
+
+const vw = () => Dimensions.get('window').width;
+const vh = () => Dimensions.get('window').height;
 
 /**
  * Feature-tour overlay (VTR-078, mobile). Upgraded from the centered-card
@@ -31,8 +34,11 @@ export function TourOverlay() {
 
   useEffect(() => {
     const onReplay = () => setIndex(0);
-    window.addEventListener(TOUR_REPLAY_EVENT, onReplay);
-    return () => window.removeEventListener(TOUR_REPLAY_EVENT, onReplay);
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener(TOUR_REPLAY_EVENT, onReplay);
+      return () => window.removeEventListener(TOUR_REPLAY_EVENT, onReplay);
+    }
+    return undefined;
   }, []);
 
   // Measure the active step's anchor whenever the step changes (or the layout
@@ -70,23 +76,12 @@ export function TourOverlay() {
 
   // Position the card below the highlighted element, clamped to the viewport.
   const cardWidth = Math.min(320, (rect?.width ?? 0) + 40 || 320);
-  const cardTop = rect
-    ? Math.min(
-        rect.y + rect.height + 12,
-        (typeof window !== 'undefined' ? window.innerHeight : 700) - 200,
-      )
-    : (typeof window !== 'undefined' ? window.innerHeight : 700) / 2 - 100;
+  const cardTop = rect ? Math.min(rect.y + rect.height + 12, vh() - 200) : vh() / 2 - 100;
   const cardLeft = rect
-    ? Math.max(
-        12,
-        Math.min(
-          rect.x,
-          (typeof window !== 'undefined' ? window.innerWidth : 360) - cardWidth - 12,
-        ),
-      )
-    : (typeof window !== 'undefined' ? window.innerWidth : 360) / 2 - cardWidth / 2;
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 700;
+    ? Math.max(12, Math.min(rect.x, vw() - cardWidth - 12))
+    : vw() / 2 - cardWidth / 2;
+  const curVw = vw();
+  const curVh = vh();
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={finish}>
@@ -111,7 +106,7 @@ export function TourOverlay() {
           className="absolute rounded-2xl border border-border bg-surface p-5"
           style={{
             top: cardTop,
-            left: Math.max(12, Math.min(cardLeft, vw - cardWidth - 12)),
+            left: Math.max(12, Math.min(cardLeft, curVw - cardWidth - 12)),
             width: cardWidth,
           }}
         >
@@ -135,7 +130,7 @@ export function TourOverlay() {
           </View>
         </View>
         {/* Keep the whole overlay inside the viewport bounds. */}
-        <View style={{ position: 'absolute', width: vw, height: vh }} pointerEvents="none" />
+        <View style={{ position: 'absolute', width: curVw, height: curVh }} pointerEvents="none" />
       </Pressable>
     </Modal>
   );
@@ -143,5 +138,7 @@ export function TourOverlay() {
 
 /** Ask the TourOverlay to (re)start the tour from Settings. */
 export function triggerReplayTour() {
-  window.dispatchEvent(new Event(TOUR_REPLAY_EVENT));
+  if (typeof window !== 'undefined' && window.dispatchEvent) {
+    window.dispatchEvent(new Event(TOUR_REPLAY_EVENT));
+  }
 }

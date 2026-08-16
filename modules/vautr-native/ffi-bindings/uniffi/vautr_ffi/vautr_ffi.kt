@@ -705,9 +705,37 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
+    external fun uniffi_vautr_ffi_checksum_func_ffi_accept_share(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_add_group_member(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_create_group(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_decrypt_group_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_encrypt_group_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_generate_sharing_keypair(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_share_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_func_ffi_unwrap_group_key(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_accept_share(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member(
+    ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync(
     ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_create_group(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item(
+    ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_delete_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key(
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_get_overview(
     ): Int
@@ -737,6 +765,12 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge(
     ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_set_sharing_secret(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_share_item(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret(
+    ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_sync(
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_unlock(
@@ -744,6 +778,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_password(
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key(
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_platformactionhandler_on_action(
     ): Int
@@ -755,9 +791,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_secureenclavebridge_has_svk(
     ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobilesharingstore_ensure_sharing_key(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret(
+    ): Int
     external fun uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize(
     ): Int
     external fun uniffi_vautr_ffi_checksum_constructor_mobileclient_new(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_constructor_mobilesharingstore_new(
     ): Int
     external fun ffi_vautr_ffi_uniffi_contract_version(
     ): Int
@@ -780,181 +822,227 @@ internal object UniffiLib {
         
     }
     external fun uniffi_vautr_ffi_fn_clone_mobileclient(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun uniffi_vautr_ffi_fn_free_mobileclient(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(`dbPath`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_constructor_mobileclient_new(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(`ptr`: Long,`baseUrl`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_delete_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_get_overview(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_is_locked(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Byte
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(`ptr`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_lock(`ptr`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_perform_action(`ptr`: Long,`action`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_release_secret(`ptr`: Long,`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(`ptr`: Long,`handle`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(`ptr`: Long,`newGen`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_save_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,`encKeyGen`: Long,`payload`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_search(`ptr`: Long,`query`: RustBuffer.ByValue,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_secure_enclave_bridge(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(`ptr`: Long,`handler`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_set_secure_enclave_bridge(`ptr`: Long,`bridge`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_sync(`ptr`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(`ptr`: Long,`mp`: RustBuffer.ByValue,`kdfSaltB64`: RustBuffer.ByValue,`wrappedSvkB64`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,`localGen`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
-    ): Long
-    external fun uniffi_vautr_ffi_fn_clone_platformactionhandler(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun uniffi_vautr_ffi_fn_free_platformactionhandler(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_init_callback_vtable_platformactionhandler(`vtable`: UniffiVTableCallbackInterfacePlatformActionHandler,
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_platformactionhandler_on_action(`ptr`: Long,`action`: RustBuffer.ByValue,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_clone_secureenclavebridge(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun uniffi_vautr_ffi_fn_free_secureenclavebridge(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_init_callback_vtable_secureenclavebridge(`vtable`: UniffiVTableCallbackInterfaceSecureEnclaveBridge,
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_save_svk(`ptr`: Long,`svk`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_load_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_delete_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_has_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Byte
-    external fun ffi_vautr_ffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun ffi_vautr_ffi_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun ffi_vautr_ffi_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun ffi_vautr_ffi_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun ffi_vautr_ffi_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_u8(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_u8(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Int
-    external fun ffi_vautr_ffi_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_i8(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_i8(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Byte
-    external fun ffi_vautr_ffi_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_u16(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_u16(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Int
-    external fun ffi_vautr_ffi_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_i16(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_i16(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Short
-    external fun ffi_vautr_ffi_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_u32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_u32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Int
-    external fun ffi_vautr_ffi_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_i32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_i32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Int
-    external fun ffi_vautr_ffi_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_u64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_u64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun ffi_vautr_ffi_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_i64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_i64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun ffi_vautr_ffi_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_f32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_f32(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Float
-    external fun ffi_vautr_ffi_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_f64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_f64(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Double
-    external fun ffi_vautr_ffi_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_rust_buffer(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_rust_buffer(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    external fun ffi_vautr_ffi_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_cancel_void(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_free_void(`handle`: Long,
-    ): Unit
-    external fun ffi_vautr_ffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
+): Long
+external fun uniffi_vautr_ffi_fn_free_mobileclient(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(`dbPath`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_constructor_mobileclient_new(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_accept_share(`ptr`: Long,`incomingJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_add_group_member(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`memberUuid`: RustBuffer.ByValue,`memberPubkeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(`ptr`: Long,`baseUrl`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_create_group(`ptr`: Long,`name`: RustBuffer.ByValue,`adminUuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_decrypt_group_item(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`ctB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_delete_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_encrypt_group_item(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_ensure_sharing_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_get_overview(`ptr`: Long,`uuid`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_is_locked(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(`ptr`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_lock(`ptr`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_perform_action(`ptr`: Long,`action`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_release_secret(`ptr`: Long,`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(`ptr`: Long,`handle`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(`ptr`: Long,`uuid`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(`ptr`: Long,`newGen`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_save_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,`encKeyGen`: Long,`payload`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_search(`ptr`: Long,`query`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_secure_enclave_bridge(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(`ptr`: Long,`handler`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_set_secure_enclave_bridge(`ptr`: Long,`bridge`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_set_sharing_secret(`ptr`: Long,`secretB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_share_item(`ptr`: Long,`senderUuid`: RustBuffer.ByValue,`recipientUuid`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`recipientPubkeyB64`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_sharing_secret(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_sync(`ptr`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(`ptr`: Long,`mp`: RustBuffer.ByValue,`kdfSaltB64`: RustBuffer.ByValue,`wrappedSvkB64`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,`localGen`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unwrap_group_key(`ptr`: Long,`inboxJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_clone_platformactionhandler(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_vautr_ffi_fn_free_platformactionhandler(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_init_callback_vtable_platformactionhandler(`vtable`: UniffiVTableCallbackInterfacePlatformActionHandler,
+): Unit
+external fun uniffi_vautr_ffi_fn_method_platformactionhandler_on_action(`ptr`: Long,`action`: RustBuffer.ByValue,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_clone_secureenclavebridge(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_vautr_ffi_fn_free_secureenclavebridge(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_init_callback_vtable_secureenclavebridge(`vtable`: UniffiVTableCallbackInterfaceSecureEnclaveBridge,
+): Unit
+external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_save_svk(`ptr`: Long,`svk`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_load_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_delete_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_secureenclavebridge_has_svk(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_vautr_ffi_fn_clone_mobilesharingstore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_vautr_ffi_fn_free_mobilesharingstore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_constructor_mobilesharingstore_new(`sharingSecretB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobilesharingstore_ensure_sharing_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobilesharingstore_sharing_secret(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_accept_share(`incomingJson`: RustBuffer.ByValue,`sharingSecretB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_add_group_member(`groupJson`: RustBuffer.ByValue,`memberUuid`: RustBuffer.ByValue,`memberPubkeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_create_group(`name`: RustBuffer.ByValue,`adminUuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_decrypt_group_item(`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`ctB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_encrypt_group_item(`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_generate_sharing_keypair(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_share_item(`senderUuid`: RustBuffer.ByValue,`recipientUuid`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`recipientPubkeyB64`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_func_ffi_unwrap_group_key(`inboxJson`: RustBuffer.ByValue,`sharingSecretB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_vautr_ffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_vautr_ffi_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_vautr_ffi_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun ffi_vautr_ffi_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_vautr_ffi_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_u8(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_u8(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_vautr_ffi_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_i8(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_i8(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun ffi_vautr_ffi_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_u16(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_u16(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_vautr_ffi_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_i16(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_i16(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Short
+external fun ffi_vautr_ffi_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_u32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_u32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_vautr_ffi_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_i32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_i32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_vautr_ffi_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_u64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_u64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun ffi_vautr_ffi_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_i64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_i64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun ffi_vautr_ffi_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_f32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_f32(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Float
+external fun ffi_vautr_ffi_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_f64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_f64(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Double
+external fun ffi_vautr_ffi_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_rust_buffer(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_rust_buffer(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_vautr_ffi_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_cancel_void(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_free_void(`handle`: Long,
+): Unit
+external fun ffi_vautr_ffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 
-        
+    
 }
 
 private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
@@ -968,10 +1056,52 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_accept_share() != 64222) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_add_group_member() != 24000) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_create_group() != 1705) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_decrypt_group_item() != 44026) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_encrypt_group_item() != 54880) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_generate_sharing_keypair() != 9787) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_share_item() != 4325) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_func_ffi_unwrap_group_key() != 58918) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_accept_share() != 52184) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member() != 948) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 63846) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_create_group() != 44650) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item() != 58727) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 5566) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item() != 47572) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key() != 51610) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 43421) {
@@ -1016,6 +1146,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge() != 41292) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_set_sharing_secret() != 17721) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_share_item() != 62780) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret() != 55894) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 46351) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1026,6 +1165,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 21325) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key() != 62491) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_platformactionhandler_on_action() != 52603) {
@@ -1043,10 +1185,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_secureenclavebridge_has_svk() != 8090) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobilesharingstore_ensure_sharing_key() != 65297) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 1017) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_constructor_mobilesharingstore_new() != 65081) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1501,14 +1652,45 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 public interface MobileClientInterface {
     
     /**
+     * Decrypt an incoming 1:1 share using the persisted sharing secret.
+     */
+    fun `acceptShare`(`incomingJson`: kotlin.String): kotlin.ByteArray
+    
+    /**
+     * Wrap the Group SIK for a new member.
+     */
+    fun `addGroupMember`(`groupJson`: kotlin.String, `memberUuid`: kotlin.String, `memberPubkeyB64`: kotlin.String): FfiWrappedGroupKey
+    
+    /**
      * Connect sync transport to the server.
      */
     suspend fun `connectSync`(`baseUrl`: kotlin.String, `token`: kotlin.String, `userId`: kotlin.String)
     
     /**
+     * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+     */
+    fun `createGroup`(`name`: kotlin.String, `adminUuid`: kotlin.String): FfiGroupKey
+    
+    /**
+     * Decrypt a group item's payload.
+     */
+    fun `decryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `ctB64`: kotlin.String): kotlin.ByteArray
+    
+    /**
      * Delete an item by uuid.
      */
     suspend fun `deleteItem`(`uuid`: kotlin.String)
+    
+    /**
+     * Encrypt a vault item's payload for a group.
+     */
+    fun `encryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `plaintext`: kotlin.ByteArray): kotlin.String
+    
+    /**
+     * Ensure a sharing keypair exists; generates + persists one on first use,
+     * returning the public key (base64) for publishing to the server PKI.
+     */
+    fun `ensureSharingKey`(): kotlin.String
     
     /**
      * Get a single overview by uuid string. Returns JSON `DecryptedOverview`.
@@ -1588,6 +1770,21 @@ public interface MobileClientInterface {
     fun `setSecureEnclaveBridge`(`bridge`: SecureEnclaveBridge)
     
     /**
+     * Persist the sharing secret key (base64) loaded from the OS secure store.
+     */
+    fun `setSharingSecret`(`secretB64`: kotlin.String?)
+    
+    /**
+     * Build a 1:1 share bundle for `recipient_pubkey_b64`.
+     */
+    fun `shareItem`(`senderUuid`: kotlin.String, `recipientUuid`: kotlin.String, `itemUuid`: kotlin.String, `recipientPubkeyB64`: kotlin.String, `plaintext`: kotlin.ByteArray): FfiShareBundle
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+    fun `sharingSecret`(): kotlin.String?
+    
+    /**
      * Run a metadata-first sync pull + selective payload download.
      */
     suspend fun `sync`()
@@ -1608,6 +1805,11 @@ public interface MobileClientInterface {
      * Unlock directly with a raw 32-byte vault key + the local key generation.
      */
     suspend fun `unlockWithRawKey`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
+    
+    /**
+     * Member-side: decapsulate the Group SIK from an inbox entry.
+     */
+    fun `unwrapGroupKey`(`inboxJson`: kotlin.String): kotlin.String
     
     companion object
 }
@@ -1725,6 +1927,40 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
 
     
     /**
+     * Decrypt an incoming 1:1 share using the persisted sharing secret.
+     */
+    @Throws(FfiException::class)override fun `acceptShare`(`incomingJson`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_accept_share(
+        it,
+        FfiConverterString.lower(`incomingJson`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Wrap the Group SIK for a new member.
+     */
+    @Throws(FfiException::class)override fun `addGroupMember`(`groupJson`: kotlin.String, `memberUuid`: kotlin.String, `memberPubkeyB64`: kotlin.String): FfiWrappedGroupKey {
+            return FfiConverterTypeFfiWrappedGroupKey.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_add_group_member(
+        it,
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`memberUuid`),FfiConverterString.lower(`memberPubkeyB64`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Connect sync transport to the server.
      */
     @Throws(FfiException::class)
@@ -1750,6 +1986,40 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
 
     
     /**
+     * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+     */
+    @Throws(FfiException::class)override fun `createGroup`(`name`: kotlin.String, `adminUuid`: kotlin.String): FfiGroupKey {
+            return FfiConverterTypeFfiGroupKey.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_create_group(
+        it,
+        FfiConverterString.lower(`name`),FfiConverterString.lower(`adminUuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Decrypt a group item's payload.
+     */
+    @Throws(FfiException::class)override fun `decryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `ctB64`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_decrypt_group_item(
+        it,
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`itemUuid`),FfiConverterString.lower(`ctB64`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Delete an item by uuid.
      */
     @Throws(FfiException::class)
@@ -1772,6 +2042,41 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
         FfiException.ErrorHandler,
     )
     }
+
+    
+    /**
+     * Encrypt a vault item's payload for a group.
+     */
+    @Throws(FfiException::class)override fun `encryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `plaintext`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_encrypt_group_item(
+        it,
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`itemUuid`),FfiConverterByteArray.lower(`plaintext`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Ensure a sharing keypair exists; generates + persists one on first use,
+     * returning the public key (base64) for publishing to the server PKI.
+     */
+    @Throws(FfiException::class)override fun `ensureSharingKey`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_ensure_sharing_key(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
 
     
     /**
@@ -2089,6 +2394,55 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
 
     
     /**
+     * Persist the sharing secret key (base64) loaded from the OS secure store.
+     */
+    @Throws(FfiException::class)override fun `setSharingSecret`(`secretB64`: kotlin.String?)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_set_sharing_secret(
+        it,
+        FfiConverterOptionalString.lower(`secretB64`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Build a 1:1 share bundle for `recipient_pubkey_b64`.
+     */
+    @Throws(FfiException::class)override fun `shareItem`(`senderUuid`: kotlin.String, `recipientUuid`: kotlin.String, `itemUuid`: kotlin.String, `recipientPubkeyB64`: kotlin.String, `plaintext`: kotlin.ByteArray): FfiShareBundle {
+            return FfiConverterTypeFfiShareBundle.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_share_item(
+        it,
+        FfiConverterString.lower(`senderUuid`),FfiConverterString.lower(`recipientUuid`),FfiConverterString.lower(`itemUuid`),FfiConverterString.lower(`recipientPubkeyB64`),FfiConverterByteArray.lower(`plaintext`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */override fun `sharingSecret`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_sharing_secret(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Run a metadata-first sync pull + selective payload download.
      */
     @Throws(FfiException::class)
@@ -2190,6 +2544,23 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     }
 
     
+    /**
+     * Member-side: decapsulate the Group SIK from an inbox entry.
+     */
+    @Throws(FfiException::class)override fun `unwrapGroupKey`(`inboxJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unwrap_group_key(
+        it,
+        FfiConverterString.lower(`inboxJson`),_status)
+}
+    }
+    )
+    }
+    
+
+    
 
     
 
@@ -2243,6 +2614,304 @@ public object FfiConverterTypeMobileClient: FfiConverter<MobileClient, Long> {
     override fun allocationSize(value: MobileClient) = 8UL
 
     override fun write(value: MobileClient, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Thin wrapper holding the persisted sharing secret key for the mobile client.
+ */
+public interface MobileSharingStoreInterface {
+    
+    /**
+     * Ensure a sharing keypair exists; if none is persisted, generate one and
+     * return its public key (for the app to publish to the server PKI).
+     */
+    fun `ensureSharingKey`(): kotlin.String
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */
+    fun `sharingSecret`(): kotlin.String?
+    
+    companion object
+}
+
+/**
+ * Thin wrapper holding the persisted sharing secret key for the mobile client.
+ */
+open class MobileSharingStore: Disposable, AutoCloseable, MobileSharingStoreInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Construct a sharing-key store bound to a persisted secret (base64). The
+     * app loads/saves the secret from its secure store (Keychain/Keystore).
+     */
+    constructor(`sharingSecretB64`: kotlin.String?) :
+        this(UniffiWithHandle, 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_constructor_mobilesharingstore_new(
+    
+        FfiConverterOptionalString.lower(`sharingSecretB64`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_vautr_ffi_fn_free_mobilesharingstore(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_vautr_ffi_fn_clone_mobilesharingstore(handle, status)
+        }
+    }
+
+    
+    /**
+     * Ensure a sharing keypair exists; if none is persisted, generate one and
+     * return its public key (for the app to publish to the server PKI).
+     */
+    @Throws(FfiException::class)override fun `ensureSharingKey`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobilesharingstore_ensure_sharing_key(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The persisted sharing secret key (base64), if any.
+     */override fun `sharingSecret`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobilesharingstore_sharing_secret(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMobileSharingStore: FfiConverter<MobileSharingStore, Long> {
+    override fun lower(value: MobileSharingStore): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): MobileSharingStore {
+        return MobileSharingStore(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): MobileSharingStore {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: MobileSharingStore) = 8UL
+
+    override fun write(value: MobileSharingStore, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -3025,6 +3694,218 @@ public object FfiConverterTypeSecureEnclaveBridge: FfiConverter<SecureEnclaveBri
 
 
 /**
+ * Admin-created group context (`{ group, secret_b64 }`).
+ */
+data class FfiGroupKey (
+    var `groupId`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
+    var `adminUuid`: kotlin.String
+    , 
+    /**
+     * Raw Group SIK (zeroized on drop in Rust); persist under the master key.
+     */
+    var `secretB64`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiGroupKey: FfiConverterRustBuffer<FfiGroupKey> {
+    override fun read(buf: ByteBuffer): FfiGroupKey {
+        return FfiGroupKey(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiGroupKey) = (
+            FfiConverterString.allocationSize(value.`groupId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`adminUuid`) +
+            FfiConverterString.allocationSize(value.`secretB64`)
+    )
+
+    override fun write(value: FfiGroupKey, buf: ByteBuffer) {
+            FfiConverterString.write(value.`groupId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`adminUuid`, buf)
+            FfiConverterString.write(value.`secretB64`, buf)
+    }
+}
+
+
+
+/**
+ * A 1:1 share bundle as handed to the untrusted relay (base64 fields).
+ */
+data class FfiShareBundle (
+    var `shareId`: kotlin.String
+    , 
+    var `senderUuid`: kotlin.String
+    , 
+    var `recipientUuid`: kotlin.String
+    , 
+    var `itemUuid`: kotlin.String
+    , 
+    var `wrappedSik`: kotlin.String
+    , 
+    var `ephemeralPublicKey`: kotlin.String
+    , 
+    var `encryptedPayload`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiShareBundle: FfiConverterRustBuffer<FfiShareBundle> {
+    override fun read(buf: ByteBuffer): FfiShareBundle {
+        return FfiShareBundle(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiShareBundle) = (
+            FfiConverterString.allocationSize(value.`shareId`) +
+            FfiConverterString.allocationSize(value.`senderUuid`) +
+            FfiConverterString.allocationSize(value.`recipientUuid`) +
+            FfiConverterString.allocationSize(value.`itemUuid`) +
+            FfiConverterString.allocationSize(value.`wrappedSik`) +
+            FfiConverterString.allocationSize(value.`ephemeralPublicKey`) +
+            FfiConverterString.allocationSize(value.`encryptedPayload`)
+    )
+
+    override fun write(value: FfiShareBundle, buf: ByteBuffer) {
+            FfiConverterString.write(value.`shareId`, buf)
+            FfiConverterString.write(value.`senderUuid`, buf)
+            FfiConverterString.write(value.`recipientUuid`, buf)
+            FfiConverterString.write(value.`itemUuid`, buf)
+            FfiConverterString.write(value.`wrappedSik`, buf)
+            FfiConverterString.write(value.`ephemeralPublicKey`, buf)
+            FfiConverterString.write(value.`encryptedPayload`, buf)
+    }
+}
+
+
+
+/**
+ * Result of `generate_sharing_keypair` (base64 for wire transport).
+ */
+data class FfiSharingKeyPair (
+    var `publicKeyB64`: kotlin.String
+    , 
+    var `secretKeyB64`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiSharingKeyPair: FfiConverterRustBuffer<FfiSharingKeyPair> {
+    override fun read(buf: ByteBuffer): FfiSharingKeyPair {
+        return FfiSharingKeyPair(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiSharingKeyPair) = (
+            FfiConverterString.allocationSize(value.`publicKeyB64`) +
+            FfiConverterString.allocationSize(value.`secretKeyB64`)
+    )
+
+    override fun write(value: FfiSharingKeyPair, buf: ByteBuffer) {
+            FfiConverterString.write(value.`publicKeyB64`, buf)
+            FfiConverterString.write(value.`secretKeyB64`, buf)
+    }
+}
+
+
+
+/**
+ * A group SIK wrapped for a single member (uploaded to the server).
+ */
+data class FfiWrappedGroupKey (
+    var `groupId`: kotlin.String
+    , 
+    var `memberUuid`: kotlin.String
+    , 
+    var `wrappedSik`: kotlin.String
+    , 
+    var `ephemeralPublicKey`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiWrappedGroupKey: FfiConverterRustBuffer<FfiWrappedGroupKey> {
+    override fun read(buf: ByteBuffer): FfiWrappedGroupKey {
+        return FfiWrappedGroupKey(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiWrappedGroupKey) = (
+            FfiConverterString.allocationSize(value.`groupId`) +
+            FfiConverterString.allocationSize(value.`memberUuid`) +
+            FfiConverterString.allocationSize(value.`wrappedSik`) +
+            FfiConverterString.allocationSize(value.`ephemeralPublicKey`)
+    )
+
+    override fun write(value: FfiWrappedGroupKey, buf: ByteBuffer) {
+            FfiConverterString.write(value.`groupId`, buf)
+            FfiConverterString.write(value.`memberUuid`, buf)
+            FfiConverterString.write(value.`wrappedSik`, buf)
+            FfiConverterString.write(value.`ephemeralPublicKey`, buf)
+    }
+}
+
+
+
+/**
  * FFI-safe action enum mirroring `vautr_app_state::handles::CoreAction`.
  */
 sealed class CoreAction {
@@ -3244,6 +4125,38 @@ public object FfiConverterTypeFfiError : FfiConverterRustBuffer<FfiException> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
+    override fun read(buf: ByteBuffer): kotlin.String? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterString.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.String?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterString.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.String?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
     override fun read(buf: ByteBuffer): kotlin.ByteArray? {
         if (buf.get().toInt() == 0) {
@@ -3308,5 +4221,130 @@ public object FfiConverterOptionalTypeSecureEnclaveBridge: FfiConverterRustBuffe
 
 
 
+
+        /**
+         * Decrypt an incoming 1:1 share. `incoming_json` is the JSON `IncomingShare`
+         * (share_id, sender_uuid, item_uuid, wrapped_sik, ephemeral_public_key,
+         * encrypted_payload) returned by the server; `sharing_secret_b64` is the
+         * recipient's persisted sharing secret key. Returns the plaintext bytes (which
+         * the caller must zeroize after use).
+         */
+    @Throws(FfiException::class) fun `ffiAcceptShare`(`incomingJson`: kotlin.String, `sharingSecretB64`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_accept_share(
+    
+        FfiConverterString.lower(`incomingJson`),FfiConverterString.lower(`sharingSecretB64`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Wrap the Group SIK for a new member. `group_json` is the admin's persisted
+         * `{ group, secret }` JSON; `member_pubkey_b64` is the member's sharing public
+         * key (from the server PKI).
+         */
+    @Throws(FfiException::class) fun `ffiAddGroupMember`(`groupJson`: kotlin.String, `memberUuid`: kotlin.String, `memberPubkeyB64`: kotlin.String): FfiWrappedGroupKey {
+            return FfiConverterTypeFfiWrappedGroupKey.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_add_group_member(
+    
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`memberUuid`),FfiConverterString.lower(`memberPubkeyB64`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
+         */
+    @Throws(FfiException::class) fun `ffiCreateGroup`(`name`: kotlin.String, `adminUuid`: kotlin.String): FfiGroupKey {
+            return FfiConverterTypeFfiGroupKey.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_create_group(
+    
+        FfiConverterString.lower(`name`),FfiConverterString.lower(`adminUuid`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Decrypt a group item's payload. `group_json` is the member's key; `ct_b64`
+         * is the Group-SIK-encrypted payload from the server.
+         */
+    @Throws(FfiException::class) fun `ffiDecryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `ctB64`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_decrypt_group_item(
+    
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`itemUuid`),FfiConverterString.lower(`ctB64`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Encrypt a vault item's payload for a group (one encryption for N members).
+         * `group_json` is the admin/member's persisted `{ group, secret }`.
+         */
+    @Throws(FfiException::class) fun `ffiEncryptGroupItem`(`groupJson`: kotlin.String, `itemUuid`: kotlin.String, `plaintext`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_encrypt_group_item(
+    
+        FfiConverterString.lower(`groupJson`),FfiConverterString.lower(`itemUuid`),FfiConverterByteArray.lower(`plaintext`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Pure-crypto sharing primitives (no I/O). The mobile SDK layers the HTTP
+         * relay (publish/fetch public key, upload/download bundle, group inbox) on top
+         * of these. Returned/accepted values are base64 or JSON strings so they cross
+         * the uniffi bridge without leaking raw secret bytes into JS.
+         */ fun `ffiGenerateSharingKeypair`(): FfiSharingKeyPair {
+            return FfiConverterTypeFfiSharingKeyPair.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_generate_sharing_keypair(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * Build a 1:1 share bundle for `recipient_pubkey_b64` (the recipient's sharing
+         * public key, fetched from the server PKI).
+         */
+    @Throws(FfiException::class) fun `ffiShareItem`(`senderUuid`: kotlin.String, `recipientUuid`: kotlin.String, `itemUuid`: kotlin.String, `recipientPubkeyB64`: kotlin.String, `plaintext`: kotlin.ByteArray): FfiShareBundle {
+            return FfiConverterTypeFfiShareBundle.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_share_item(
+    
+        FfiConverterString.lower(`senderUuid`),FfiConverterString.lower(`recipientUuid`),FfiConverterString.lower(`itemUuid`),FfiConverterString.lower(`recipientPubkeyB64`),FfiConverterByteArray.lower(`plaintext`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Member-side: decapsulate the Group SIK from an inbox entry. `inbox_json` is
+         * the JSON `WrappedGroupKey`; `sharing_secret_b64` is the member's sharing
+         * secret key. Returns the member's `{ group, secret }` JSON for persistence.
+         */
+    @Throws(FfiException::class) fun `ffiUnwrapGroupKey`(`inboxJson`: kotlin.String, `sharingSecretB64`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_func_ffi_unwrap_group_key(
+    
+        FfiConverterString.lower(`inboxJson`),FfiConverterString.lower(`sharingSecretB64`),_status)
+}
+    )
+    }
+    
 
 
