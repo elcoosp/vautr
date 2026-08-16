@@ -4235,11 +4235,25 @@ impl DesktopView {
         .detach();
     }
 
-    /// Modal to share the item in `pending_share` with another user (VTR-063).
-    /// Collects the recipient user UUID and calls `do_share`.
+    /// Modal to share the item in `pending_share` (VTR-063), plus group
+    /// sharing (VTR-070). VTR-094: restructured for clarity — a clickable
+    /// backdrop + close button, the named item being shared, and the
+    /// user-share flow visually separated from the advanced group flow.
     fn render_share_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let text = self.share_text.clone();
         let _recipient = self.share_recipient_input.read(cx);
+        let shared_name = self
+            .pending_share
+            .as_ref()
+            .and_then(|uuid| {
+                self.projects
+                    .secrets
+                    .iter()
+                    .find(|s| s.uuid == uuid.to_string())
+                    .map(|s| s.key.clone())
+            })
+            .unwrap_or_else(|| "this secret".to_string());
+
         div()
             .absolute()
             .inset_0()
@@ -4253,8 +4267,25 @@ impl DesktopView {
                 a: 0.5,
             })
             .child(
+                // Click-away backdrop cancels the modal.
+                Button::new("share-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .bg(Rgba {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.0,
+                    })
+                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                        this.pending_share = None;
+                        cx.notify();
+                    })),
+            )
+            .child(
                 div()
-                    .w(px(420.))
+                    .w(px(460.))
+                    .max_w_full()
                     .rounded_lg()
                     .border_1()
                     .border_color(theme::BORDER)
@@ -4263,92 +4294,73 @@ impl DesktopView {
                     .shadow_lg()
                     .child(
                         v_flex()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(theme::TEXT)
-                                    .child("Share secret"),
-                            )
-                            .child(
-                                div().text_sm().text_color(theme::TEXT_MUTED).child(
-                                    "Encrypt this secret under the recipient's sharing key.",
-                                ),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child("Recipient user UUID"),
-                            )
-                            .child(Input::new(&self.share_recipient_input).w_full())
-                            .when(!text.is_empty(), |this| {
-                                this.child(
-                                    div().text_sm().text_color(theme::WARN).child(text.clone()),
-                                )
-                            })
-                            .child(
-                                div()
-                                    .mt_3()
-                                    .pt_3()
-                                    .border_t_1()
-                                    .border_color(theme::BORDER)
-                                    .text_sm()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child(match &self.active_group_id {
-                                        Some(id) => format!("Active group: {id}"),
-                                        None => "No active group".to_string(),
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child("Group sharing (VTR-070)"),
-                            )
-                            .child(Input::new(&self.group_name_input).w_full())
-                            .child(Button::new("group-create").label("Create group").on_click(
-                                cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                    this.do_create_group(window, cx);
-                                }),
-                            ))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::TEXT_MUTED)
-                                    .child("Add member UUID to active group"),
-                            )
-                            .child(Input::new(&self.group_member_input).w_full())
-                            .child(
-                                Button::new("group-add-member")
-                                    .label("Add member")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_add_group_member(window, cx);
-                                        },
-                                    )),
-                            )
-                            .child(
-                                Button::new("group-share")
-                                    .primary()
-                                    .label("Share to active group")
-                                    .on_click(cx.listener(
-                                        |this, _: &gpui::ClickEvent, window, cx| {
-                                            this.do_share_to_group(window, cx);
-                                        },
-                                    )),
-                            )
+                            .gap_4()
+                            // Header: title + close button.
                             .child(
                                 h_flex()
+                                    .items_start()
+                                    .justify_between()
                                     .gap_2()
-                                    .justify_end()
-                                    .child(Button::new("share-cancel").label("Cancel").on_click(
-                                        cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                            this.pending_share = None;
-                                            cx.notify();
-                                        }),
-                                    ))
+                                    .child(
+                                        v_flex()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_lg()
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .text_color(theme::TEXT)
+                                                    .child("Share secret"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .text_color(theme::TEXT_MUTED)
+                                                    .child(
+                                                        "Encrypt this secret under the \
+                                                         recipient's sharing key.",
+                                                    ),
+                                            ),
+                                    )
+                                    .child(
+                                        Button::new("share-close")
+                                            .icon(IconName::Close)
+                                            .ghost()
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_share = None;
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    ),
+                            )
+                            // What is being shared.
+                            .child(
+                                div()
+                                    .w_full()
+                                    .p_2()
+                                    .rounded_md()
+                                    .bg(theme::SURFACE_RAISED)
+                                    .text_sm()
+                                    .text_color(theme::TEXT_MUTED)
+                                    .child(format!("Sharing: {shared_name}")),
+                            )
+                            // Section 1 — share with a user.
+                            .child(
+                                v_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme::TEXT)
+                                            .child("Recipient user UUID"),
+                                    )
+                                    .child(Input::new(&self.share_recipient_input).w_full())
+                                    .when(!text.is_empty(), |this| {
+                                        this.child(
+                                            div().text_sm().text_color(theme::WARN).child(text.clone()),
+                                        )
+                                    })
                                     .child(
                                         Button::new("share-confirm")
                                             .primary()
@@ -4356,6 +4368,73 @@ impl DesktopView {
                                             .on_click(cx.listener(
                                                 |this, _: &gpui::ClickEvent, window, cx| {
                                                     this.do_share(window, cx);
+                                                },
+                                            )),
+                                    ),
+                            )
+                            // Divider + section 2 — group sharing (advanced).
+                            .child(div().border_t_1().border_color(theme::BORDER))
+                            .child(
+                                v_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme::TEXT)
+                                            .child(format!(
+                                                "Group sharing{}",
+                                                match &self.active_group_id {
+                                                    Some(id) => format!(" — active: {id}"),
+                                                    None => String::new(),
+                                                }
+                                            )),
+                                    )
+                                    .child(
+                                        Input::new(&self.group_name_input)
+                                    )
+                                    .child(
+                                        Button::new("group-create")
+                                            .label("Create group")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.do_create_group(window, cx);
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Input::new(&self.group_member_input)
+                                    )
+                                    .child(
+                                        Button::new("group-add-member")
+                                            .label("Add member")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.do_add_group_member(window, cx);
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("group-share")
+                                            .label("Share to active group")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, window, cx| {
+                                                    this.do_share_to_group(window, cx);
+                                                },
+                                            )),
+                                    ),
+                            )
+                            // Footer — cancel.
+                            .child(
+                                h_flex()
+                                    .justify_end()
+                                    .child(
+                                        Button::new("share-cancel")
+                                            .label("Cancel")
+                                            .on_click(cx.listener(
+                                                |this, _: &gpui::ClickEvent, _window, cx| {
+                                                    this.pending_share = None;
+                                                    cx.notify();
                                                 },
                                             )),
                                     ),
