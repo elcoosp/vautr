@@ -6436,6 +6436,9 @@ impl DesktopView {
 
     // ── Import / export section ─────────────────────────────────────────
 
+    /// Import / export screen (VTR-093: cards wrap 2-up→1-up instead of a
+    /// fixed 3-column row that overflowed offscreen; matches the web's
+    /// `lg:grid-cols-2` layout).
     fn render_import_export(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let backup = self.backup.clone();
         let include = self.include_secrets;
@@ -6477,12 +6480,16 @@ impl DesktopView {
                 this.child(card)
             })
             .child(
-                h_flex()
-                    .gap_4()
+                div()
                     .w_full()
+                    .flex()
+                    .flex_wrap()
+                    .gap_4()
                     .child(
                         v_flex()
                             .flex_1()
+                            .min_w(px(340.))
+                            .max_w(px(560.))
                             .border_1()
                             .border_color(theme::BORDER)
                             .rounded_lg()
@@ -6566,6 +6573,8 @@ impl DesktopView {
                     .child(
                         v_flex()
                             .flex_1()
+                            .min_w(px(340.))
+                            .max_w(px(560.))
                             .border_1()
                             .border_color(theme::BORDER)
                             .rounded_lg()
@@ -6599,6 +6608,8 @@ impl DesktopView {
                     .child(
                         v_flex()
                             .flex_1()
+                            .min_w(px(340.))
+                            .max_w(px(560.))
                             .border_1()
                             .border_color(theme::BORDER)
                             .rounded_lg()
