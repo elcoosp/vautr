@@ -290,7 +290,20 @@ impl ApiClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("request {url}: {e}"))?;
+            .map_err(|e| {
+                let url = url.clone();
+                // Connection-level failures (server down, wrong host/port) surface
+                // as reqwest "error sending request for url (...)". Surface a clear,
+                // actionable message instead of the raw library string (VTR-096).
+                if e.is_connect() || e.is_timeout() || e.is_request() {
+                    format!(
+                        "Cannot reach the Vautr server at {url}. Is it running? (Underlying \
+                         error: {e})"
+                    )
+                } else {
+                    format!("request {url}: {e}")
+                }
+            })?;
         let status = resp.status();
         let bytes = resp
             .bytes()
