@@ -89,10 +89,10 @@ function ProjectDetailScreen() {
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as 'secrets' | 'members')}>
         <TabsList className="flex-row">
-          <TabsTrigger value="secrets" className="flex-1">
+          <TabsTrigger value="secrets" active={tab === 'secrets'} className="flex-1">
             Secrets
           </TabsTrigger>
-          <TabsTrigger value="members" className="flex-1">
+          <TabsTrigger value="members" active={tab === 'members'} className="flex-1">
             Members
           </TabsTrigger>
         </TabsList>

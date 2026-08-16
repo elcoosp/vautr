@@ -76,10 +76,10 @@ function LoginScreen() {
         <CardContent className="gap-5">
           <Tabs value={mode} onValueChange={(value) => setMode(value as 'login' | 'register')}>
             <TabsList className="flex-row">
-              <TabsTrigger value="login" className="flex-1">
+              <TabsTrigger value="login" active={mode === 'login'} className="flex-1">
                 <Text variant="label">Login</Text>
               </TabsTrigger>
-              <TabsTrigger value="register" className="flex-1">
+              <TabsTrigger value="register" active={mode === 'register'} className="flex-1">
                 <Text variant="label">Register</Text>
               </TabsTrigger>
             </TabsList>

@@ -26,17 +26,29 @@ const TabsTrigger = forwardRef<
   ComponentRef<typeof TabsPrimitive.Trigger>,
   Omit<ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>, 'children'> & {
     children?: ReactNode;
+    /** Explicitly mark the trigger active (native @rn-primitives/tabs does not
+     *  emit a `data-state` attribute, so CSS `data-[state=active]` variants do
+     *  not match on RN — callers pass `active` to style the selected tab). */
+    active?: boolean;
   }
->(({ className, children, ...props }, ref) => (
+>(({ className, children, active = false, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'group inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium web:transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground web:data-[state=active]:shadow-sm native:rounded-md native:px-4 native:py-2',
+      'group inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium web:transition-all native:rounded-md native:px-4 native:py-2',
+      active
+        ? 'bg-primary text-primary-foreground web:shadow-sm'
+        : 'bg-background text-muted-foreground',
       className,
     )}
     {...props}
   >
-    <Text className="text-sm font-medium text-foreground data-[slot=trigger]:group-data-[state=inactive]:text-muted-foreground">
+    <Text
+      className={cn(
+        'text-sm font-medium',
+        active ? 'text-primary-foreground' : 'text-muted-foreground',
+      )}
+    >
       {children}
     </Text>
   </TabsPrimitive.Trigger>
