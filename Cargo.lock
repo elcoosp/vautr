@@ -10040,6 +10040,7 @@ dependencies = [
  "ed25519-dalek",
  "gpui",
  "gpui-component",
+ "gpui-component-assets",
  "gpui_platform",
  "rand 0.8.7",
  "reqwest",

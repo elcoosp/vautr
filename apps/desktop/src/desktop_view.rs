@@ -13,8 +13,10 @@ use gpui::*;
 use gpui_component::{
     Icon, IconName,
     button::{Button, ButtonVariants},
+    checkbox::Checkbox,
     h_flex,
-    input::{Input, InputState},
+    input::{Input, InputState, InputEvent},
+    slider::{Slider, SliderEvent, SliderState, SliderValue},
     v_flex,
 };
 use rand::RngCore;
@@ -242,7 +244,25 @@ pub struct DesktopView {
     offboard_input: Entity<InputState>,
 
     // ── Generator section (canonical screen, ui-logic equivalent) ───────
+    // Mirrors web `DEFAULT_GENERATOR_OPTIONS` + `analyzePassword` so the
+    // desktop and web generators behave identically (VTR generator parity).
     generator_password: String,
+    generator_length: usize,
+    generator_uppercase: bool,
+    generator_lowercase: bool,
+    generator_digits: bool,
+    generator_symbols: bool,
+    generator_avoid_ambiguous: bool,
+    generator_slider: Entity<SliderState>,
+    generator_subscriptions: Vec<gpui::Subscription>,
+    /// Password entered into the "check" field of the weak/reused card.
+    generator_check_password: String,
+    /// Comma/whitespace-separated known passwords for reuse detection.
+    generator_known: String,
+    /// Backing input for the "check a password" field.
+    generator_check_input: Entity<InputState>,
+    /// Backing input for the "known passwords" field.
+    generator_known_input: Entity<InputState>,
 
     // ── MFA section (canonical screen) ──────────────────────────────────
     mfa_status: Option<api_client::MfaStatusDto>,
@@ -419,6 +439,46 @@ impl DesktopView {
         })
         .detach();
 
+        let gen_slider = cx.new(|_| {
+            SliderState::new()
+                .min(8.)
+                .max(64.)
+                .step(1.)
+                .default_value(20.)
+        });
+        let gen_check_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Type a password to check its strength")
+        });
+        let gen_known_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Paste known passwords (comma or newline separated)")
+        });
+        let gen_slider_subs = vec![
+            cx.subscribe(&gen_slider, |this: &mut Self, _entity: Entity<SliderState>, event: &SliderEvent, cx| {
+                if let SliderEvent::Change(value) = event {
+                    let len = value.end().max(1.0) as usize;
+                    this.generator_length = len;
+                    this.generator_password = generate_password(GeneratorOptions {
+                        length: len,
+                        uppercase: this.generator_uppercase,
+                        lowercase: this.generator_lowercase,
+                        digits: this.generator_digits,
+                        symbols: this.generator_symbols,
+                        avoid_ambiguous: this.generator_avoid_ambiguous,
+                    });
+                    cx.notify();
+                }
+            }),
+            cx.subscribe(&gen_check_input, |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
+                this.generator_check_password = this.generator_check_input.read(cx).value().to_string();
+                cx.notify();
+            }),
+            cx.subscribe(&gen_known_input, |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
+                this.generator_known = this.generator_known_input.read(cx).value().to_string();
+                cx.notify();
+            }),
+        ];
+
         Self {
             focus_handle: cx.focus_handle(),
             username_input,
@@ -453,7 +513,19 @@ impl DesktopView {
             secret_key_input,
             secret_value_input,
             offboard_input,
-            generator_password: generate_password(20),
+            generator_password: String::new(),
+            generator_length: 20,
+            generator_uppercase: true,
+            generator_lowercase: true,
+            generator_digits: true,
+            generator_symbols: true,
+            generator_avoid_ambiguous: true,
+            generator_slider: gen_slider,
+            generator_subscriptions: gen_slider_subs,
+            generator_check_password: String::new(),
+            generator_known: String::new(),
+            generator_check_input: gen_check_input,
+            generator_known_input: gen_known_input,
             mfa_status: None,
             mfa_enrolled: None,
             mfa_code_input,
@@ -2334,8 +2406,36 @@ impl DesktopView {
     // ── Generator (canonical screen) ────────────────────────────────────
 
     fn do_regenerate_generator(&mut self, cx: &mut Context<Self>) {
-        self.generator_password = generate_password(20);
+        let opts = GeneratorOptions {
+            length: self.generator_length,
+            uppercase: self.generator_uppercase,
+            lowercase: self.generator_lowercase,
+            digits: self.generator_digits,
+            symbols: self.generator_symbols,
+            avoid_ambiguous: self.generator_avoid_ambiguous,
+        };
+        self.generator_password = generate_password(opts);
         cx.notify();
+    }
+
+    fn do_generator_option_toggle(&mut self, field: GeneratorToggle, cx: &mut Context<Self>) {
+        match field {
+            GeneratorToggle::Uppercase => self.generator_uppercase = !self.generator_uppercase,
+            GeneratorToggle::Lowercase => self.generator_lowercase = !self.generator_lowercase,
+            GeneratorToggle::Digits => self.generator_digits = !self.generator_digits,
+            GeneratorToggle::Symbols => self.generator_symbols = !self.generator_symbols,
+            GeneratorToggle::AvoidAmbiguous => {
+                self.generator_avoid_ambiguous = !self.generator_avoid_ambiguous
+            }
+        }
+        self.do_regenerate_generator(cx);
+    }
+
+    fn do_copy_generator(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.generator_password.is_empty() {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.generator_password.clone()));
+            self.push_toast(ToastKind::Info, "Password copied to clipboard", 3, cx);
+        }
     }
 
     // ── MFA (canonical screen) ──────────────────────────────────────────
@@ -3253,6 +3353,7 @@ impl DesktopView {
             .font_weight(FontWeight::MEDIUM)
             .items_center()
             .justify_center()
+            .text_center() // VTR-091: center the Log in / Register tab labels
             .when(active, |d| {
                 d.bg(theme::ACCENT).text_color(theme::ACCENT_INK)
             })
@@ -5218,39 +5319,217 @@ impl DesktopView {
     // ── Generator section ─────────────────────────────────────────────────
 
     fn render_generator(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // VTR-090: rewrite to match the web generator — length slider, charset
+        // toggles, copy/regenerate buttons, and the weak/reused-detection card.
         let password = self.generator_password.clone();
+        let length = self.generator_length;
+        let known: Vec<&str> = self
+            .generator_known
+            .split(|c: char| c == ',' || c == '\n' || c.is_whitespace())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Strength analysis of the currently-generated password.
+        let gen_analysis = analyze_password(&password, &known);
+        let gen_color = match gen_analysis.label {
+            "Weak" => theme::DANGER_TEXT,
+            "Fair" => theme::WARN,
+            "Good" => theme::ACCENT,
+            _ => theme::SUCCESS,
+        };
+
+        // Strength analysis of the "check a password" field (if any).
+        let check = self.generator_check_password.clone();
+        let check_analysis = if check.is_empty() {
+            None
+        } else {
+            Some(analyze_password(&check, &known))
+        };
+
+        let slider = self.generator_slider.clone();
+
         self.page()
             .child(self.page_header(
                 "Password generator",
                 "Generate strong passwords and detect weak or reused ones.",
             ))
+            // ── Generator card ──────────────────────────────────────────
             .child(
                 self.card(
                     "Generator",
                     "Options for a cryptographically-secure random password.",
                 )
                 .child(
-                    div()
+                    h_flex()
                         .w_full()
-                        .p_3()
-                        .rounded_md()
-                        .bg(theme::SURFACE_RAISED)
-                        .border_1()
-                        .border_color(theme::BORDER)
-                        .font_family("ui-monospace")
-                        .text_color(theme::WARN)
-                        .child(password),
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            div()
+                                .flex_1()
+                                .p_3()
+                                .rounded_md()
+                                .bg(theme::SURFACE_RAISED)
+                                .border_1()
+                                .border_color(theme::BORDER)
+                                .font_family("ui-monospace")
+                                .text_color(theme::TEXT)
+                                .child(password.clone()),
+                        )
+                        .child(
+                            Button::new("generator-copy")
+                                .icon(IconName::Copy)
+                                .compact()
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                                    this.do_copy_generator(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("generator-regen")
+                                .icon(IconName::Replace)
+                                .compact()
+                                .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                    this.do_regenerate_generator(cx);
+                                })),
+                        ),
                 )
                 .child(
-                    h_flex().gap_2().child(
-                        Button::new("generator-btn")
-                            .primary()
-                            .label("Generate")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                this.do_regenerate_generator(cx);
-                            })),
+                    v_flex()
+                        .w_full()
+                        .gap_2()
+                        .mt_3()
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .justify_between()
+                                .child(div().text_sm().text_color(theme::TEXT_MUTED).child(
+                                    if self.generator_avoid_ambiguous {
+                                        "Length: 20 (no ambiguous chars)"
+                                    } else {
+                                        "Length: 20"
+                                    }
+                                    .to_string(),
+                                ))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_family("ui-monospace")
+                                        .text_color(theme::TEXT_MUTED)
+                                        .child(format!("{length}")),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .child(Slider::new(&slider).horizontal()),
+                        ),
+                )
+                .child(
+                    v_flex().w_full().gap_2().mt_3().child(
+                        h_flex().w_full().gap_4().flex_wrap().children([
+                            self.gen_toggle("gen-upper", "Uppercase", self.generator_uppercase, GeneratorToggle::Uppercase, cx),
+                            self.gen_toggle("gen-lower", "Lowercase", self.generator_lowercase, GeneratorToggle::Lowercase, cx),
+                            self.gen_toggle("gen-digits", "Digits", self.generator_digits, GeneratorToggle::Digits, cx),
+                            self.gen_toggle("gen-symbols", "Symbols", self.generator_symbols, GeneratorToggle::Symbols, cx),
+                            self.gen_toggle("gen-ambiguous", "Avoid ambiguous", self.generator_avoid_ambiguous, GeneratorToggle::AvoidAmbiguous, cx),
+                        ]),
                     ),
                 ),
+            )
+            // ── Weak / reused detection card ─────────────────────────────
+            .child(
+                self.card(
+                    "Weak / reused detection",
+                    "Estimate entropy and flag passwords that are weak, common, or reused.",
+                )
+                .child(
+                    v_flex().w_full().gap_3()
+                        .child(
+                            h_flex().items_center().gap_3().child(
+                                div().text_xl().font_family("ui-monospace").text_color(gen_color)
+                                    .child(format!("{} bits", gen_analysis.bits.round() as i32)),
+                            )
+                            .child(
+                                div().text_sm().text_color(theme::TEXT_MUTED)
+                                    .child(format!("Strength: {}", gen_analysis.label)),
+                            ),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .h_2()
+                                .rounded_full()
+                                .bg(theme::SURFACE_RAISED)
+                                .child(
+                                    div()
+                                        .h_full()
+                                        .w(gpui::Length::Definite(gpui::DefiniteLength::Fraction(gen_analysis.score as f32 / 100.0)))
+                                        .rounded_full()
+                                        .bg(gen_color),
+                                ),
+                        )
+                        .when(gen_analysis.common, |this| {
+                            this.child(gen_callout(theme::DANGER_TEXT, "This password is very common — do not use it."))
+                        })
+                        .when(gen_analysis.reused, |this| {
+                            this.child(gen_callout(theme::WARN, "This password matches one of your known passwords (reused)."))
+                        })
+                        .when(!gen_analysis.common && !gen_analysis.reused && gen_analysis.bits < 60.0, |this| {
+                            this.child(gen_callout(theme::WARN, "Low entropy — increase length or enable more character classes."))
+                        })
+                        .child(
+                            div().text_xs().text_color(theme::TEXT_MUTED).child(
+                                "Tip: aim for ≥ 60 bits of entropy and a 'Good' or 'Strong' rating.",
+                            ),
+                        )
+                        .child(
+                            v_flex().w_full().gap_2().mt_2()
+                                .child(Input::new(&self.generator_check_input).w_full())
+                                .when_some(check_analysis, |this, a| {
+                                    let c = match a.label {
+                                        "Weak" => theme::DANGER_TEXT,
+                                        "Fair" => theme::WARN,
+                                        "Good" => theme::ACCENT,
+                                        _ => theme::SUCCESS,
+                                    };
+                                    this.child(
+                                        h_flex().items_center().gap_2().child(
+                                            div().text_sm().text_color(c)
+                                                .child(format!("Checked: {} ({} bits)", a.label, a.bits.round() as i32)),
+                                        ),
+                                    )
+                                    .when(a.common, |this| this.child(gen_callout(theme::DANGER_TEXT, "Common password.")))
+                                    .when(a.reused, |this| this.child(gen_callout(theme::WARN, "Reused password.")))
+                                })
+                                .child(Input::new(&self.generator_known_input).w_full())
+                                .child(
+                                    div().text_xs().text_color(theme::TEXT_MUTED)
+                                        .child("Known passwords are used only locally to detect reuse; nothing is sent anywhere."),
+                                ),
+                        ),
+                ),
+            )
+    }
+
+    /// A labelled checkbox toggle for a generator character-class option.
+    fn gen_toggle(
+        &mut self,
+        id: &'static str,
+        label: &'static str,
+        checked: bool,
+        field: GeneratorToggle,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        div()
+            .flex_none()
+            .child(
+                Checkbox::new(id)
+                    .checked(checked)
+                    .label(label)
+                    .on_click(cx.listener(move |this, _: &bool, _window, cx| {
+                        this.do_generator_option_toggle(field, cx);
+                    })),
             )
     }
 
@@ -6887,20 +7166,152 @@ impl Focusable for DesktopView {
     }
 }
 
-/// Generate a cryptographically random password using characters safe for
-/// most password rules. Mirrors the `@vautr/ui-logic` generator on the
-/// Rust side (the desktop client has no JS runtime).
-fn generate_password(length: usize) -> String {
+/// Which generator character-class toggle was clicked.
+#[derive(Clone, Copy)]
+enum GeneratorToggle {
+    Uppercase,
+    Lowercase,
+    Digits,
+    Symbols,
+    AvoidAmbiguous,
+}
+
+/// Generator options — mirrors `DEFAULT_GENERATOR_OPTIONS` from
+/// `@vautr/ui-logic` (apps/web/src/routes/_authed/generator.tsx) and the
+/// desktop generator UI. Kept in lockstep with the web app (VTR parity).
+#[derive(Clone, Copy)]
+struct GeneratorOptions {
+    length: usize,
+    uppercase: bool,
+    lowercase: bool,
+    digits: bool,
+    symbols: bool,
+    avoid_ambiguous: bool,
+}
+
+const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+const DIGITS: &[u8] = b"0123456789";
+const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+[]{};:,.?/";
+/// Characters that are visually ambiguous and commonly confused.
+const AMBIGUOUS: &[u8] = b"ilLoO0|`1I";
+
+/// Build the effective character set from the options, removing ambiguous
+/// characters when requested. Mirrors `buildCharSet` in ui-logic.
+fn build_charset(opts: &GeneratorOptions) -> Vec<u8> {
+    let mut set: Vec<u8> = Vec::new();
+    if opts.uppercase {
+        set.extend_from_slice(UPPER);
+    }
+    if opts.lowercase {
+        set.extend_from_slice(LOWER);
+    }
+    if opts.digits {
+        set.extend_from_slice(DIGITS);
+    }
+    if opts.symbols {
+        set.extend_from_slice(SYMBOLS);
+    }
+    if opts.avoid_ambiguous {
+        set.retain(|c| !AMBIGUOUS.contains(c));
+    }
+    set
+}
+
+/// Generate a cryptographically random password. Mirrors `generatePassword`
+/// in `@vautr/ui-logic` on the Rust side (the desktop client has no JS
+/// runtime). Returns an empty string when no character class is selected.
+fn generate_password(opts: GeneratorOptions) -> String {
     use rand::Rng;
-    const CHARS: &[u8] =
-        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
+    let set = build_charset(&opts);
+    if set.is_empty() {
+        return String::new();
+    }
+    let len = opts.length.max(1);
     let mut rng = rand::thread_rng();
-    (0..length)
+    (0..len)
         .map(|_| {
-            let idx = rng.gen_range(0..CHARS.len());
-            CHARS[idx] as char
+            let idx = rng.gen_range(0..set.len());
+            set[idx] as char
         })
         .collect()
+}
+
+/// Result of analyzing a password's strength (mirrors web `analyzePassword`).
+struct PasswordAnalysis {
+    bits: f64,
+    reused: bool,
+    common: bool,
+    score: u8,
+    label: &'static str,
+}
+
+/// A small common-password list (subset of ui-logic's `COMMON_PASSWORDS`).
+const COMMON_PASSWORDS: &[&str] = &[
+    "password", "123456", "12345678", "123456789", "qwerty", "abc123", "password1",
+    "111111", "123123", "admin", "letmein", "welcome", "monkey", "dragon", "iloveyou",
+    "sunshine", "princess", "football", "baseball", "master", "shadow", "superman",
+    "trustno1", "whatever", "qazwsx", "passw0rd", "password!", "pw123456",
+];
+
+/// Entropy bits for a password given the pool size it was drawn from.
+/// `pool_size` = number of distinct characters in the effective charset.
+fn entropy_bits(password: &str, pool_size: usize) -> f64 {
+    if pool_size == 0 || password.is_empty() {
+        return 0.0;
+    }
+    let pool = pool_size as f64;
+    (password.chars().count() as f64) * pool.log2()
+}
+
+/// Analyze a password's strength. Mirrors `analyzePassword` from ui-logic:
+/// reuse detection against `known`, common-password detection, and a 0-100
+/// strength score with a weak/fair/good/strong label.
+fn analyze_password(password: &str, known: &[&str]) -> PasswordAnalysis {
+    let opts = GeneratorOptions {
+        length: password.chars().count().max(1),
+        uppercase: password.chars().any(|c| c.is_ascii_uppercase()),
+        lowercase: password.chars().any(|c| c.is_ascii_lowercase()),
+        digits: password.chars().any(|c| c.is_ascii_digit()),
+        symbols: password.chars().any(|c| "!@#$%^&*()-_=+[]{};:,.?/".contains(c)),
+        avoid_ambiguous: false,
+    };
+    let charset = build_charset(&opts);
+    let bits = entropy_bits(password, charset.len());
+
+    let common = COMMON_PASSWORDS.contains(&password.to_lowercase().as_str());
+    let reused = !password.is_empty() && known.iter().any(|k| k == &password);
+
+    let score = if password.is_empty() {
+        0
+    } else {
+        let mut s = (bits / 128.0 * 100.0).clamp(0.0, 100.0) as u8;
+        if common {
+            s = s.min(15);
+        }
+        if reused {
+            s = s.min(20);
+        }
+        if password.chars().count() < 12 && !common {
+            s = s.min(55);
+        }
+        s
+    };
+
+    let label = match score {
+        0..=39 => "Weak",
+        40..=59 => "Fair",
+        60..=89 => "Good",
+        _ => "Strong",
+    };
+
+    PasswordAnalysis {
+        bits,
+        reused,
+        common,
+        score,
+        label,
+    }
 }
 
 /// Format a Unix-timestamp (seconds) as a compact local date/time string.
@@ -6943,4 +7354,19 @@ fn scope_pill(scope: &str) -> Div {
         .font_family("ui-monospace")
         .text_color(theme::TEXT_MUTED)
         .child(scope.to_string())
+}
+
+
+/// A small inline callout used by the generator's weak/reused detection card.
+fn gen_callout(color: impl Into<gpui::Hsla>, msg: &str) -> Div {
+    let c = color.into();
+    div()
+        .w_full()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(c)
+        .text_sm()
+        .text_color(c)
+        .child(msg.to_string())
 }
