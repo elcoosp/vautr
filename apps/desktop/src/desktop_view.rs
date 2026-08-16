@@ -4840,9 +4840,10 @@ impl DesktopView {
             )
     }
 
-    /// Projects master-detail screen (VTR-092: card-style list rows matching
-    /// the web Projects page — icon badge, name, description, type/permission
-    /// badges, and a clear selected state).
+    /// Projects screen (VTR-095: single-column card-grid layout matching the
+    /// web Projects page — a wrapping 2/3-up card grid with the selected
+    /// project's detail rendered *below* the grid, replacing the old
+    /// side-by-side master/detail row).
     fn render_projects(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let error = self.projects.error_message.clone().unwrap_or_default();
         let status = self.projects.status.clone();
@@ -4858,11 +4859,13 @@ impl DesktopView {
             let description = p.description.clone().unwrap_or_default();
             let row = div()
                 .id(SharedString::from(format!("project-row-{i}")))
-                .w_full()
+                .flex_1()
+                .min_w(px(300.))
+                .max_w(px(440.))
                 .flex()
                 .items_start()
                 .gap_3()
-                .p_3()
+                .p_4()
                 .rounded_lg()
                 .border_1()
                 .when(selected, |row| {
@@ -4926,129 +4929,35 @@ impl DesktopView {
             project_rows.push(row);
         }
 
-        // Project list panel (left).
-        let list_panel = v_flex()
-            .w_72()
-            .border_r_1()
-            .border_color(theme::BORDER)
-            .p_3()
-            .gap_2()
-            .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .child("Projects"),
-                    )
-                    .child(
-                        Button::new("projects-refresh")
-                            .compact()
-                            .label("Refresh")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                this.do_refresh_projects(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                div()
-                    .id("project-list")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .children(project_rows),
-            )
-            .child(div().border_t_1().border_color(theme::BORDER))
-            .child(
-                Button::new("open-create-project-btn")
-                    .primary()
-                    .label("New project")
-                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                        this.pending_create_project = true;
-                        let handle = this.project_name_input.read(cx).focus_handle(cx);
-                        window.focus(&handle, cx);
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("delete-project-btn")
-                    .danger()
-                    .label("Delete selected project")
-                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                        this.request_delete_project(window, cx);
-                    })),
-            );
-
-        // Detail panel (right): header + tabs + content.
+        // Selected project name/type (for the detail panel below the grid).
         let (proj_name, proj_type) = self
             .projects
             .selected_project()
             .map(|p| (p.name.clone(), p.kind.clone()))
             .unwrap_or_else(|| ("No project selected".into(), String::new()));
 
-        let detail = v_flex()
-            .flex_1()
-            .p_3()
-            .gap_2()
-            .child(
-                v_flex()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_weight(FontWeight::BOLD)
-                            .child(proj_name),
-                    )
-                    .child(div().text_xs().text_color(theme::TEXT_DIM).child(
-                        if proj_type.is_empty() {
-                            "Select a project to see its members and secrets.".into()
-                        } else {
-                            format!("Type: {proj_type}")
-                        },
-                    )),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("tab-members")
-                            .when(self.projects.detail_tab == DetailTab::Members, |b| {
-                                b.primary()
-                            })
-                            .compact()
-                            .label("Members")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                this.projects.detail_tab = DetailTab::Members;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("tab-secrets")
-                            .when(self.projects.detail_tab == DetailTab::Secrets, |b| {
-                                b.primary()
-                            })
-                            .compact()
-                            .label("Secrets")
-                            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
-                                this.projects.detail_tab = DetailTab::Secrets;
-                                cx.notify();
-                            })),
-                    ),
-            )
-            .child(
-                div()
-                    .id("projects-detail")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .child(match self.projects.detail_tab {
-                        DetailTab::Members => self.render_members(cx).into_any_element(),
-                        DetailTab::Secrets => self.render_secrets(cx).into_any_element(),
-                    }),
-            )
-            .child(self.render_offboard(cx));
+        // Wrapping card grid (top), matching the web's responsive columns.
+        let grid = div()
+            .id("project-list")
+            .w_full()
+            .flex()
+            .flex_wrap()
+            .gap_4()
+            .children(project_rows)
+            .when(self.projects.projects.is_empty(), |this| {
+                this.child(
+                    div()
+                        .w_full()
+                        .py_16()
+                        .text_center()
+                        .text_sm()
+                        .text_color(theme::TEXT_MUTED)
+                        .child("No projects yet. Create one to organize your vaults and secrets."),
+                )
+            });
 
-        v_flex()
+        // Single-column layout: header, toolbars, grid, then detail below.
+        let mut column = v_flex()
             .size_full()
             .p_6()
             .gap_4()
@@ -5073,17 +4982,125 @@ impl DesktopView {
             }))
             .child(
                 h_flex()
-                    .flex_1()
-                    .min_h_0()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .child(format!("{} projects", self.projects.projects.len())),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("projects-refresh")
+                                    .compact()
+                                    .label("Refresh")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.do_refresh_projects(window, cx);
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("open-create-project-btn")
+                                    .primary()
+                                    .label("New project")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, window, cx| {
+                                            this.pending_create_project = true;
+                                            let handle =
+                                                this.project_name_input.read(cx).focus_handle(cx);
+                                            window.focus(&handle, cx);
+                                            cx.notify();
+                                        },
+                                    )),
+                            ),
+                    ),
+            )
+            .child(grid);
+
+        // Detail panel below the grid when a project is selected.
+        if self.projects.selected_project().is_some() {
+            column = column.child(
+                v_flex()
                     .w_full()
                     .border_1()
                     .border_color(theme::BORDER)
                     .rounded_lg()
                     .bg(theme::SURFACE)
-                    .overflow_x_hidden()
-                    .child(list_panel)
-                    .child(detail),
-            )
+                    .p_4()
+                    .gap_3()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(proj_name),
+                            )
+                            .child(div().text_xs().text_color(theme::TEXT_DIM).child(
+                                if proj_type.is_empty() {
+                                    "Select a project to see its members and secrets.".into()
+                                } else {
+                                    format!("Type: {proj_type}")
+                                },
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("tab-members")
+                                    .when(self.projects.detail_tab == DetailTab::Members, |b| {
+                                        b.primary()
+                                    })
+                                    .compact()
+                                    .label("Members")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.projects.detail_tab = DetailTab::Members;
+                                            cx.notify();
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new("tab-secrets")
+                                    .when(self.projects.detail_tab == DetailTab::Secrets, |b| {
+                                        b.primary()
+                                    })
+                                    .compact()
+                                    .label("Secrets")
+                                    .on_click(cx.listener(
+                                        |this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.projects.detail_tab = DetailTab::Secrets;
+                                            cx.notify();
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("projects-detail")
+                            .min_h_0()
+                            .max_h(px(360.))
+                            .overflow_y_scroll()
+                            .child(match self.projects.detail_tab {
+                                DetailTab::Members => {
+                                    self.render_members(cx).into_any_element()
+                                }
+                                DetailTab::Secrets => {
+                                    self.render_secrets(cx).into_any_element()
+                                }
+                            }),
+                    )
+                    .child(self.render_offboard(cx)),
+            );
+        }
+
+        column
     }
 
     fn render_members(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
