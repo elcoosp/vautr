@@ -8,13 +8,16 @@ import {
 } from '@vautr/ui-logic';
 import { RefreshCw } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Switch, Text, View } from 'react-native';
+import { Switch, View } from 'react-native';
 
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Separator } from '../../components/ui/separator';
+import { Text } from '../../components/ui/text';
 
 export const Route = createFileRoute('/_app/generator')({
   component: GeneratorScreen,
@@ -33,7 +36,6 @@ function scoreVariant(
 ): 'default' | 'secondary' | 'outline' | 'destructive' {
   switch (score) {
     case 'strong':
-      return 'default';
     case 'good':
       return 'default';
     case 'fair':
@@ -70,16 +72,17 @@ function GeneratorScreen() {
   };
 
   return (
-    <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">Password generator</Text>
+    <View className="gap-5">
+      <View className="gap-0.5">
+        <Text variant="h2">Generator</Text>
+        <Text variant="muted">Create a strong, unique password.</Text>
+      </View>
 
-      <Card className="p-4 gap-3">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-2">
-            <Text className="font-mono text-lg text-foreground" selectable>
-              {password}
-            </Text>
-          </View>
+      <Card className="gap-4 p-4">
+        <View className="flex-row items-center justify-between gap-3">
+          <Text variant="large" className="flex-1 font-mono">
+            {password}
+          </Text>
           <Button size="sm" onPress={regenerate}>
             <RefreshCw size={16} className="text-primary-foreground" />
             <ButtonText className="ml-1">Generate</ButtonText>
@@ -94,28 +97,28 @@ function GeneratorScreen() {
         </View>
 
         {analysis.suggestions.length > 0 ? (
-          <View className="gap-1">
-            {analysis.suggestions.map((suggestion) => (
-              <Text key={suggestion} className="text-xs text-muted-foreground">
-                • {suggestion}
-              </Text>
-            ))}
-          </View>
+          <Alert variant="warning">
+            <AlertTitle>Suggestions</AlertTitle>
+            <AlertDescription>
+              {analysis.suggestions.map((s) => `• ${s}\n`).join('')}
+            </AlertDescription>
+          </Alert>
         ) : null}
       </Card>
 
-      <Card className="p-4 gap-3">
-        <Text className="text-sm font-medium text-foreground">Options</Text>
+      <Card className="gap-3 p-4">
+        <Text variant="label">Options</Text>
+        <Separator />
         {OPTION_LABELS.map(({ key, label }) => (
           <View key={key} className="flex-row items-center justify-between">
-            <Text className="text-sm text-foreground">{label}</Text>
+            <Text variant="p">{label}</Text>
             <Switch value={Boolean(options[key])} onValueChange={() => toggle(key)} />
           </View>
         ))}
       </Card>
 
-      <Card className="p-4 gap-2">
-        <Label htmlFor="known-passwords">Known passwords (weak / reused detection)</Label>
+      <Card className="gap-2 p-4">
+        <Label htmlFor="known-passwords">Known passwords</Label>
         <Input
           id="known-passwords"
           value={known}
@@ -124,9 +127,7 @@ function GeneratorScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Text className="text-xs text-muted-foreground">
-          Detect whether a generated password is reused or common.
-        </Text>
+        <Text variant="tiny">Detect whether a generated password is reused or common.</Text>
       </Card>
     </View>
   );

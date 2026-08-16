@@ -15,7 +15,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     h_flex,
-    input::{Input, InputState, InputEvent},
+    input::{Input, InputEvent, InputState},
     slider::{Slider, SliderEvent, SliderState, SliderValue},
     v_flex,
 };
@@ -454,29 +454,39 @@ impl DesktopView {
                 .placeholder("Paste known passwords (comma or newline separated)")
         });
         let gen_slider_subs = vec![
-            cx.subscribe(&gen_slider, |this: &mut Self, _entity: Entity<SliderState>, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    let len = value.end().max(1.0) as usize;
-                    this.generator_length = len;
-                    this.generator_password = generate_password(GeneratorOptions {
-                        length: len,
-                        uppercase: this.generator_uppercase,
-                        lowercase: this.generator_lowercase,
-                        digits: this.generator_digits,
-                        symbols: this.generator_symbols,
-                        avoid_ambiguous: this.generator_avoid_ambiguous,
-                    });
+            cx.subscribe(
+                &gen_slider,
+                |this: &mut Self, _entity: Entity<SliderState>, event: &SliderEvent, cx| {
+                    if let SliderEvent::Change(value) = event {
+                        let len = value.end().max(1.0) as usize;
+                        this.generator_length = len;
+                        this.generator_password = generate_password(GeneratorOptions {
+                            length: len,
+                            uppercase: this.generator_uppercase,
+                            lowercase: this.generator_lowercase,
+                            digits: this.generator_digits,
+                            symbols: this.generator_symbols,
+                            avoid_ambiguous: this.generator_avoid_ambiguous,
+                        });
+                        cx.notify();
+                    }
+                },
+            ),
+            cx.subscribe(
+                &gen_check_input,
+                |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
+                    this.generator_check_password =
+                        this.generator_check_input.read(cx).value().to_string();
                     cx.notify();
-                }
-            }),
-            cx.subscribe(&gen_check_input, |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
-                this.generator_check_password = this.generator_check_input.read(cx).value().to_string();
-                cx.notify();
-            }),
-            cx.subscribe(&gen_known_input, |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
-                this.generator_known = this.generator_known_input.read(cx).value().to_string();
-                cx.notify();
-            }),
+                },
+            ),
+            cx.subscribe(
+                &gen_known_input,
+                |this: &mut Self, _entity: Entity<InputState>, _: &InputEvent, cx| {
+                    this.generator_known = this.generator_known_input.read(cx).value().to_string();
+                    cx.notify();
+                },
+            ),
         ];
 
         Self {
@@ -2433,7 +2443,9 @@ impl DesktopView {
 
     fn do_copy_generator(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.generator_password.is_empty() {
-            cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.generator_password.clone()));
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                self.generator_password.clone(),
+            ));
             self.push_toast(ToastKind::Info, "Password copied to clipboard", 3, cx);
         }
     }
@@ -3359,7 +3371,15 @@ impl DesktopView {
             })
             .when(!active, |d| d.text_color(theme::TEXT_MUTED))
             .cursor_pointer()
-            .child(label)
+            .child(
+                div()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_center()
+                    .child(label),
+            )
             .on_click(cx.listener(move |this, _, _window, cx| {
                 this.login_mode = which;
                 this.login_state = FormState::Idle;
@@ -4358,7 +4378,10 @@ impl DesktopView {
                                     .child(Input::new(&self.share_recipient_input).w_full())
                                     .when(!text.is_empty(), |this| {
                                         this.child(
-                                            div().text_sm().text_color(theme::WARN).child(text.clone()),
+                                            div()
+                                                .text_sm()
+                                                .text_color(theme::WARN)
+                                                .child(text.clone()),
                                         )
                                     })
                                     .child(
@@ -4390,21 +4413,17 @@ impl DesktopView {
                                                 }
                                             )),
                                     )
+                                    .child(Input::new(&self.group_name_input))
                                     .child(
-                                        Input::new(&self.group_name_input)
-                                    )
-                                    .child(
-                                        Button::new("group-create")
-                                            .label("Create group")
-                                            .on_click(cx.listener(
+                                        Button::new("group-create").label("Create group").on_click(
+                                            cx.listener(
                                                 |this, _: &gpui::ClickEvent, window, cx| {
                                                     this.do_create_group(window, cx);
                                                 },
-                                            )),
+                                            ),
+                                        ),
                                     )
-                                    .child(
-                                        Input::new(&self.group_member_input)
-                                    )
+                                    .child(Input::new(&self.group_member_input))
                                     .child(
                                         Button::new("group-add-member")
                                             .label("Add member")
@@ -4426,18 +4445,14 @@ impl DesktopView {
                             )
                             // Footer — cancel.
                             .child(
-                                h_flex()
-                                    .justify_end()
-                                    .child(
-                                        Button::new("share-cancel")
-                                            .label("Cancel")
-                                            .on_click(cx.listener(
-                                                |this, _: &gpui::ClickEvent, _window, cx| {
-                                                    this.pending_share = None;
-                                                    cx.notify();
-                                                },
-                                            )),
+                                h_flex().justify_end().child(
+                                    Button::new("share-cancel").label("Cancel").on_click(
+                                        cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
+                                            this.pending_share = None;
+                                            cx.notify();
+                                        }),
                                     ),
+                                ),
                             ),
                     ),
             )
@@ -4869,8 +4884,7 @@ impl DesktopView {
                 .rounded_lg()
                 .border_1()
                 .when(selected, |row| {
-                    row.border_color(theme::ACCENT)
-                        .bg(theme::ACCENT_DIM)
+                    row.border_color(theme::ACCENT).bg(theme::ACCENT_DIM)
                 })
                 .when(!selected, |row| {
                     row.border_color(theme::BORDER).bg(theme::SURFACE)
@@ -4897,9 +4911,7 @@ impl DesktopView {
                                 .items_center()
                                 .justify_between()
                                 .gap_2()
-                                .child(
-                                    div().text_sm().font_weight(FontWeight::BOLD).child(name),
-                                )
+                                .child(div().text_sm().font_weight(FontWeight::BOLD).child(name))
                                 .child(status_badge(&kind)),
                         )
                         .when(!description.is_empty(), |this| {
@@ -4915,12 +4927,7 @@ impl DesktopView {
                                 .gap_2()
                                 .items_center()
                                 .child(scope_pill(&perm))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(theme::TEXT_DIM)
-                                        .child(role),
-                                ),
+                                .child(div().text_xs().text_color(theme::TEXT_DIM).child(role)),
                         ),
                 )
                 .on_click(cx.listener(move |this, _, _window, cx| {
@@ -5088,12 +5095,8 @@ impl DesktopView {
                             .max_h(px(360.))
                             .overflow_y_scroll()
                             .child(match self.projects.detail_tab {
-                                DetailTab::Members => {
-                                    self.render_members(cx).into_any_element()
-                                }
-                                DetailTab::Secrets => {
-                                    self.render_secrets(cx).into_any_element()
-                                }
+                                DetailTab::Members => self.render_members(cx).into_any_element(),
+                                DetailTab::Secrets => self.render_secrets(cx).into_any_element(),
                             }),
                     )
                     .child(self.render_offboard(cx)),
@@ -7411,10 +7414,34 @@ struct PasswordAnalysis {
 
 /// A small common-password list (subset of ui-logic's `COMMON_PASSWORDS`).
 const COMMON_PASSWORDS: &[&str] = &[
-    "password", "123456", "12345678", "123456789", "qwerty", "abc123", "password1",
-    "111111", "123123", "admin", "letmein", "welcome", "monkey", "dragon", "iloveyou",
-    "sunshine", "princess", "football", "baseball", "master", "shadow", "superman",
-    "trustno1", "whatever", "qazwsx", "passw0rd", "password!", "pw123456",
+    "password",
+    "123456",
+    "12345678",
+    "123456789",
+    "qwerty",
+    "abc123",
+    "password1",
+    "111111",
+    "123123",
+    "admin",
+    "letmein",
+    "welcome",
+    "monkey",
+    "dragon",
+    "iloveyou",
+    "sunshine",
+    "princess",
+    "football",
+    "baseball",
+    "master",
+    "shadow",
+    "superman",
+    "trustno1",
+    "whatever",
+    "qazwsx",
+    "passw0rd",
+    "password!",
+    "pw123456",
 ];
 
 /// Entropy bits for a password given the pool size it was drawn from.
@@ -7436,7 +7463,9 @@ fn analyze_password(password: &str, known: &[&str]) -> PasswordAnalysis {
         uppercase: password.chars().any(|c| c.is_ascii_uppercase()),
         lowercase: password.chars().any(|c| c.is_ascii_lowercase()),
         digits: password.chars().any(|c| c.is_ascii_digit()),
-        symbols: password.chars().any(|c| "!@#$%^&*()-_=+[]{};:,.?/".contains(c)),
+        symbols: password
+            .chars()
+            .any(|c| "!@#$%^&*()-_=+[]{};:,.?/".contains(c)),
         avoid_ambiguous: false,
     };
     let charset = build_charset(&opts);
@@ -7518,7 +7547,6 @@ fn scope_pill(scope: &str) -> Div {
         .text_color(theme::TEXT_MUTED)
         .child(scope.to_string())
 }
-
 
 /// A small inline callout used by the generator's weak/reused detection card.
 fn gen_callout(color: impl Into<gpui::Hsla>, msg: &str) -> Div {

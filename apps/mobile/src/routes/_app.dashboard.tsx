@@ -1,10 +1,15 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { FolderKanban, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
+import { Avatar } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { Separator } from '../../components/ui/separator';
+import { Skeleton } from '../../components/ui/skeleton';
+import { Text } from '../../components/ui/text';
 import type { MfaStatus, Project } from '../../lib/api';
 import { services } from '../../lib/client';
 
@@ -35,7 +40,6 @@ function DashboardScreen() {
       ]);
       setProjects(p);
       setMfa(m);
-      // Aggregate secret count across all projects for the at-a-glance stat.
       let total = 0;
       for (const project of p) {
         const secrets = await services.api.listProjectSecrets(project.uuid);
@@ -53,19 +57,23 @@ function DashboardScreen() {
 
   if (error) {
     return (
-      <View className="gap-3">
-        <Text accessibilityRole="alert" className="text-sm text-destructive">
-          {error}
-        </Text>
-        <Button onPress={() => void load()}>
+      <Alert variant="destructive">
+        <AlertTitle>Couldn’t load dashboard</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+        <Button variant="outline" className="mt-3 self-start" onPress={() => void load()}>
           <ButtonText>Retry</ButtonText>
         </Button>
-      </View>
+      </Alert>
     );
   }
 
   if (projects === null) {
-    return <ActivityIndicator className="mt-8" color="#42b59a" />;
+    return (
+      <View className="gap-4">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </View>
+    );
   }
 
   const stats: Stat[] = [
@@ -80,29 +88,35 @@ function DashboardScreen() {
   ];
 
   return (
-    <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">Dashboard</Text>
+    <View className="gap-5">
+      <View className="gap-0.5">
+        <Text variant="h2">Dashboard</Text>
+        <Text variant="muted">Your vault at a glance.</Text>
+      </View>
 
       <View className="flex-row gap-3">
         {stats.map((stat) => (
           <Pressable
             key={stat.label}
-            className="flex-1"
+            className="flex-1 active:opacity-90"
             onPress={() => router.navigate({ to: stat.to as '/' })}
           >
-            <Card className="items-center gap-1 p-4">
-              <stat.icon size={20} className="text-primary" />
-              <Text className="text-2xl font-semibold text-foreground">{stat.value}</Text>
-              <Text className="text-xs text-muted-foreground">{stat.label}</Text>
+            <Card className="items-center gap-2 p-4">
+              <Avatar size={36} className="bg-primary/15">
+                <stat.icon size={18} className="text-primary" />
+              </Avatar>
+              <Text variant="h3">{stat.value}</Text>
+              <Text variant="tiny">{stat.label}</Text>
             </Card>
           </Pressable>
         ))}
       </View>
 
-      <Card className="gap-2 p-4">
-        <Text className="text-sm font-medium text-foreground">Security</Text>
+      <Card className="gap-3 p-4">
+        <Text variant="label">Security</Text>
+        <Separator />
         <View className="flex-row items-center justify-between">
-          <Text className="text-sm text-muted-foreground">Multi-factor auth</Text>
+          <Text variant="p">Multi-factor authentication</Text>
           <Badge variant={mfa?.configured_methods.length ? 'default' : 'secondary'}>
             {mfa?.configured_methods.length ? 'Enabled' : 'Disabled'}
           </Badge>

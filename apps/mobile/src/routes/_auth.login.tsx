@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Button, ButtonText } from '../../components/ui/button';
 import {
   Card,
@@ -12,6 +13,7 @@ import {
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Text } from '../../components/ui/text';
 import { services } from '../../lib/client';
 import { useHaptics } from '../../lib/haptics';
 import { useSession } from '../../lib/session';
@@ -58,62 +60,69 @@ function LoginScreen() {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-center">Vautr</CardTitle>
-        <CardDescription className="text-center">
-          {mode === 'login' ? 'Unlock your zero-knowledge vault.' : 'Create a new vault account.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="gap-4">
-        <Tabs value={mode} onValueChange={(value) => setMode(value as 'login' | 'register')}>
-          <TabsList className="flex-row">
-            <TabsTrigger value="login" className="flex-1">
-              Login
-            </TabsTrigger>
-            <TabsTrigger value="register" className="flex-1">
-              Register
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value={mode}>
-            <View className="gap-4">
-              <View className="gap-1.5">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  value={username}
-                  onChangeText={setUsernameInput}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder="you@example.com"
-                />
-              </View>
-              <View className="gap-1.5">
-                <Label htmlFor="password">Master password</Label>
-                <Input
-                  id="password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  placeholder="••••••••"
-                />
-              </View>
+    <View className="flex-1 justify-center px-6">
+      <Card className="w-full">
+        <CardHeader className="items-center gap-1.5 pb-2">
+          <View className="mb-1 h-12 w-12 items-center justify-center rounded-2xl bg-primary">
+            <Text variant="h3" className="text-primary-foreground">
+              V
+            </Text>
+          </View>
+          <CardTitle className="text-center">Vautr</CardTitle>
+          <CardDescription className="text-center">
+            {mode === 'login' ? 'Unlock your zero-knowledge vault.' : 'Create a new vault account.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="gap-5">
+          <Tabs value={mode} onValueChange={(value) => setMode(value as 'login' | 'register')}>
+            <TabsList className="flex-row">
+              <TabsTrigger value="login" className="flex-1">
+                <Text variant="label">Login</Text>
+              </TabsTrigger>
+              <TabsTrigger value="register" className="flex-1">
+                <Text variant="label">Register</Text>
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value={mode}>
+              <View className="gap-4 pt-2">
+                <View className="gap-1.5">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    value={username}
+                    onChangeText={setUsernameInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="you@example.com"
+                  />
+                </View>
+                <View className="gap-1.5">
+                  <Label htmlFor="password">Master password</Label>
+                  <Input
+                    id="password"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    placeholder="••••••••"
+                  />
+                </View>
 
-              {error ? (
-                <Text accessibilityRole="alert" className="text-sm text-destructive">
-                  {error}
-                </Text>
-              ) : null}
+                {error ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                ) : null}
 
-              <Button disabled={busy} onPress={() => void submit()}>
-                <ButtonText>
-                  {busy ? 'Working…' : mode === 'login' ? 'Unlock' : 'Create account'}
-                </ButtonText>
-              </Button>
-            </View>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+                <Button disabled={busy} onPress={() => void submit()}>
+                  <ButtonText>
+                    {busy ? 'Working…' : mode === 'login' ? 'Unlock' : 'Create account'}
+                  </ButtonText>
+                </Button>
+              </View>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </View>
   );
 }
