@@ -1,11 +1,11 @@
-# VTR-104 e2e: native OPAQUE register + login on the iOS simulator.
-# Exercises the Rust `vautr-ffi` core bridged via VautrNativeModule
-# (Hermes cannot run the wasm crypto, so this must go through native).
+# VTR-104 Android e2e: native OPAQUE register through the Rust uniffi core.
+# Mirrors register_login.yaml (iOS). The Android emulator reaches the dev
+# server at http://10.0.2.2:8080 (see apps/mobile/lib/http.ts resolveApiBase).
 appId: com.vautr.mobile
 ---
 - launchApp:
     appId: com.vautr.mobile
-    clearState: true
+    clearState: false
 - waitForAnimationToEnd
 - tapOn:
     text: "Register"
@@ -13,7 +13,7 @@ appId: com.vautr.mobile
 - tapOn:
     text: "Username"
 - eraseText
-- inputText: "maestro.user@example.com"
+- inputText: "maestro.android@example.com"
 - tapOn:
     text: "Master password"
 - inputText: "correct horse battery staple"

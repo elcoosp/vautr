@@ -25,6 +25,7 @@ test/.loadtest/
 # Vautr uniffi prebuilt static lib (293MB) — regenerated via
 # `cargo build -p vautr-ffi --target aarch64-apple-ios-sim`.
 packages/native/ios/libvautr_ffi.a
+apps/mobile/ios/VautrNativeModule-src/libvautr_ffi.a
 
 # Vautr uniffi prebuilt Android shared lib — regenerated via
 # `cargo ndk -t arm64-v8a -o packages/native/android/src/main/jniLibs build -p vautr-ffi --release`.

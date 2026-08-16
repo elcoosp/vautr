@@ -745,7 +745,11 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_lock(
     ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_login(
+    ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_perform_action(
+    ): Int
+    external fun uniffi_vautr_ffi_checksum_method_mobileclient_register(
     ): Int
     external fun uniffi_vautr_ffi_checksum_method_mobileclient_release_secret(
     ): Int
@@ -853,7 +857,11 @@ external fun uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(`ptr`: Long,
 ): Long
 external fun uniffi_vautr_ffi_fn_method_mobileclient_lock(`ptr`: Long,
 ): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_login(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,
+): Long
 external fun uniffi_vautr_ffi_fn_method_mobileclient_perform_action(`ptr`: Long,`action`: RustBuffer.ByValue,
+): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_register(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,
 ): Long
 external fun uniffi_vautr_ffi_fn_method_mobileclient_release_secret(`ptr`: Long,`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1116,7 +1124,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 43909) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_login() != 18138) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 14357) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_register() != 37781) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_release_secret() != 20178) {
@@ -1191,7 +1205,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 1017) {
+    if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 34213) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {
@@ -1714,9 +1728,24 @@ public interface MobileClientInterface {
     suspend fun `lock`()
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+    suspend fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
     suspend fun `performAction`(`action`: CoreAction)
+    
+    /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+    suspend fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
     
     /**
      * Explicitly release a handle (zeroizes the in-memory secret).
@@ -2169,6 +2198,32 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
 
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+    @Throws(FfiException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_login(
+                uniffiHandle,
+                FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        FfiException.ErrorHandler,
+    )
+    }
+
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
     @Throws(FfiException::class)
@@ -2187,6 +2242,33 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
         // lift function
         { Unit },
         
+        // Error FFI converter
+        FfiException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+    @Throws(FfiException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_register(
+                uniffiHandle,
+                FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
         // Error FFI converter
         FfiException.ErrorHandler,
     )
@@ -2571,8 +2653,8 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     /**
      * Link the core into the app (build-env-deploy §3.1 / skill matrix boot
      * pattern). Opens the vault DB and runs schema migrations so a fresh vault
-     * is usable on first launch. The vault starts locked; call `unlock` (or
-     * `unlock_with_password`) before accessing secrets.
+     * is usable on first launch. The vault starts locked; call an unlock method
+     * (or `unlock_with_password`) before accessing secrets.
      */
     @Throws(FfiException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")

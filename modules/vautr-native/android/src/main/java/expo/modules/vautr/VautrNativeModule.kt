@@ -7,6 +7,7 @@ import uniffi.vautr_ffi.MobileClient
 import uniffi.vautr_ffi.CoreAction
 import uniffi.vautr_ffi.PlatformActionHandler
 import uniffi.vautr_ffi.SecureEnclaveBridge
+import org.json.JSONObject
 import android.util.Base64
 import android.content.Context
 import android.content.SharedPreferences
@@ -92,6 +93,27 @@ class VautrNativeModule : Module() {
 
         AsyncFunction("setSecureEnclaveBridge") {
             client?.setSecureEnclaveBridge(SecureEnclaveBridgeImpl())
+        }
+
+        // ── Native OPAQUE register / login (VTR-104) ──
+        // Mirrors the iOS TurboModule. The Rust core returns a JSON string
+        // {"recovery_mnemonic", "session_token"}; surface it to JS as an object.
+        AsyncFunction("register") { serverUrl: String, username: String, password: String ->
+            val json = client?.register(serverUrl, username, password) ?: "{}"
+            val obj = JSONObject(json)
+            mapOf(
+                "recoveryMnemonic" to obj.optString("recovery_mnemonic", ""),
+                "sessionToken" to obj.opt("session_token")?.toString(),
+            )
+        }
+
+        AsyncFunction("login") { serverUrl: String, username: String, password: String ->
+            val json = client?.login(serverUrl, username, password) ?: "{}"
+            val obj = JSONObject(json)
+            mapOf(
+                "recoveryMnemonic" to obj.optString("recovery_mnemonic", ""),
+                "sessionToken" to obj.opt("session_token")?.toString(),
+            )
         }
     }
 

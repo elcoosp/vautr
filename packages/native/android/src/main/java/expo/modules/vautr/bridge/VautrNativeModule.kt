@@ -67,6 +67,27 @@ class VautrNativeModule : Module() {
             requireClient().setSecureEnclaveBridge(AndroidSecureEnclaveBridge(appContext.reactContext!!))
         }
 
+        // ── Native OPAQUE register / login (VTR-104) ──
+        // Mirrors iOS. The Rust core returns a JSON string
+        // {"recovery_mnemonic","session_token"}; surface it to JS as an object.
+        AsyncFunction("register") { serverUrl: String, username: String, password: String ->
+            val json = runBlocking { requireClient().register(serverUrl, username, password) }
+            val obj = JSONObject(json)
+            mapOf(
+                "recoveryMnemonic" to obj.optString("recovery_mnemonic", ""),
+                "sessionToken" to obj.opt("session_token")?.toString(),
+            )
+        }
+
+        AsyncFunction("login") { serverUrl: String, username: String, password: String ->
+            val json = runBlocking { requireClient().login(serverUrl, username, password) }
+            val obj = JSONObject(json)
+            mapOf(
+                "recoveryMnemonic" to obj.optString("recovery_mnemonic", ""),
+                "sessionToken" to obj.opt("session_token")?.toString(),
+            )
+        }
+
         AsyncFunction("ensureSharingKey") {
             runBlocking { requireClient().ensureSharingKey() }
         }
