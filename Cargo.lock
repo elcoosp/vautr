@@ -10091,6 +10091,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "camino",
+ "reqwest",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10101,9 +10102,11 @@ dependencies = [
  "uniffi",
  "uuid",
  "vautr-app-state",
+ "vautr-auth",
  "vautr-crypto",
  "vautr-db",
  "vautr-domain",
+ "vautr-keyring",
  "vautr-sharing",
  "zeroize",
 ]

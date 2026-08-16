@@ -14,8 +14,10 @@ async function getSecureStore(): Promise<SecureStoreModule> {
   return await import('expo-secure-store');
 }
 
+import { getMobileClient } from '@vautr/client-sdk/mobile';
 import type { MobileApiClient } from './api';
 import { createCryptoProvider, type VautrCryptoProvider } from './crypto/provider';
+import { resolveApiBase } from './http';
 
 /** Keychain keys (expo-secure-store). */
 const TOKEN_KEY = 'vautr.session_token';
@@ -155,6 +157,24 @@ export class VautrAuth {
 
   /** Register a brand-new account (OPAQUE registration, api.md §3.1). */
   async register(username: string, password: string): Promise<AuthResult> {
+    // VTR-104: on mobile the native uniffi core performs OPAQUE (Hermes can't run
+    // the wasm crypto). When the core is linked, delegate the whole flow there.
+    const native = getMobileClient();
+    if (native) {
+      const base = resolveApiBase();
+      const reg = await native.register(base, username, password);
+      this.pendingRecoveryMnemonic = reg.recoveryMnemonic;
+      this.cachedMnemonic = reg.recoveryMnemonic;
+      await this.store.setUsername(username);
+      // Registration does not mint a token; log in to establish the session.
+      const login = await native.login(base, username, password);
+      if (login.sessionToken) {
+        this.api.setToken(login.sessionToken);
+        await this.store.setToken(login.sessionToken);
+      }
+      return { username, sessionToken: login.sessionToken ?? '' };
+    }
+
     const crypto = await this.readyCrypto();
 
     const kdfSalt = await crypto.generateKdfSalt();
@@ -210,6 +230,19 @@ export class VautrAuth {
     return { mnemonic: m, words: m.split(/\s+/).filter(Boolean) };
   }
   async login(username: string, password: string): Promise<AuthResult> {
+    // VTR-104: delegate to the native uniffi core when linked (Hermes can't run wasm).
+    const native = getMobileClient();
+    if (native) {
+      const res = await native.login(resolveApiBase(), username, password);
+      this.cachedMnemonic = res.recoveryMnemonic;
+      if (res.sessionToken) {
+        this.api.setToken(res.sessionToken);
+        await this.store.setToken(res.sessionToken);
+      }
+      await this.store.setUsername(username);
+      return { username, sessionToken: res.sessionToken ?? '' };
+    }
+
     const crypto = await this.readyCrypto();
 
     const start = await crypto.opaqueLoginStart(password);

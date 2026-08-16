@@ -27,8 +27,11 @@ prepare_react_native_project!
 target 'Vautr' do
   use_expo_modules!
 
-  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1' {
-    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  # Link the Vautr native uniffi bridge (local pod at ./VautrNativeModule-src).
+  pod 'VautrNativeModule', :path => './VautrNativeModule-src'
+
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"]
   else
     config_command = [
       'node',

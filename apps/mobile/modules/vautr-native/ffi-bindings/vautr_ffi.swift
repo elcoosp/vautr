@@ -597,9 +597,24 @@ public protocol MobileClientProtocol: AnyObject, Sendable {
     func lock() async 
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+    func login(serverUrl: String, username: String, password: String) async throws  -> String
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
     func performAction(action: CoreAction) async throws 
+    
+    /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+    func register(serverUrl: String, username: String, password: String) async throws  -> String
     
     /**
      * Explicitly release a handle (zeroizes the in-memory secret).
@@ -764,8 +779,8 @@ public convenience init(dbPath: String)throws  {
     /**
      * Link the core into the app (build-env-deploy §3.1 / skill matrix boot
      * pattern). Opens the vault DB and runs schema migrations so a fresh vault
-     * is usable on first launch. The vault starts locked; call `unlock` (or
-     * `unlock_with_password`) before accessing secrets.
+     * is usable on first launch. The vault starts locked; call an unlock method
+     * (or `unlock_with_password`) before accessing secrets.
      */
 public static func initialize(dbPath: String)async throws  -> MobileClient  {
     return
@@ -977,6 +992,28 @@ open func lock()async   {
 }
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+open func login(serverUrl: String, username: String, password: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_vautr_ffi_fn_method_mobileclient_login(
+                    self.uniffiCloneHandle(),
+                    FfiConverterString.lower(serverUrl),FfiConverterString.lower(username),FfiConverterString.lower(password)
+                )
+            },
+            pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_vautr_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_vautr_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeFfiError_lift
+        )
+}
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
 open func performAction(action: CoreAction)async throws   {
@@ -992,6 +1029,29 @@ open func performAction(action: CoreAction)async throws   {
             completeFunc: ffi_vautr_ffi_rust_future_complete_void,
             freeFunc: ffi_vautr_ffi_rust_future_free_void,
             liftFunc: { $0 },
+            errorHandler: FfiConverterTypeFfiError_lift
+        )
+}
+    
+    /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+open func register(serverUrl: String, username: String, password: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_vautr_ffi_fn_method_mobileclient_register(
+                    self.uniffiCloneHandle(),
+                    FfiConverterString.lower(serverUrl),FfiConverterString.lower(username),FfiConverterString.lower(password)
+                )
+            },
+            pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_vautr_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_vautr_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeFfiError_lift
         )
 }
@@ -2804,7 +2864,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 43909) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_login() != 18138) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 14357) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_register() != 37781) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_method_mobileclient_release_secret() != 20178) {
@@ -2879,7 +2945,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 1017) {
+    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 34213) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {

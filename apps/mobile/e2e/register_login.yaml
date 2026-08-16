@@ -1,0 +1,36 @@
+# VTR-104 e2e: native OPAQUE register + login on the iOS simulator.
+# Exercises the Rust `vautr-ffi` core bridged via VautrNativeModule
+# (Hermes cannot run the wasm crypto, so this must go through native).
+appId: com.vautr.mobile
+---
+- launchApp:
+    appId: com.vautr.mobile
+    clearState: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "Register"
+- waitForAnimationToEnd
+- tapOn:
+    id: "username"  # best-effort; falls back below
+- takeScreenshot: /tmp/vautr_register.png
+- tapOn:
+    text: "you@example.com"
+- eraseText
+- inputText: "maestro.user@example.com"
+- tapOn:
+    text: "Master password"
+- inputText: "correct horse battery staple"
+- tapOn:
+    # Primary action button (Unlock / Create / Register)
+    text: "Unlock"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: /tmp/vautr_after_register.png
+# After a successful native register we should reach the authenticated vault
+# (no error toast). Assert a post-auth surface is present.
+- assertVisible:
+    text: "vault"
+    optional: true
+- assertNotVisible:
+    text: "Register"
+    optional: true

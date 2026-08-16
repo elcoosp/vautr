@@ -8,15 +8,17 @@
 // share bundles as JSON (base64 blob fields). See ADR-003 / data.md §1.
 
 import ExpoModulesCore
-import vautr_ffi
-
+// NOTE: the uniffi-generated `vautr_ffi.swift` is compiled in THIS same pod
+// target (not a separate module), so its `MobileClient`/FFI symbols are already
+// in scope — do NOT `import vautr_ffi` here (that would reference a module that
+// does not exist as a separate target).
 /// Native `SecureEnclaveBridge` impl backed by the iOS Keychain. The SVK bytes
 /// are stored under biometric/device-passcode protection; `loadSvk` returns nil
 /// if absent or if the user cancels Face ID.
 final class IosSecureEnclaveBridge: SecureEnclaveBridge {
   private let keychainKey = "vautr.svk"
 
-  func saveSvk(_ svk: Data) throws {
+  func saveSvk(svk: Data) throws {
     let query: [String: Any] = [
       kSecClass as String: kSecClassKey,
       kSecAttrApplicationTag as String: keychainKey,
@@ -107,6 +109,31 @@ public class VautrNativeModule: Module {
 
     AsyncFunction("setSecureEnclaveBridge") { () in
       self.requireClient().setSecureEnclaveBridge(bridge: IosSecureEnclaveBridge())
+    }
+
+    // ── Native OPAQUE register / login (VTR-104) ──
+    // The Rust core runs the full OPAQUE flow + unlock + sync and returns a
+    // JSON `{ recovery_mnemonic, session_token }`. We forward it to JS as a dict.
+    AsyncFunction("register") { (serverUrl: String, username: String, password: String) -> [String: String?] in
+      let json = try await self.requireClient().register(serverUrl: serverUrl, username: username, password: password)
+      guard let data = json.data(using: .utf8),
+            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return ["recoveryMnemonic": json, "sessionToken": nil]
+      }
+      let mnemonic = dict["recovery_mnemonic"] as? String
+      let token = dict["session_token"] as? String
+      return ["recoveryMnemonic": mnemonic, "sessionToken": token]
+    }
+
+    AsyncFunction("login") { (serverUrl: String, username: String, password: String) -> [String: String?] in
+      let json = try await self.requireClient().login(serverUrl: serverUrl, username: username, password: password)
+      guard let data = json.data(using: .utf8),
+            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return ["recoveryMnemonic": json, "sessionToken": nil]
+      }
+      let mnemonic = dict["recovery_mnemonic"] as? String
+      let token = dict["session_token"] as? String
+      return ["recoveryMnemonic": mnemonic, "sessionToken": token]
     }
 
     AsyncFunction("ensureSharingKey") { () -> String in

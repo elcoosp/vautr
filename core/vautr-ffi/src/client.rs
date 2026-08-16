@@ -16,9 +16,10 @@
 //! master password. `read_secret` remains desktop-only (build-env-deploy.md §2.5
 //! keeps `read_secret` out of mobile via the `desktop-api` gate).
 
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use base64::Engine;
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use uniffi::{Enum, Object};
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -26,6 +27,12 @@ use zeroize::Zeroizing;
 use vautr_app_state::handles::{CoreAction as CoreCoreAction, PlatformAdapter};
 use vautr_app_state::worker::TaskOutcome;
 use vautr_app_state::VautrClient;
+
+use vautr_auth::state;
+use vautr_crypto::{kdf, key_tree, recovery};
+use vautr_keyring::wrap;
+
+use serde::{Deserialize, Serialize};
 
 /// Opaque handle to a decrypted secret (u64). ADR-003.
 pub type SecretHandle = u64;
@@ -76,6 +83,22 @@ pub enum FfiError {
     Uuid(String),
     #[error("mutation rejected (read-only gate or conflict)")]
     Rejected,
+}
+
+/// Persisted local account material, stored as `<vault>.account.json` next to
+/// the on-device sqlite DB. This is the mobile equivalent of the web client's
+/// JS key store: it keeps the KDF salt + MP-wrapped SVK so a later `login` can
+/// re-derive the vault key without re-registering. (VTR-104)
+#[derive(Serialize, Deserialize)]
+struct LocalAccount {
+    /// Argon2id KDF salt (base64, 32 bytes).
+    kdf_salt_b64: String,
+    /// MP-wrapped SVK (base64).
+    wrapped_svk_b64: String,
+    /// 24-word BIP-39 recovery mnemonic (Emergency Kit).
+    recovery_mnemonic: String,
+    /// Server's minimum encryption-key generation seen at registration.
+    min_enc_key_gen: u64,
 }
 
 /// Native platform handler. The Turbo Module implements this and registers it
@@ -139,6 +162,10 @@ pub struct MobileClient {
     enclave: RwLock<Option<Arc<dyn SecureEnclaveBridge>>>,
     /// Persisted sharing secret key (base64), used by the sharing PKI surface.
     sharing_secret: RwLock<Option<String>>,
+    /// Path to the on-device vault sqlite DB. Used to derive the companion
+    /// local-account file that persists the KDF salt + recovery mnemonic between
+    /// register and login (mirrors the web client's JS key store).
+    db_path: String,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -147,6 +174,7 @@ impl MobileClient {
     /// locked; call an unlock method before accessing secrets.
     #[uniffi::constructor]
     pub fn new(db_path: String) -> Result<Arc<Self>, FfiError> {
+        let db_path_owned = db_path.clone();
         let url = if db_path.starts_with("sqlite://") {
             db_path
         } else {
@@ -160,15 +188,17 @@ impl MobileClient {
             inner: Arc::new(client),
             enclave: RwLock::new(None),
             sharing_secret: RwLock::new(None),
+            db_path: db_path_owned,
         }))
     }
 
     /// Link the core into the app (build-env-deploy §3.1 / skill matrix boot
     /// pattern). Opens the vault DB and runs schema migrations so a fresh vault
-    /// is usable on first launch. The vault starts locked; call `unlock` (or
-    /// `unlock_with_password`) before accessing secrets.
+    /// is usable on first launch. The vault starts locked; call an unlock method
+    /// (or `unlock_with_password`) before accessing secrets.
     #[uniffi::constructor]
     pub async fn initialize(db_path: String) -> Result<Arc<Self>, FfiError> {
+        let db_path_owned = db_path.clone();
         let url = if db_path.starts_with("sqlite://") {
             db_path
         } else {
@@ -185,6 +215,7 @@ impl MobileClient {
             inner: Arc::new(client),
             enclave: RwLock::new(None),
             sharing_secret: RwLock::new(None),
+            db_path: db_path_owned,
         }))
     }
 
@@ -202,6 +233,200 @@ impl MobileClient {
     pub async fn set_platform_handler(&self, handler: Arc<dyn PlatformActionHandler>) {
         let adapter: Arc<dyn PlatformAdapter> = Arc::new(MobilePlatformAdapter { handler });
         self.inner.set_platform_adapter(adapter).await;
+    }
+
+    // ── Native OPAQUE register / login (VTR-104) ──────────────────────────
+    // Mirrors `apps/desktop/src/auth_client.rs` exactly, but persists the KDF
+    // salt + wrapped SVK locally in a JSON companion file next to the vault DB
+    // (the mobile equivalent of the web client's JS key store) so a later login
+    // can re-derive the vault key without re-registering. Wire format matches
+    // the live server (api.md §3). No server contract change vs web/desktop:
+    // the SVK wrap AD is Uuid::nil() everywhere (crypto.md §2).
+
+    /// Register a new account on the live server using native OPAQUE. Returns the
+    /// 24-word recovery mnemonic (display once to the user — it is the Emergency
+    /// Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+    /// `login` can re-derive the vault key.
+    pub async fn register(
+        &self,
+        server_url: String,
+        username: String,
+        password: String,
+    ) -> Result<String, FfiError> {
+        let base = format!("{}/auth", server_url.trim_end_matches('/'));
+
+        // ── Local key material (crypto.md §2) ──
+        let kdf_salt = kdf::generate_kdf_salt();
+        let mk = kdf::derive_master_key(&Zeroizing::new(password.clone()), &kdf_salt)
+            .map_err(|e| FfiError::Core(format!("mk derive: {e}")))?;
+        let kek = key_tree::derive_kek(&mk).map_err(|e| FfiError::Core(format!("kek derive: {e}")))?;
+        let svk = key_tree::generate_svk();
+        let svk_wrapped = wrap::wrap_svk(&kek, &svk);
+
+        // Recovery Key (REQ-RECOVERY-02)
+        let mnemonic = recovery::generate_recovery_mnemonic().map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
+        let mnemonic_bytes = recovery::decode_recovery_mnemonic(&mnemonic)
+            .map_err(|e| FfiError::Core(format!("decode mnemonic: {e}")))?;
+        let kek_rk = recovery::derive_kek_rk(&mnemonic_bytes).map_err(|e| FfiError::Core(format!("kek_rk derive: {e}")))?;
+        let svk_rk_wrapped = recovery::wrap_svk_with_rk(&svk, &kek_rk, &Uuid::nil())
+            .map_err(|e| FfiError::Core(format!("svk rk wrap: {e}")))?;
+
+        // ── OPAQUE registration (api.md §3.1) ──
+        let (cstate, creq) = state::registration_start(&Zeroizing::new(password.clone()));
+        let start_resp: serde_json::Value = reqwest::Client::new()
+            .post(format!("{base}/register/start"))
+            .json(&serde_json::json!({
+                "username": username,
+                "registration_start": B64.encode(&creq),
+            }))
+            .send()
+            .await
+            .map_err(|e| FfiError::Core(format!("register/start request: {e}")))?
+            .json()
+            .await
+            .map_err(|e| FfiError::Core(format!("register/start decode: {e}")))?;
+        let sresp_b64 = start_resp
+            .get("registration_response")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| FfiError::Core("missing registration_response".into()))?
+            .to_string();
+        let sresp = B64.decode(&sresp_b64).map_err(|e| FfiError::Core(format!("registration_response b64: {e}")))?;
+        let (_upload, _export_key, _st) = state::registration_finish(
+            &cstate,
+            &sresp,
+            &Zeroizing::new(password.clone()),
+            username.as_bytes(),
+        );
+
+        // server_public_key is a server-side stub; send a fixed dummy (matches desktop).
+        reqwest::Client::new()
+            .post(format!("{base}/register/finish"))
+            .json(&serde_json::json!({
+                "username": username,
+                "registration_finish": B64.encode(&_upload),
+                "server_public_key": B64.encode(&[0u8; 32]),
+                "kdf_salt": B64.encode(&kdf_salt),
+                "svk_ciphertext_blob": B64.encode(&svk_wrapped),
+                "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped),
+            }))
+            .send()
+            .await
+            .map_err(|e| FfiError::Core(format!("register/finish request: {e}")))?
+            .error_for_status()
+            .map_err(|e| FfiError::Core(format!("register/finish status: {e}")))?;
+
+        self.save_local_account(
+            B64.encode(&kdf_salt),
+            B64.encode(&svk_wrapped),
+            mnemonic.clone(),
+            0,
+        )?;
+
+        // Registration does not mint a session token; the caller follows with
+        // `login`. Return the recovery mnemonic (Emergency Kit) + null token as JSON.
+        Ok(serde_json::json!({
+            "recovery_mnemonic": mnemonic,
+            "session_token": serde_json::Value::Null,
+        }).to_string())
+    }
+
+    /// OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+    /// Returns the recovery mnemonic (so the caller can offer "recover vault key"
+    /// if the password is correct but the local vault is missing).
+    pub async fn login(
+        &self,
+        server_url: String,
+        username: String,
+        password: String,
+    ) -> Result<String, FfiError> {
+        let account = self.load_local_account()?;
+        let kdf_salt_b64 = account.kdf_salt_b64.clone();
+        let recovery_mnemonic = account.recovery_mnemonic.clone();
+        let base = format!("{}/auth", server_url.trim_end_matches('/'));
+
+        // ── OPAQUE login (api.md §3.2) ──
+        let (cstate, lreq) = state::login_start(&Zeroizing::new(password.clone()));
+        let start_resp: serde_json::Value = reqwest::Client::new()
+            .post(format!("{base}/login/start"))
+            .json(&serde_json::json!({
+                "username": username,
+                "login_start": B64.encode(&lreq),
+            }))
+            .send()
+            .await
+            .map_err(|e| FfiError::Core(format!("login/start request: {e}")))?
+            .json()
+            .await
+            .map_err(|e| FfiError::Core(format!("login/start decode: {e}")))?;
+        let sresp_b64 = start_resp
+            .get("login_response")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| FfiError::Core("missing login_response".into()))?
+            .to_string();
+        let sresp = B64.decode(&sresp_b64).map_err(|e| FfiError::Core(format!("login_response b64: {e}")))?;
+        let (upload, _session_key, _st) = state::login_finish(
+            &cstate,
+            &sresp,
+            &Zeroizing::new(password.clone()),
+            username.as_bytes(),
+        );
+
+        let finish_resp: serde_json::Value = reqwest::Client::new()
+            .post(format!("{base}/login/finish"))
+            .json(&serde_json::json!({
+                "username": username,
+                "login_finish": B64.encode(&upload),
+            }))
+            .send()
+            .await
+            .map_err(|e| FfiError::Core(format!("login/finish request: {e}")))?
+            .json()
+            .await
+            .map_err(|e| FfiError::Core(format!("login/finish decode: {e}")))?;
+        let token = finish_resp
+            .get("session_token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| FfiError::Core("missing session_token".into()))?
+            .to_string();
+
+        // ── Fetch wrapped SVK (api.md §5) ──
+        let status: serde_json::Value = reqwest::Client::new()
+            .get(format!("{}/account/status", server_url.trim_end_matches('/')))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| FfiError::Core(format!("account/status request: {e}")))?
+            .json()
+            .await
+            .map_err(|e| FfiError::Core(format!("account/status decode: {e}")))?;
+        let wrapped_svk_b64 = status
+            .get("svk_ciphertext_blob")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| FfiError::Core("missing svk_ciphertext_blob".into()))?
+            .to_string();
+        let min_enc_key_gen = status
+            .get("min_enc_key_gen")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as u64;
+
+        // ── Unlock locally (AD = Uuid::nil(), mirrors desktop/web) ──
+        self.unlock_with_password(
+            password,
+            kdf_salt_b64,
+            wrapped_svk_b64,
+            Uuid::nil().to_string(),
+            min_enc_key_gen,
+        )
+        .await?;
+
+        // Connect sync transport (server user_id is nil per data.md).
+        self.connect_sync(server_url, token.clone(), Uuid::nil().to_string()).await?;
+
+        // Return the recovery mnemonic (Emergency Kit) + the session token as JSON.
+        Ok(serde_json::json!({
+            "recovery_mnemonic": recovery_mnemonic,
+            "session_token": token,
+        }).to_string())
     }
 
     /// Unlock with a raw 32-byte SVK recovered from the OS keystore (biometric
@@ -510,6 +735,41 @@ impl MobileClient {
         ct_b64: String,
     ) -> Result<Vec<u8>, FfiError> {
         crate::sharing::ffi_decrypt_group_item(group_json, item_uuid, ct_b64)
+    }
+}
+
+/// Non-exported helpers for the native OPAQUE register/login flow. Kept in a
+/// separate `impl` block (no `#[uniffi::export]`) so UniFFI never tries to
+/// generate bindings for them — they are an internal implementation detail.
+impl MobileClient {
+    fn account_path(&self) -> String {
+        let p = PathBuf::from(&self.db_path);
+        let mut name = p.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+        name.push(".account.json");
+        p.with_file_name(name).to_string_lossy().into_owned()
+    }
+
+    fn save_local_account(
+        &self,
+        kdf_salt_b64: String,
+        wrapped_svk_b64: String,
+        recovery_mnemonic: String,
+        min_enc_key_gen: u64,
+    ) -> Result<(), FfiError> {
+        let acct = LocalAccount {
+            kdf_salt_b64,
+            wrapped_svk_b64,
+            recovery_mnemonic,
+            min_enc_key_gen,
+        };
+        let json = serde_json::to_string(&acct).map_err(|e| FfiError::Core(format!("ser account: {e}")))?;
+        std::fs::write(self.account_path(), json).map_err(|e| FfiError::Core(format!("write account: {e}")))
+    }
+
+    fn load_local_account(&self) -> Result<LocalAccount, FfiError> {
+        let json = std::fs::read_to_string(self.account_path())
+            .map_err(|e| FfiError::Core(format!("read account (register first): {e}")))?;
+        serde_json::from_str(&json).map_err(|e| FfiError::Core(format!("parse account: {e}")))
     }
 }
 

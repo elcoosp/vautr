@@ -17,8 +17,8 @@ Pod::Spec.new do |s|
   s.license      = { :type => 'AGPL-3.0' }
   s.authors      = 'Vautr'
   s.platforms    = { :ios => '15.0' }
-  s.source       = { :git => '', :tag => '0.1.0' }
-  s.source_files = 'ios/**/*.{h,m,mm,swift}'
+  s.source       = { :path => '.' }
+  s.source_files = '**/*.{h,m,mm,swift}'
   s.swift_version = '5.9'
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
@@ -35,7 +35,9 @@ Pod::Spec.new do |s|
   # like ExpoSecureStore expose their module) so the app's ExpoModulesProvider
   # can `import VautrNativeModule`.
   s.public_header_files = ['VautrNativeModule.h', 'vautr_ffi/vautr_ffiFFI.h']
-  s.header_dir = 'VautrNativeModule'
+  # No `header_dir`: keep headers at the public-root so the umbrella
+  # `VautrNativeModule.h` can `#import "vautr_ffi/vautr_ffiFFI.h"` and the
+  # modulemap's `header "VautrNativeModule.h"` both resolve flat.
 
   s.vendored_libraries = ['libvautr_ffi.a']
   s.library = 'vautr_ffi'

@@ -27,6 +27,9 @@ vautr-app-state.workspace = true
 vautr-crypto.workspace = true
 vautr-db.workspace = true
 vautr-sharing.workspace = true
+vautr-auth.workspace = true
+vautr-keyring.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 # In-crate integration tests exercise the full unlock->list->reveal->lock flow

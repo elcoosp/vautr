@@ -38,6 +38,14 @@ export interface SecureEnclaveBridge {
   hasSvk(): Promise<boolean>;
 }
 
+/** Result of a native OPAQUE register/login (VTR-104). */
+export interface NativeAuthResult {
+  /** Recovery mnemonic (Emergency Kit). Display once on register. */
+  recoveryMnemonic: string;
+  /** Session token (null after register; present after login). */
+  sessionToken: string | null;
+}
+
 /**
  * The native (TurboModule) contract the app implements to link the uniffi core
  * into the JSI instance. Every method is async so JSI calls can be run under
@@ -68,6 +76,22 @@ export interface VautrNativeBridge {
   sync(): Promise<void>;
   /** Register the OS-keystore SVK adapter (biometric unlock). */
   setSecureEnclaveBridge(bridge: SecureEnclaveBridge): Promise<void>;
+
+  // ── Native OPAQUE account creation / first unlock (VTR-104) ──────────
+  // On RN/Hermes the wasm crypto cannot run, so OPAQUE must execute in the
+  // Rust core. These run the full register/login + unlock + sync locally and
+  // return the recovery mnemonic (Emergency Kit) and the session token.
+  /**
+   * Register a brand-new account via the native Rust OPAQUE client. Returns the
+   * recovery mnemonic (display once) and `null` for the token (registration
+   * does not mint a session — follow with `login`).
+   */
+  register(serverUrl: string, username: string, password: string): Promise<NativeAuthResult>;
+  /**
+   * Log in via the native Rust OPAQUE client. Returns the recovery mnemonic and
+   * the session token (the core is unlocked + synced on success).
+   */
+  login(serverUrl: string, username: string, password: string): Promise<NativeAuthResult>;
 
   // ── Sharing PKI (ADR-007 / sharing-pki.md §6) ────────────────────────
   // These run the zero-knowledge crypto in Rust; plaintext secret bytes are
@@ -156,6 +180,25 @@ export class MobileVautrClient {
   /** Run a metadata-first sync. */
   sync(): Promise<void> {
     return this.native.sync();
+  }
+
+  /**
+   * Register a new account via the native Rust OPAQUE client (VTR-104).
+   * The Rust core performs registration, persists the KDF salt + wrapped SVK
+   * locally, and returns the recovery mnemonic. Follow with {@link login} to
+   * mint a session.
+   */
+  register(serverUrl: string, username: string, password: string): Promise<NativeAuthResult> {
+    return this.native.register(serverUrl, username, password);
+  }
+
+  /**
+   * Log in via the native Rust OPAQUE client (VTR-104). The Rust core performs
+   * the OPAQUE login, unlocks the vault locally, connects the sync transport,
+   * and returns the recovery mnemonic + session token.
+   */
+  login(serverUrl: string, username: string, password: string): Promise<NativeAuthResult> {
+    return this.native.login(serverUrl, username, password);
   }
 
   /** The underlying uniffi native bridge (for building a `MobileSharingClient`). */
