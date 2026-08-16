@@ -63,7 +63,16 @@ function LoginScreen() {
       void haptics.notifySuccess();
       router.navigate({ to: '/' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed.');
+      // Native/auth failures can surface as `Error` with an EMPTY `.message`
+      // (e.g. a network rejection or a blank-string exception from the bridge).
+      // Never render a blank error card — fall back to an actionable message.
+      const raw = err instanceof Error ? err.message : String(err ?? '');
+      const msg = raw.trim()
+        ? raw.trim()
+        : mode === 'register'
+          ? 'Registration failed. Check that the Vautr server is running and reachable (adb reverse tcp:8080 tcp:8080).'
+          : 'Login failed. Check that the Vautr server is running and reachable (adb reverse tcp:8080 tcp:8080).';
+      setError(msg);
       void haptics.notifyError();
     } finally {
       setBusy(false);

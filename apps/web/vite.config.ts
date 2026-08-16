@@ -14,6 +14,16 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // Dev-only: the web client default API base is the same-origin `/api`,
+    // so requests never hit a cross-origin `http://localhost:8080` (which
+    // WebKit blocks with an empty message). Proxy to the local vautr-server.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
   plugins: [TanStackRouterVite(), react(), tailwindcss(), boneyardPlugin()],
   resolve: {

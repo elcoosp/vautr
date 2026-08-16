@@ -180,9 +180,12 @@ impl MobileClient {
         } else {
             format!("sqlite://{db_path}?mode=rwc")
         };
-        let db = tokio::runtime::Handle::current()
-            .block_on(sea_orm::Database::connect(&url))
-            .map_err(|e| FfiError::Core(format!("db connect: {e}")))?;
+        // Connect without `block_on` so this works whether or not we are already
+        // inside a Tokio runtime. The uniffi/Expo bridge calls `initialize` from
+        // within a runtime; a naive `Handle::current().block_on(...)` panics with
+        // "Cannot start a runtime from within a runtime" on the runtime's driver
+        // thread, which is exactly the register failure seen on device.
+        let db = connect_db(&url)?;
         let client = VautrClient::new(db);
         Ok(Arc::new(Self {
             inner: Arc::new(client),
@@ -793,5 +796,36 @@ impl MobileClient {
     /// ONLY available on Desktop (`desktop-api` feature).
     pub async fn export_vault(&self) -> Result<Vec<u8>, FfiError> {
         self.inner.export_to_json().await.map_err(FfiError::Core)
+    }
+}
+
+/// Connect to the vault DB, safe to call from either a synchronous context or
+/// from inside an existing Tokio runtime.
+///
+/// `MobileClient::new` is synchronous but must open the DB. A naive
+/// `Handle::current().block_on(...)` panics with "Cannot start a runtime from
+/// within a runtime" when called from the uniffi/Expo async bridge (which drives
+/// the `register`/`login` calls from within a Tokio runtime) — that panic was
+/// the root cause of the empty/opaque error on mobile register. Here we `spawn`
+/// the connect future and await its JoinHandle, which never blocks the current
+/// thread's driver and so cannot panic. When no runtime is present we build a
+/// throwaway current-thread runtime to `block_on` the connect.
+fn connect_db(url: &str) -> Result<sea_orm::DatabaseConnection, FfiError> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            // Inside an existing runtime (the uniffi/Expo async bridge). Block
+            // on a worker thread via `block_in_place` so we never panic the
+            // runtime's driver thread ("Cannot start a runtime from within a
+            // runtime"). This is the documented pattern for blocking from within
+            // a Tokio runtime.
+            tokio::task::block_in_place(|| handle.block_on(sea_orm::Database::connect(url)))
+                .map_err(|e| FfiError::Core(format!("db connect: {e}")))
+        }
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| FfiError::Core(format!("runtime build: {e}")))?
+            .block_on(sea_orm::Database::connect(url))
+            .map_err(|e| FfiError::Core(format!("db connect: {e}"))),
     }
 }

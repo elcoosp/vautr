@@ -47,7 +47,13 @@ function RegisterPage() {
       await login(username.trim(), password);
       void navigate({ to: '/dashboard' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed.');
+      // WebKit fetch failures surface as `Error` with an EMPTY `.message`
+      // (e.g. server unreachable / cross-origin). Never render a blank error.
+      const msg =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : 'Registration failed. Make sure the Vautr server is running at http://localhost:8080.';
+      setError(msg);
     } finally {
       setBusy(false);
     }

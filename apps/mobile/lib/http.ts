@@ -10,32 +10,19 @@
 /**
  * Default server base URL (matches the live dev server).
  *
- * On the Android emulator `localhost` resolves to the emulator itself, not the
- * host Mac — the gateway to the host is `10.0.2.2`. iOS shares the host network
- * so `localhost` is correct there. Branch on Platform so the same build reaches
- * the dev server on both. Override via `VAUTR_API_URL` or an explicit arg.
+ * On Android we default to `localhost:8080` and rely on `adb reverse
+ * tcp:8080 tcp:8080` (set during dev) so the same default reaches the host
+ * Mac from both a physical device and the emulator. iOS shares the host
+ * network so `localhost` is correct there too. Override via `VAUTR_API_URL`
+ * or an explicit arg.
  */
 export const DEFAULT_API_BASE = 'http://localhost:8080';
-export const DEFAULT_ANDROID_EMULATOR_BASE = 'http://10.0.2.2:8080';
 
-function defaultBase(): string {
-  // react-native's Platform is safe to import here (this transport is owned by
-  // the RN app). Guarded so a non-RN bundler import doesn't hard-fail.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Platform } = require('react-native');
-    if (Platform?.OS === 'android') return DEFAULT_ANDROID_EMULATOR_BASE;
-  } catch {
-    /* not running inside React Native */
-  }
-  return DEFAULT_API_BASE;
-}
-
-/** Resolve the server base URL from the environment, else a platform default. */
+/** Resolve the server base URL from the environment, else localhost. */
 export function resolveApiBase(override?: string): string {
   if (override) return override.replace(/\/$/, '');
   const env = typeof process !== 'undefined' ? process.env.VAUTR_API_URL : undefined;
-  return (env ?? defaultBase()).replace(/\/$/, '');
+  return (env ?? DEFAULT_API_BASE).replace(/\/$/, '');
 }
 
 /** HTTP error carrying the api.md §6 error enum + status. */

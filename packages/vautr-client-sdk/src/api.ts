@@ -10,7 +10,7 @@
 import type { CoreError } from './types';
 
 /** Default server base URL (Vite dev proxies `/api`). */
-export const DEFAULT_API_BASE = 'http://localhost:8080';
+export const DEFAULT_API_BASE = '/api';
 
 /** btoa that works for arbitrary bytes (base64 wire encoding). */
 export function toBase64(bytes: Uint8Array): string {

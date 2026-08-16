@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { cn } from '../../lib/utils';
 
@@ -40,8 +40,16 @@ AlertTitle.displayName = 'AlertTitle';
 const AlertDescription = React.forwardRef<
   React.ComponentRef<typeof View>,
   React.ComponentPropsWithoutRef<typeof View>
->(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+>(({ className, children, ...props }, ref) => (
+  // RN requires text in a <Text>; wrap bare strings (e.g. error messages)
+  // while leaving element children (already-<Text>-wrapped) untouched.
+  <View ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props}>
+    {typeof children === 'string' ? (
+      <Text className="text-sm text-muted-foreground">{children}</Text>
+    ) : (
+      children
+    )}
+  </View>
 ));
 AlertDescription.displayName = 'AlertDescription';
 
