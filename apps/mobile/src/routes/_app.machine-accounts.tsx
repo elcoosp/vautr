@@ -1,12 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Bot } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { AccessScope, MachineAccount } from '../../lib/api';
 import { services } from '../../lib/client';
@@ -16,6 +19,7 @@ export const Route = createFileRoute('/_app/machine-accounts')({
 });
 
 const SCOPES: AccessScope[] = ['secrets:read', 'secrets:write', 'secrets:reveal'];
+const ACCENT = '#42b59a';
 
 function MachineAccountsScreen() {
   const toast = useToast();
@@ -69,23 +73,18 @@ function MachineAccountsScreen() {
   return (
     <View className="gap-4">
       <View className="flex-row items-center justify-between">
-        <Text className="text-lg font-semibold text-foreground">Machine accounts</Text>
+        <Text variant="h3">Machine accounts</Text>
         {machines ? <Badge variant="outline">{machines.length}</Badge> : null}
       </View>
 
       {error ? (
-        <View className="gap-3">
-          <Text accessibilityRole="alert" className="text-sm text-destructive">
-            {error}
-          </Text>
-          <Button onPress={() => void load()}>
-            <ButtonText>Retry</ButtonText>
-          </Button>
-        </View>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       <Card className="gap-3 p-4">
-        <Text className="text-sm font-medium text-foreground">Create machine account</Text>
+        <Text variant="label">Create machine account</Text>
         <View className="gap-1.5">
           <Label htmlFor="ma-name">Name</Label>
           <Input
@@ -97,7 +96,7 @@ function MachineAccountsScreen() {
           />
         </View>
         <View className="gap-1.5">
-          <Text className="text-sm text-muted-foreground">Scopes</Text>
+          <Text variant="small">Scopes</Text>
           <View className="flex-row flex-wrap gap-2">
             {SCOPES.map((scope) => (
               <Badge
@@ -116,15 +115,21 @@ function MachineAccountsScreen() {
       </Card>
 
       {machines === null ? (
-        <ActivityIndicator className="mt-4" color="#42b59a" />
+        <ActivityIndicator className="mt-4" color={ACCENT} />
       ) : machines.length === 0 ? (
-        <Text className="text-sm text-muted-foreground">No machine accounts yet.</Text>
+        <Text variant="muted">No machine accounts yet.</Text>
       ) : (
         machines.map((m) => (
           <Card key={m.uuid} className="flex-row items-center justify-between p-4">
             <View className="flex-row items-center gap-2">
-              <Bot size={18} className="text-muted-foreground" />
-              <Text className="text-base font-medium text-foreground">{m.name}</Text>
+              <Avatar>
+                <AvatarFallbackText>
+                  <Bot size={18} className="text-muted-foreground" />
+                </AvatarFallbackText>
+              </Avatar>
+              <Text variant="p" className="font-medium">
+                {m.name}
+              </Text>
             </View>
             <Badge variant={m.status === 'active' ? 'default' : 'secondary'}>{m.status}</Badge>
           </Card>

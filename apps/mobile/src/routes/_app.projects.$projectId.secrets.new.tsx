@@ -1,10 +1,12 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import { services } from '../../lib/client';
 
@@ -48,7 +50,7 @@ function NewSecretScreen() {
 
   return (
     <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">New secret</Text>
+      <Text variant="h3">New secret</Text>
       <Card className="p-4 gap-4">
         <View className="gap-1.5">
           <Label htmlFor="secret-key">Key</Label>
@@ -72,9 +74,9 @@ function NewSecretScreen() {
         </View>
 
         {error ? (
-          <Text accessibilityRole="alert" className="text-sm text-destructive">
-            {error}
-          </Text>
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
 
         <Button disabled={busy} onPress={() => void create()}>

@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Button, ButtonText } from '../../components/ui/button';
 import {
   Card,
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { ProjectType } from '../../lib/api';
 import { services } from '../../lib/client';
@@ -62,7 +64,9 @@ function NewProjectScreen() {
     <View className="gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>New project</CardTitle>
+          <CardTitle>
+            <Text variant="h3">New project</Text>
+          </CardTitle>
           <CardDescription>Create a space to store passwords and secrets.</CardDescription>
         </CardHeader>
         <CardContent className="gap-4">
@@ -107,9 +111,9 @@ function NewProjectScreen() {
           </View>
 
           {error ? (
-            <Text accessibilityRole="alert" className="text-sm text-destructive">
-              {error}
-            </Text>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : null}
         </CardContent>
         <CardFooter className="gap-2">

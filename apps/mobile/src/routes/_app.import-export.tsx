@@ -1,10 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ArrowDownToLine, ArrowUpFromLine, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { BackupStatus } from '../../lib/api';
 import { services } from '../../lib/client';
@@ -12,6 +14,8 @@ import { services } from '../../lib/client';
 export const Route = createFileRoute('/_app/import-export')({
   component: BackupScreen,
 });
+
+const ACCENT = '#42b59a';
 
 function formatBytes(bytes?: number | null): string {
   if (!bytes) return '—';
@@ -62,22 +66,17 @@ function BackupScreen() {
 
   return (
     <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">Import / export</Text>
+      <Text variant="h3">Import / export</Text>
 
       {error ? (
-        <View className="gap-3">
-          <Text accessibilityRole="alert" className="text-sm text-destructive">
-            {error}
-          </Text>
-          <Button onPress={() => void load()}>
-            <ButtonText>Retry</ButtonText>
-          </Button>
-        </View>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       <Card className="gap-3 p-4">
         <View className="flex-row items-center justify-between">
-          <Text className="text-sm font-medium text-foreground">Backup status</Text>
+          <Text variant="label">Backup status</Text>
           {status ? (
             <Badge variant={status.enabled ? 'default' : 'secondary'}>
               {status.enabled ? 'Enabled' : 'Disabled'}
@@ -86,49 +85,43 @@ function BackupScreen() {
         </View>
         {status ? (
           <View className="gap-1">
-            <Text className="text-xs text-muted-foreground">
+            <Text variant="tiny">
               Last backup:{' '}
               {status.last_backup_at ? new Date(status.last_backup_at).toLocaleString() : 'never'}
             </Text>
-            <Text className="text-xs text-muted-foreground">
-              Last size: {formatBytes(status.last_backup_size_bytes)}
-            </Text>
+            <Text variant="tiny">Last size: {formatBytes(status.last_backup_size_bytes)}</Text>
             {status.last_restore_test_status ? (
-              <Text className="text-xs text-muted-foreground">
-                Restore test: {status.last_restore_test_status}
-              </Text>
+              <Text variant="tiny">Restore test: {status.last_restore_test_status}</Text>
             ) : null}
           </View>
         ) : (
-          <ActivityIndicator className="mt-2" color="#42b59a" />
+          <ActivityIndicator className="mt-2" color={ACCENT} />
         )}
       </Card>
 
       <Card className="gap-3 p-4">
         <View className="flex-row items-center gap-2">
           <ArrowDownToLine size={18} className="text-primary" />
-          <Text className="text-sm font-medium text-foreground">Export encrypted backup</Text>
+          <Text variant="label">Export encrypted backup</Text>
         </View>
-        <Text className="text-xs text-muted-foreground">
+        <Text variant="muted">
           Creates a sealed, encrypted archive of your vault on the server. The archive is keyed to
           your backup key — only you can restore it.
         </Text>
         <Button disabled={busy} onPress={() => void exportBackup()}>
           <ButtonText>{busy ? 'Exporting…' : 'Create backup'}</ButtonText>
         </Button>
-        {lastExport ? (
-          <Text className="text-xs text-muted-foreground">Last export id: {lastExport}</Text>
-        ) : null}
+        {lastExport ? <Text variant="tiny">Last export id: {lastExport}</Text> : null}
       </Card>
 
       <Card className="gap-3 p-4">
         <View className="flex-row items-center gap-2">
           <ArrowUpFromLine size={18} className="text-muted-foreground" />
-          <Text className="text-sm font-medium text-foreground">Import / restore</Text>
+          <Text variant="label">Import / restore</Text>
         </View>
         <View className="flex-row items-start gap-2">
           <ShieldCheck size={16} className="mt-0.5 text-muted-foreground" />
-          <Text className="flex-1 text-xs text-muted-foreground">
+          <Text variant="muted">
             Restore is performed server-side from an existing archive. Use the desktop or web client
             to upload and restore a backup file.
           </Text>

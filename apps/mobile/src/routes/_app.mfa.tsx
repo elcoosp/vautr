@@ -1,11 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Separator } from '../../components/ui/separator';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { MfaMethod } from '../../lib/api';
 import { services } from '../../lib/client';
@@ -88,36 +91,35 @@ function MfaScreen() {
 
   return (
     <View className="gap-4">
-      <Text className="text-lg font-semibold text-foreground">Multi-factor authentication</Text>
+      <Text variant="h3">Multi-factor authentication</Text>
 
       <Card className="p-4 gap-3">
         <View className="flex-row items-center justify-between">
-          <Text className="text-sm text-muted-foreground">Status</Text>
+          <Text variant="muted">Status</Text>
           <Badge variant={status?.configured_methods.length ? 'default' : 'secondary'}>
             {status?.configured_methods.length ? 'Configured' : 'Not configured'}
           </Badge>
         </View>
         {status?.required ? (
-          <Text className="text-xs text-destructive">MFA is required by your organization.</Text>
+          <Alert variant="destructive">
+            <AlertDescription>MFA is required by your organization.</AlertDescription>
+          </Alert>
         ) : null}
         {status?.configured_methods.length ? (
-          <Text className="text-sm text-muted-foreground">
-            Methods: {status.configured_methods.join(', ')}
-          </Text>
+          <Text variant="muted">Methods: {status.configured_methods.join(', ')}</Text>
         ) : null}
       </Card>
 
       {enrolled ? (
         <Card className="p-4 gap-3">
-          <Text className="text-sm font-medium text-foreground">
-            Scan with your authenticator app
-          </Text>
-          <Text className="text-xs text-muted-foreground" selectable>
+          <Text variant="label">Scan with your authenticator app</Text>
+          <Text variant="tiny" className="text-foreground" selectable>
             otpauth: {enrolled.otpauth_url}
           </Text>
+          <Separator />
           <View className="gap-1.5">
             <Label>Manual secret</Label>
-            <Text className="text-sm text-foreground" selectable>
+            <Text variant="tiny" className="text-foreground" selectable>
               {enrolled.secret}
             </Text>
           </View>

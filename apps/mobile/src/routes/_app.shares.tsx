@@ -5,11 +5,13 @@ import {
   type VautrNativeBridge,
 } from '@vautr/client-sdk/mobile';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
+import { Text } from '../../components/ui/text';
 import { services } from '../../lib/client';
 import { useSession } from '../../lib/session';
 
@@ -26,6 +28,8 @@ interface GroupItem {
   itemUuid: string;
   bytes: number;
 }
+
+const ACCENT = '#42b59a';
 
 /**
  * Native-gated sharing inbox + group sharing (VTR-070). Only meaningful when
@@ -81,8 +85,8 @@ function SharesScreen() {
   if (!native || !sharing) {
     return (
       <View className="gap-3">
-        <Text className="text-lg font-semibold text-foreground">Shares</Text>
-        <Text className="text-sm text-muted-foreground">
+        <Text variant="h3">Shares</Text>
+        <Text variant="muted">
           Secure sharing requires the on-device vault core. Open Vautr desktop or web to share
           items.
         </Text>
@@ -212,23 +216,23 @@ function SharesScreen() {
   return (
     <View className="gap-4">
       <View className="flex-row items-center justify-between">
-        <Text className="text-lg font-semibold text-foreground">Shares</Text>
+        <Text variant="h3">Shares</Text>
         {inbox ? <Badge variant="outline">{inbox.length}</Badge> : null}
       </View>
 
       {error ? (
-        <Text accessibilityRole="alert" className="text-sm text-destructive">
-          {error}
-        </Text>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
       {info ? (
-        <Text className="rounded border border-primary/40 bg-primary/10 px-2 py-1 text-sm text-foreground">
-          {info}
-        </Text>
+        <Alert variant="default">
+          <AlertDescription>{info}</AlertDescription>
+        </Alert>
       ) : null}
 
       <Card className="gap-2 p-4">
-        <Text className="text-base font-medium text-foreground">Share an item</Text>
+        <Text variant="label">Share an item</Text>
         <Input
           placeholder="Recipient user id"
           value={recipient}
@@ -241,15 +245,13 @@ function SharesScreen() {
       </Card>
 
       <Card className="gap-2 p-4">
-        <Text className="text-base font-medium text-foreground">Groups</Text>
+        <Text variant="label">Groups</Text>
         <Button variant="outline" onPress={() => void createGroup()} disabled={busy}>
           <ButtonText>New group</ButtonText>
         </Button>
-        {activeGroupId ? (
-          <Text className="text-xs text-muted-foreground">Active group: {activeGroupId}</Text>
-        ) : null}
+        {activeGroupId ? <Text variant="tiny">Active group: {activeGroupId}</Text> : null}
 
-        <Text className="mt-1 text-xs font-medium text-muted-foreground">Add member</Text>
+        <Text variant="small">Add member</Text>
         <Input
           placeholder="Member user id"
           value={memberId}
@@ -263,7 +265,7 @@ function SharesScreen() {
           <ButtonText>{busy ? 'Adding…' : 'Add member'}</ButtonText>
         </Button>
 
-        <Text className="mt-1 text-xs font-medium text-muted-foreground">Share item to group</Text>
+        <Text variant="small">Share item to group</Text>
         <Input
           placeholder="Item uuid"
           value={groupItemUuid}
@@ -286,10 +288,10 @@ function SharesScreen() {
         </Button>
         {groupItems ? (
           groupItems.length === 0 ? (
-            <Text className="text-xs text-muted-foreground">No items in this group.</Text>
+            <Text variant="tiny">No items in this group.</Text>
           ) : (
             groupItems.map((it) => (
-              <Text key={it.itemUuid} className="text-xs text-muted-foreground">
+              <Text key={it.itemUuid} variant="tiny">
                 {it.itemUuid} · {it.bytes} bytes
               </Text>
             ))
@@ -299,10 +301,10 @@ function SharesScreen() {
 
       {invites.length > 0 ? (
         <Card className="gap-2 p-4">
-          <Text className="text-base font-medium text-foreground">Group invites</Text>
+          <Text variant="label">Group invites</Text>
           {invites.map((entry) => (
             <View key={entry.group_id} className="flex-row items-center justify-between">
-              <Text className="text-sm text-foreground">{entry.name}</Text>
+              <Text variant="p">{entry.name}</Text>
               <Button variant="outline" onPress={() => void acceptInvite(entry)} disabled={busy}>
                 <ButtonText>Accept</ButtonText>
               </Button>
@@ -313,9 +315,9 @@ function SharesScreen() {
 
       {myGroups.length > 0 ? (
         <Card className="gap-2 p-4">
-          <Text className="text-base font-medium text-foreground">My groups</Text>
+          <Text variant="label">My groups</Text>
           {myGroups.map((g) => (
-            <Text key={g.group_id} className="text-xs text-muted-foreground">
+            <Text key={g.group_id} variant="tiny">
               {g.name} ({g.group_id})
             </Text>
           ))}
@@ -323,16 +325,16 @@ function SharesScreen() {
       ) : null}
 
       <View className="gap-2">
-        <Text className="text-base font-medium text-foreground">Inbox</Text>
+        <Text variant="label">Inbox</Text>
         {inbox === null ? (
-          <ActivityIndicator className="mt-2" color="#42b59a" />
+          <ActivityIndicator className="mt-2" color={ACCENT} />
         ) : inbox.length === 0 ? (
-          <Text className="text-sm text-muted-foreground">No pending shares.</Text>
+          <Text variant="muted">No pending shares.</Text>
         ) : (
           inbox.map((s) => (
             <Card key={s.itemUuid} className="p-4">
-              <Text className="text-base font-medium text-foreground">{s.itemUuid}</Text>
-              <Text className="mt-0.5 text-xs text-muted-foreground">
+              <Text variant="p">{s.itemUuid}</Text>
+              <Text variant="tiny" className="mt-0.5">
                 {s.bytes} bytes decrypted on-device
               </Text>
             </Card>

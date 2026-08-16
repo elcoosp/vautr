@@ -1,11 +1,14 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { Plus } from 'lucide-react-native';
+import { Folder, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { SecretOverlay } from '../../components/SecretOverlay';
+import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { Skeleton } from '../../components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -15,6 +18,7 @@ import {
   TableRow,
 } from '../../components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Text } from '../../components/ui/text';
 import type { Project, ProjectMember, Secret } from '../../lib/api';
 import { services } from '../../lib/client';
 
@@ -56,15 +60,21 @@ function ProjectDetailScreen() {
   }, [load]);
 
   if (!loaded) {
-    return <ActivityIndicator className="mt-8" color="#42b59a" />;
+    return (
+      <View className="gap-4">
+        <Skeleton className="h-12 w-2/3" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </View>
+    );
   }
 
   if (!project) {
     return (
       <View className="gap-3">
-        <Text accessibilityRole="alert" className="text-sm text-destructive">
-          {error ?? 'Project not found.'}
-        </Text>
+        <Alert variant="destructive">
+          <AlertDescription>{error ?? 'Project not found.'}</AlertDescription>
+        </Alert>
         <Button onPress={() => void load()}>
           <ButtonText>Retry</ButtonText>
         </Button>
@@ -75,15 +85,24 @@ function ProjectDetailScreen() {
   return (
     <View className="gap-4">
       <View className="flex-row items-start justify-between">
-        <View className="flex-1 gap-1">
-          <Text className="text-lg font-semibold text-foreground">{project.name}</Text>
-          <View className="flex-row gap-2">
-            <Badge variant="outline">{project.type}</Badge>
-            <Badge variant="secondary">{project.permission ?? 'n/a'}</Badge>
+        <View className="flex-1 flex-row items-center gap-3">
+          <Avatar size={44} className="bg-primary/15">
+            <AvatarFallbackText>
+              <Folder size={20} className="text-primary" />
+            </AvatarFallbackText>
+          </Avatar>
+          <View className="flex-1 gap-1">
+            <Text variant="h4">{project.name}</Text>
+            <View className="flex-row gap-2">
+              <Badge variant="outline">{project.type}</Badge>
+              <Badge variant="secondary">{project.permission ?? 'n/a'}</Badge>
+            </View>
+            {project.description ? (
+              <Text variant="muted" className="mt-1">
+                {project.description}
+              </Text>
+            ) : null}
           </View>
-          {project.description ? (
-            <Text className="mt-1 text-sm text-muted-foreground">{project.description}</Text>
-          ) : null}
         </View>
       </View>
 
@@ -100,7 +119,7 @@ function ProjectDetailScreen() {
         <TabsContent value="secrets">
           <View className="gap-3">
             <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-muted-foreground">{secrets.length} secret(s)</Text>
+              <Text variant="muted">{secrets.length} secret(s)</Text>
               <Button
                 size="sm"
                 onPress={() =>
@@ -112,14 +131,16 @@ function ProjectDetailScreen() {
               </Button>
             </View>
             {secrets.length === 0 ? (
-              <Text className="text-sm text-muted-foreground">No secrets in this project yet.</Text>
+              <Text variant="muted">No secrets in this project yet.</Text>
             ) : (
               secrets.map((secret) => (
                 <Card key={secret.uuid} className="p-4">
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1 gap-0.5">
-                      <Text className="text-base font-medium text-foreground">{secret.key}</Text>
-                      <Text className="text-xs text-muted-foreground">
+                      <Text variant="p" className="font-medium">
+                        {secret.key}
+                      </Text>
+                      <Text variant="tiny">
                         v{secret.version} · {new Date(secret.updated_at).toLocaleString()}
                       </Text>
                     </View>

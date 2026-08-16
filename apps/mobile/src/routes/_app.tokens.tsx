@@ -1,10 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Ticket } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { AccessScope, AccessToken } from '../../lib/api';
 import { services } from '../../lib/client';
@@ -12,6 +14,8 @@ import { services } from '../../lib/client';
 export const Route = createFileRoute('/_app/tokens')({
   component: TokensScreen,
 });
+
+const ACCENT = '#42b59a';
 
 function TokensScreen() {
   const toast = useToast();
@@ -72,35 +76,26 @@ function TokensScreen() {
   return (
     <View className="gap-4">
       <View className="flex-row items-center justify-between">
-        <Text className="text-lg font-semibold text-foreground">Access tokens</Text>
+        <Text variant="h3">Access tokens</Text>
         {tokens ? <Badge variant="outline">{tokens.length}</Badge> : null}
       </View>
 
       {error ? (
-        <View className="gap-3">
-          <Text accessibilityRole="alert" className="text-sm text-destructive">
-            {error}
-          </Text>
-          <Button onPress={() => void load()}>
-            <ButtonText>Retry</ButtonText>
-          </Button>
-        </View>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       <Card className="gap-3 p-4">
-        <Text className="text-sm font-medium text-foreground">Create a new token</Text>
-        <Text className="text-xs text-muted-foreground">
-          Grants read + reveal access for the mobile app.
-        </Text>
+        <Text variant="label">Create a new token</Text>
+        <Text variant="muted">Grants read + reveal access for the mobile app.</Text>
         <Button disabled={busy} onPress={() => void createToken()}>
           <ButtonText>{busy ? 'Creating…' : 'New token'}</ButtonText>
         </Button>
         {createdToken ? (
           <View className="gap-1">
-            <Text className="text-xs text-muted-foreground">
-              Copy your token now — it won't be shown again.
-            </Text>
-            <Text className="text-xs text-foreground" selectable>
+            <Text variant="small">Copy your token now — it won't be shown again.</Text>
+            <Text variant="p" className="text-foreground" selectable>
               {createdToken.token}
             </Text>
           </View>
@@ -108,24 +103,24 @@ function TokensScreen() {
       </Card>
 
       {tokens === null ? (
-        <ActivityIndicator className="mt-4" color="#42b59a" />
+        <ActivityIndicator className="mt-4" color={ACCENT} />
       ) : tokens.length === 0 ? (
-        <Text className="text-sm text-muted-foreground">No access tokens yet.</Text>
+        <Text variant="muted">No access tokens yet.</Text>
       ) : (
         tokens.map((token) => (
           <Card key={token.uuid} className="gap-2 p-4">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
                 <Ticket size={18} className="text-muted-foreground" />
-                <Text className="text-base font-medium text-foreground">{token.name}</Text>
+                <Text variant="p" className="font-medium">
+                  {token.name}
+                </Text>
               </View>
               <Button variant="ghost" size="sm" onPress={() => void revoke(token.uuid)}>
                 <ButtonText className="text-destructive">Revoke</ButtonText>
               </Button>
             </View>
-            <Text className="text-xs text-muted-foreground">
-              {(token.scopes as AccessScope[]).join(', ')}
-            </Text>
+            <Text variant="small">{(token.scopes as AccessScope[]).join(', ')}</Text>
           </Card>
         ))
       )}
