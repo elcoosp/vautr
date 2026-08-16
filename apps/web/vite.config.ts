@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
+import { boneyardPlugin } from 'boneyard-js/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -14,7 +15,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
-  plugins: [TanStackRouterVite(), react(), tailwindcss()],
+  plugins: [TanStackRouterVite(), react(), tailwindcss(), boneyardPlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

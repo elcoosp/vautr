@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
 import { Ticket } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -103,7 +104,13 @@ function TokensScreen() {
       </Card>
 
       {tokens === null ? (
-        <ActivityIndicator className="mt-4" color={ACCENT} />
+        <BoneSkeleton
+          name="tokens-loading"
+          loading
+          fallback={<ActivityIndicator className="mt-4" color={ACCENT} />}
+        >
+          {null}
+        </BoneSkeleton>
       ) : tokens.length === 0 ? (
         <Text variant="muted">No access tokens yet.</Text>
       ) : (

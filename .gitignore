@@ -47,3 +47,6 @@ apps/mobile/android/
 
 # Gradle build output for the @vautr/native Android module.
 packages/native/android/build/
+
+# Expo dev/build generated artifacts
+apps/mobile/.expo/

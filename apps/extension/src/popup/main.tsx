@@ -5,6 +5,7 @@ import { OnboardingFlow } from '../onboarding/OnboardingFlow';
 import { TourOverlay } from '../tour/TourOverlay';
 import { App } from './App';
 import '@/styles/globals.css';
+import './bones/registry';
 
 const root = document.getElementById('root');
 if (root) {

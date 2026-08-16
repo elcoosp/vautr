@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import type { AccessScope, MachineAccount } from '@vautr/api-contract';
+import { Skeleton } from 'boneyard-js/react';
 import { Bot, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -126,7 +127,15 @@ function MachineAccountsPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {loading ? <p className="text-sm text-text-muted">Loading…</p> : null}
+      {loading ? (
+        <Skeleton
+          name="machine-accounts-loading"
+          loading
+          fallback={<p className="text-sm text-text-muted">Loading…</p>}
+        >
+          {null}
+        </Skeleton>
+      ) : null}
 
       <Card>
         <CardHeader>

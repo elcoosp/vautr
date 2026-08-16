@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
 import { ArrowDownToLine, ArrowUpFromLine, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -95,7 +96,13 @@ function BackupScreen() {
             ) : null}
           </View>
         ) : (
-          <ActivityIndicator className="mt-2" color={ACCENT} />
+          <BoneSkeleton
+            name="import-export-loading"
+            loading
+            fallback={<ActivityIndicator className="mt-2" color={ACCENT} />}
+          >
+            {null}
+          </BoneSkeleton>
         )}
       </Card>
 

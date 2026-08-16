@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import type { MfaMethod, MfaPolicy, MfaStatus } from '@vautr/api-contract';
 import { totpCode } from '@vautr/ui-logic';
+import { Skeleton } from 'boneyard-js/react';
 import { ShieldCheck, Smartphone } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -154,7 +155,16 @@ function MfaPage() {
     );
   };
 
-  if (loading) return <p className="p-6 text-sm text-text-muted">Loading…</p>;
+  if (loading)
+    return (
+      <Skeleton
+        name="mfa-loading"
+        loading
+        fallback={<p className="p-6 text-sm text-text-muted">Loading…</p>}
+      >
+        {null}
+      </Skeleton>
+    );
   if (error && !status) return <p className="p-6 text-sm text-danger">{error}</p>;
 
   return (

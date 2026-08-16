@@ -18,6 +18,7 @@
     "@onboardjs/react": "1.0.0-rc.5",
     "@vautr/client-sdk": "workspace:*",
     "@vautr/ui-logic": "workspace:*",
+    "boneyard-js": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",

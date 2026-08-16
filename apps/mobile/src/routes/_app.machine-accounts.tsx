@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
 import { Bot } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -115,7 +116,13 @@ function MachineAccountsScreen() {
       </Card>
 
       {machines === null ? (
-        <ActivityIndicator className="mt-4" color={ACCENT} />
+        <BoneSkeleton
+          name="machine-accounts-loading"
+          loading
+          fallback={<ActivityIndicator className="mt-4" color={ACCENT} />}
+        >
+          {null}
+        </BoneSkeleton>
       ) : machines.length === 0 ? (
         <Text variant="muted">No machine accounts yet.</Text>
       ) : (

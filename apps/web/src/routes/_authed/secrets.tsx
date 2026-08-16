@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import type { Project, Secret } from '@vautr/api-contract';
+import { Skeleton } from 'boneyard-js/react';
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -90,7 +91,15 @@ function SecretsManagerPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {loading ? <p className="text-sm text-text-muted">Loading…</p> : null}
+      {loading ? (
+        <Skeleton
+          name="secrets-loading"
+          loading
+          fallback={<p className="text-sm text-text-muted">Loading…</p>}
+        >
+          {null}
+        </Skeleton>
+      ) : null}
 
       <Card>
         <CardHeader>

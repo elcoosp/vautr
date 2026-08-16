@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import type { Project } from '@vautr/api-contract';
+import { Skeleton } from 'boneyard-js/react';
 import { FolderKanban, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -99,7 +100,15 @@ function ProjectsPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">Failed to load projects: {error}</p> : null}
-      {loading ? <p className="text-sm text-text-muted">Loading…</p> : null}
+      {loading ? (
+        <Skeleton
+          name="projects-loading"
+          loading
+          fallback={<p className="text-sm text-text-muted">Loading…</p>}
+        >
+          {null}
+        </Skeleton>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((p) => (

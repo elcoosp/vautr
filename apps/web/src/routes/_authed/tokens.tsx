@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import type { AccessScope, AccessToken } from '@vautr/api-contract';
+import { Skeleton } from 'boneyard-js/react';
 import { Copy, MoreHorizontal, Plus, Ticket, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -113,7 +114,15 @@ function TokensPage() {
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {loading ? <p className="text-sm text-text-muted">Loading…</p> : null}
+      {loading ? (
+        <Skeleton
+          name="tokens-loading"
+          loading
+          fallback={<p className="text-sm text-text-muted">Loading…</p>}
+        >
+          {null}
+        </Skeleton>
+      ) : null}
 
       <Card>
         <CardHeader>

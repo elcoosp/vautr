@@ -4,6 +4,7 @@ import {
   MobileSharingClient,
   type VautrNativeBridge,
 } from '@vautr/client-sdk/mobile';
+import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Alert, AlertDescription } from '../../components/ui/alert';
@@ -327,7 +328,13 @@ function SharesScreen() {
       <View className="gap-2">
         <Text variant="label">Inbox</Text>
         {inbox === null ? (
-          <ActivityIndicator className="mt-2" color={ACCENT} />
+          <BoneSkeleton
+            name="shares-inbox-loading"
+            loading
+            fallback={<ActivityIndicator className="mt-2" color={ACCENT} />}
+          >
+            {null}
+          </BoneSkeleton>
         ) : inbox.length === 0 ? (
           <Text variant="muted">No pending shares.</Text>
         ) : (

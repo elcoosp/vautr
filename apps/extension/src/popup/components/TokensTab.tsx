@@ -1,5 +1,6 @@
 import type { AccessScope, AccessToken } from '@vautr/api-contract';
 import type { VautrMlpClient } from '@vautr/client-sdk';
+import { Skeleton } from 'boneyard-js/react';
 import { Copy, MoreHorizontal, Plus, Ticket, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -105,7 +106,15 @@ export function TokensTab({ mlp }: { mlp: VautrMlpClient }) {
       </div>
 
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {loading ? <p className="text-xs text-text-muted">Loading…</p> : null}
+      {loading ? (
+        <Skeleton
+          name="tokens-tab-loading"
+          loading
+          fallback={<p className="text-xs text-text-muted">Loading…</p>}
+        >
+          {null}
+        </Skeleton>
+      ) : null}
 
       <Card size="sm">
         <CardHeader>
