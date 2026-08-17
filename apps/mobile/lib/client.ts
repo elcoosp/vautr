@@ -68,11 +68,13 @@ export async function bootVautrCore(dbPath: string): Promise<void> {
   try {
     const secureEnclave: SecureEnclaveBridge = createSecureEnclaveBridge();
     await initializeVautrCore({ native, secureEnclave, dbPath });
-    // eslint-disable-next-line no-console
-    console.log('[VAUTR-CORE] booted OK; isLocalVaultActive=' + isLocalVaultActive());
+    // biome-ignore lint/suspicious/noConsole: intentional boot diagnostics
+    console.log(`[VAUTR-CORE] booted OK; isLocalVaultActive=${isLocalVaultActive()}`);
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error('[VAUTR-CORE] boot FAILED: ' + (e && (e as Error).stack ? (e as Error).stack : String(e)));
+    // biome-ignore lint/suspicious/noConsole: intentional boot diagnostics
+    console.error(
+      `[VAUTR-CORE] boot FAILED: ${e && (e as Error).stack ? (e as Error).stack : String(e)}`,
+    );
   }
 }
 
