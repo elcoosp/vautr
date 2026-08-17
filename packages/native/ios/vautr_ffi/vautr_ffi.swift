@@ -39,6 +39,52 @@ fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
+
+    init(rawBufferPointer: UnsafeRawBufferPointer) {
+        self.init(
+            len: Int32(rawBufferPointer.count),
+            data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Conforms to `FfiConverter` so the compiler enforces the full converter
+// method set. Only the scope-bound `lower(_:_body:)` overload is sound —
+// zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position. The four protocol-witness methods (`lift`, `lower`, `read`,
+// `write`) `fatalError` at runtime if anyone reaches them.
+//
+// The scope-bound `lower` takes a closure because the `ForeignBytes`
+// pointer is only guaranteed valid for the duration of
+// `Data.withUnsafeBytes`. Callers must run the full FFI call inside
+// the closure body.
+fileprivate enum FfiConverterByRefBytes: FfiConverter {
+    typealias SwiftType = Data
+    typealias FfiType = ForeignBytes
+
+    static func lower<R>(_ value: Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeBytes { rawBuf in
+            try body(ForeignBytes(rawBufferPointer: rawBuf))
+        }
+    }
+
+    static func lower(_ value: Data) -> ForeignBytes {
+        fatalError("ByRef bytes cannot use the plain lower: returning ForeignBytes escapes the Data.withUnsafeBytes scope. Use the scope-bound lower(_:_body:) overload instead.")
+    }
+
+    static func lift(_ value: ForeignBytes) throws -> Data {
+        fatalError("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        fatalError("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+
+    static func write(_ value: Data, into buf: inout [UInt8]) {
+        fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
 }
 
 // For every type used in the interface, we provide helper methods for conveniently
@@ -597,9 +643,24 @@ public protocol MobileClientProtocol: AnyObject, Sendable {
     func lock() async 
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+    func login(serverUrl: String, username: String, password: String) async throws  -> String
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
     func performAction(action: CoreAction) async throws 
+    
+    /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+    func register(serverUrl: String, username: String, password: String) async throws  -> String
     
     /**
      * Explicitly release a handle (zeroizes the in-memory secret).
@@ -744,8 +805,9 @@ open class MobileClient: MobileClientProtocol, @unchecked Sendable {
 public convenience init(dbPath: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_constructor_mobileclient_new(
-        FfiConverterString.lower(dbPath),$0
+        FfiConverterString.lower(dbPath),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -764,8 +826,8 @@ public convenience init(dbPath: String)throws  {
     /**
      * Link the core into the app (build-env-deploy §3.1 / skill matrix boot
      * pattern). Opens the vault DB and runs schema migrations so a fresh vault
-     * is usable on first launch. The vault starts locked; call `unlock` (or
-     * `unlock_with_password`) before accessing secrets.
+     * is usable on first launch. The vault starts locked; call an unlock method
+     * (or `unlock_with_password`) before accessing secrets.
      */
 public static func initialize(dbPath: String)async throws  -> MobileClient  {
     return
@@ -789,9 +851,10 @@ public static func initialize(dbPath: String)async throws  -> MobileClient  {
      */
 open func acceptShare(incomingJson: String)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_accept_share(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(incomingJson),$0
+        FfiConverterString.lower(incomingJson),uniffiCallStatus
     )
 })
 }
@@ -801,11 +864,12 @@ open func acceptShare(incomingJson: String)throws  -> Data  {
      */
 open func addGroupMember(groupJson: String, memberUuid: String, memberPubkeyB64: String)throws  -> FfiWrappedGroupKey  {
     return try  FfiConverterTypeFfiWrappedGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_add_group_member(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(memberUuid),
-        FfiConverterString.lower(memberPubkeyB64),$0
+        FfiConverterString.lower(memberPubkeyB64),uniffiCallStatus
     )
 })
 }
@@ -818,8 +882,7 @@ open func connectSync(baseUrl: String, token: String, userId: String)async throw
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(baseUrl),FfiConverterString.lower(token),FfiConverterString.lower(userId)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(baseUrl),FfiConverterString.lower(token),FfiConverterString.lower(userId)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -835,10 +898,11 @@ open func connectSync(baseUrl: String, token: String, userId: String)async throw
      */
 open func createGroup(name: String, adminUuid: String)throws  -> FfiGroupKey  {
     return try  FfiConverterTypeFfiGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_create_group(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(name),
-        FfiConverterString.lower(adminUuid),$0
+        FfiConverterString.lower(adminUuid),uniffiCallStatus
     )
 })
 }
@@ -848,11 +912,12 @@ open func createGroup(name: String, adminUuid: String)throws  -> FfiGroupKey  {
      */
 open func decryptGroupItem(groupJson: String, itemUuid: String, ctB64: String)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_decrypt_group_item(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(itemUuid),
-        FfiConverterString.lower(ctB64),$0
+        FfiConverterString.lower(ctB64),uniffiCallStatus
     )
 })
 }
@@ -865,8 +930,7 @@ open func deleteItem(uuid: String)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_delete_item(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(uuid)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -882,11 +946,12 @@ open func deleteItem(uuid: String)async throws   {
      */
 open func encryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_encrypt_group_item(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(itemUuid),
-        FfiConverterData.lower(plaintext),$0
+        FfiConverterData.lower(plaintext),uniffiCallStatus
     )
 })
 }
@@ -897,8 +962,9 @@ open func encryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data)
      */
 open func ensureSharingKey()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_ensure_sharing_key(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -911,8 +977,7 @@ open func getOverview(uuid: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_get_overview(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(uuid)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
@@ -928,8 +993,9 @@ open func getOverview(uuid: String)async throws  -> String  {
      */
 open func isLocked() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_is_locked(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -943,8 +1009,7 @@ open func listOverviews()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
@@ -963,8 +1028,7 @@ open func lock()async   {
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_lock(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -977,6 +1041,27 @@ open func lock()async   {
 }
     
     /**
+     * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
+     * Returns the recovery mnemonic (so the caller can offer "recover vault key"
+     * if the password is correct but the local vault is missing).
+     */
+open func login(serverUrl: String, username: String, password: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_vautr_ffi_fn_method_mobileclient_login(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(serverUrl),FfiConverterString.lower(username),FfiConverterString.lower(password)
+                )
+            },
+            pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_vautr_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_vautr_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeFfiError_lift
+        )
+}
+    
+    /**
      * Delegate copy/autofill to the native platform handler.
      */
 open func performAction(action: CoreAction)async throws   {
@@ -984,8 +1069,7 @@ open func performAction(action: CoreAction)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_perform_action(
-                    self.uniffiCloneHandle(),
-                    FfiConverterTypeCoreAction_lower(action)
+                        self.uniffiCloneHandle(),FfiConverterTypeCoreAction_lower(action)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -997,12 +1081,35 @@ open func performAction(action: CoreAction)async throws   {
 }
     
     /**
+     * Register a new account on the live server using native OPAQUE. Returns the
+     * 24-word recovery mnemonic (display once to the user — it is the Emergency
+     * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
+     * `login` can re-derive the vault key.
+     */
+open func register(serverUrl: String, username: String, password: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_vautr_ffi_fn_method_mobileclient_register(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(serverUrl),FfiConverterString.lower(username),FfiConverterString.lower(password)
+                )
+            },
+            pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_vautr_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_vautr_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeFfiError_lift
+        )
+}
+    
+    /**
      * Explicitly release a handle (zeroizes the in-memory secret).
      */
 open func releaseSecret(handle: UInt64)throws   {try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_release_secret(
             self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(handle),$0
+        FfiConverterUInt64.lower(handle),uniffiCallStatus
     )
 }
 }
@@ -1020,8 +1127,7 @@ open func renderSecretInOverlay(handle: UInt64)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt64.lower(handle)
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(handle)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1040,8 +1146,7 @@ open func revealSecret(uuid: String)async throws  -> UInt64  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(uuid)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_u64,
@@ -1060,8 +1165,7 @@ open func rotateKey(newGen: UInt64)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt64.lower(newGen)
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(newGen)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1081,8 +1185,7 @@ open func saveItem(uuid: String, encKeyGen: UInt64, payload: Data)async throws  
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_save_item(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(uuid),FfiConverterUInt64.lower(encKeyGen),FfiConverterData.lower(payload)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid),FfiConverterUInt64.lower(encKeyGen),FfiConverterData.lower(payload)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1101,8 +1204,7 @@ open func search(query: String)async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_search(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(query)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_rust_buffer,
@@ -1118,8 +1220,9 @@ open func search(query: String)async throws  -> String  {
      */
 open func secureEnclaveBridge() -> SecureEnclaveBridge?  {
     return try!  FfiConverterOptionTypeSecureEnclaveBridge.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_secure_enclave_bridge(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1132,8 +1235,7 @@ open func setPlatformHandler(handler: PlatformActionHandler)async   {
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(
-                    self.uniffiCloneHandle(),
-                    FfiConverterTypePlatformActionHandler_lower(handler)
+                        self.uniffiCloneHandle(),FfiConverterTypePlatformActionHandler_lower(handler)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1149,9 +1251,10 @@ open func setPlatformHandler(handler: PlatformActionHandler)async   {
      * Register the native OS-keystore SVK bridge (biometric unlock).
      */
 open func setSecureEnclaveBridge(bridge: SecureEnclaveBridge)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_set_secure_enclave_bridge(
             self.uniffiCloneHandle(),
-        FfiConverterTypeSecureEnclaveBridge_lower(bridge),$0
+        FfiConverterTypeSecureEnclaveBridge_lower(bridge),uniffiCallStatus
     )
 }
 }
@@ -1160,9 +1263,10 @@ open func setSecureEnclaveBridge(bridge: SecureEnclaveBridge)  {try! rustCall() 
      * Persist the sharing secret key (base64) loaded from the OS secure store.
      */
 open func setSharingSecret(secretB64: String?)throws   {try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_set_sharing_secret(
             self.uniffiCloneHandle(),
-        FfiConverterOptionString.lower(secretB64),$0
+        FfiConverterOptionString.lower(secretB64),uniffiCallStatus
     )
 }
 }
@@ -1172,13 +1276,14 @@ open func setSharingSecret(secretB64: String?)throws   {try rustCallWithError(Ff
      */
 open func shareItem(senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: Data)throws  -> FfiShareBundle  {
     return try  FfiConverterTypeFfiShareBundle_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_share_item(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(senderUuid),
         FfiConverterString.lower(recipientUuid),
         FfiConverterString.lower(itemUuid),
         FfiConverterString.lower(recipientPubkeyB64),
-        FfiConverterData.lower(plaintext),$0
+        FfiConverterData.lower(plaintext),uniffiCallStatus
     )
 })
 }
@@ -1188,8 +1293,9 @@ open func shareItem(senderUuid: String, recipientUuid: String, itemUuid: String,
      */
 open func sharingSecret() -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_sharing_secret(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1202,8 +1308,7 @@ open func sync()async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_sync(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1223,8 +1328,7 @@ open func unlock(rawKey: Data, localGen: UInt64)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_unlock(
-                    self.uniffiCloneHandle(),
-                    FfiConverterData.lower(rawKey),FfiConverterUInt64.lower(localGen)
+                        self.uniffiCloneHandle(),FfiConverterData.lower(rawKey),FfiConverterUInt64.lower(localGen)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1244,8 +1348,7 @@ open func unlockWithPassword(mp: String, kdfSaltB64: String, wrappedSvkB64: Stri
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(mp),FfiConverterString.lower(kdfSaltB64),FfiConverterString.lower(wrappedSvkB64),FfiConverterString.lower(userId),FfiConverterUInt64.lower(localGen)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(mp),FfiConverterString.lower(kdfSaltB64),FfiConverterString.lower(wrappedSvkB64),FfiConverterString.lower(userId),FfiConverterUInt64.lower(localGen)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1264,8 +1367,7 @@ open func unlockWithRawKey(rawKey: Data, localGen: UInt64)async throws   {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(
-                    self.uniffiCloneHandle(),
-                    FfiConverterData.lower(rawKey),FfiConverterUInt64.lower(localGen)
+                        self.uniffiCloneHandle(),FfiConverterData.lower(rawKey),FfiConverterUInt64.lower(localGen)
                 )
             },
             pollFunc: ffi_vautr_ffi_rust_future_poll_void,
@@ -1281,9 +1383,10 @@ open func unlockWithRawKey(rawKey: Data, localGen: UInt64)async throws   {
      */
 open func unwrapGroupKey(inboxJson: String)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobileclient_unwrap_group_key(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(inboxJson),$0
+        FfiConverterString.lower(inboxJson),uniffiCallStatus
     )
 })
 }
@@ -1404,8 +1507,9 @@ open class MobileSharingStore: MobileSharingStoreProtocol, @unchecked Sendable {
 public convenience init(sharingSecretB64: String?) {
     let handle =
         try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_constructor_mobilesharingstore_new(
-        FfiConverterOptionString.lower(sharingSecretB64),$0
+        FfiConverterOptionString.lower(sharingSecretB64),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1429,8 +1533,9 @@ public convenience init(sharingSecretB64: String?) {
      */
 open func ensureSharingKey()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobilesharingstore_ensure_sharing_key(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1440,8 +1545,9 @@ open func ensureSharingKey()throws  -> String  {
      */
 open func sharingSecret() -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_mobilesharingstore_sharing_secret(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1573,10 +1679,11 @@ open class PlatformActionHandlerImpl: PlatformActionHandler, @unchecked Sendable
      * (or autofills) and must zeroize it immediately after.
      */
 open func onAction(action: CoreAction, secret: String)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_platformactionhandler_on_action(
             self.uniffiCloneHandle(),
         FfiConverterTypeCoreAction_lower(action),
-        FfiConverterString.lower(secret),$0
+        FfiConverterString.lower(secret),uniffiCallStatus
     )
 }
 }
@@ -1811,9 +1918,10 @@ open class SecureEnclaveBridgeImpl: SecureEnclaveBridge, @unchecked Sendable {
      * Persist the 32-byte SVK under biometric (or device-passcode) protection.
      */
 open func saveSvk(svk: Data)throws   {try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_secureenclavebridge_save_svk(
             self.uniffiCloneHandle(),
-        FfiConverterData.lower(svk),$0
+        FfiConverterData.lower(svk),uniffiCallStatus
     )
 }
 }
@@ -1824,8 +1932,9 @@ open func saveSvk(svk: Data)throws   {try rustCallWithError(FfiConverterTypeFfiE
      */
 open func loadSvk()throws  -> Data?  {
     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_secureenclavebridge_load_svk(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1834,8 +1943,9 @@ open func loadSvk()throws  -> Data?  {
      * Delete the stored SVK (e.g. on explicit lock or vault removal).
      */
 open func deleteSvk()throws   {try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_secureenclavebridge_delete_svk(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -1845,8 +1955,9 @@ open func deleteSvk()throws   {try rustCallWithError(FfiConverterTypeFfiError_li
      */
 open func hasSvk()throws  -> Bool  {
     return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_method_secureenclavebridge_has_svk(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2319,8 +2430,7 @@ public func FfiConverterTypeFfiWrappedGroupKey_lower(_ value: FfiWrappedGroupKey
     return FfiConverterTypeFfiWrappedGroupKey.lower(value)
 }
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * FFI-safe action enum mirroring `vautr_app_state::handles::CoreAction`.
  */
@@ -2414,7 +2524,8 @@ public func FfiConverterTypeCoreAction_lower(_ value: CoreAction) -> RustBuffer 
 /**
  * Error surfaced to the mobile layer.
  */
-public enum FfiError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public 
+enum FfiError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -2631,9 +2742,10 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
  */
 public func ffiAcceptShare(incomingJson: String, sharingSecretB64: String)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_accept_share(
         FfiConverterString.lower(incomingJson),
-        FfiConverterString.lower(sharingSecretB64),$0
+        FfiConverterString.lower(sharingSecretB64),uniffiCallStatus
     )
 })
 }
@@ -2644,10 +2756,11 @@ public func ffiAcceptShare(incomingJson: String, sharingSecretB64: String)throws
  */
 public func ffiAddGroupMember(groupJson: String, memberUuid: String, memberPubkeyB64: String)throws  -> FfiWrappedGroupKey  {
     return try  FfiConverterTypeFfiWrappedGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_add_group_member(
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(memberUuid),
-        FfiConverterString.lower(memberPubkeyB64),$0
+        FfiConverterString.lower(memberPubkeyB64),uniffiCallStatus
     )
 })
 }
@@ -2656,9 +2769,10 @@ public func ffiAddGroupMember(groupJson: String, memberUuid: String, memberPubke
  */
 public func ffiCreateGroup(name: String, adminUuid: String)throws  -> FfiGroupKey  {
     return try  FfiConverterTypeFfiGroupKey_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_create_group(
         FfiConverterString.lower(name),
-        FfiConverterString.lower(adminUuid),$0
+        FfiConverterString.lower(adminUuid),uniffiCallStatus
     )
 })
 }
@@ -2668,10 +2782,11 @@ public func ffiCreateGroup(name: String, adminUuid: String)throws  -> FfiGroupKe
  */
 public func ffiDecryptGroupItem(groupJson: String, itemUuid: String, ctB64: String)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_decrypt_group_item(
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(itemUuid),
-        FfiConverterString.lower(ctB64),$0
+        FfiConverterString.lower(ctB64),uniffiCallStatus
     )
 })
 }
@@ -2681,10 +2796,11 @@ public func ffiDecryptGroupItem(groupJson: String, itemUuid: String, ctB64: Stri
  */
 public func ffiEncryptGroupItem(groupJson: String, itemUuid: String, plaintext: Data)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_encrypt_group_item(
         FfiConverterString.lower(groupJson),
         FfiConverterString.lower(itemUuid),
-        FfiConverterData.lower(plaintext),$0
+        FfiConverterData.lower(plaintext),uniffiCallStatus
     )
 })
 }
@@ -2696,7 +2812,8 @@ public func ffiEncryptGroupItem(groupJson: String, itemUuid: String, plaintext: 
  */
 public func ffiGenerateSharingKeypair() -> FfiSharingKeyPair  {
     return try!  FfiConverterTypeFfiSharingKeyPair_lift(try! rustCall() {
-    uniffi_vautr_ffi_fn_func_ffi_generate_sharing_keypair($0
+        uniffiCallStatus in
+    uniffi_vautr_ffi_fn_func_ffi_generate_sharing_keypair(uniffiCallStatus
     )
 })
 }
@@ -2706,12 +2823,13 @@ public func ffiGenerateSharingKeypair() -> FfiSharingKeyPair  {
  */
 public func ffiShareItem(senderUuid: String, recipientUuid: String, itemUuid: String, recipientPubkeyB64: String, plaintext: Data)throws  -> FfiShareBundle  {
     return try  FfiConverterTypeFfiShareBundle_lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_share_item(
         FfiConverterString.lower(senderUuid),
         FfiConverterString.lower(recipientUuid),
         FfiConverterString.lower(itemUuid),
         FfiConverterString.lower(recipientPubkeyB64),
-        FfiConverterData.lower(plaintext),$0
+        FfiConverterData.lower(plaintext),uniffiCallStatus
     )
 })
 }
@@ -2722,9 +2840,10 @@ public func ffiShareItem(senderUuid: String, recipientUuid: String, itemUuid: St
  */
 public func ffiUnwrapGroupKey(inboxJson: String, sharingSecretB64: String)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError_lift) {
+        uniffiCallStatus in
     uniffi_vautr_ffi_fn_func_ffi_unwrap_group_key(
         FfiConverterString.lower(inboxJson),
-        FfiConverterString.lower(sharingSecretB64),$0
+        FfiConverterString.lower(sharingSecretB64),uniffiCallStatus
     )
 })
 }
@@ -2744,148 +2863,154 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_accept_share() != 64222) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_accept_share() != 58943) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_add_group_member() != 24000) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_add_group_member() != 11338) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_create_group() != 1705) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_create_group() != 29261) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_decrypt_group_item() != 44026) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_decrypt_group_item() != 32966) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_encrypt_group_item() != 54880) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_encrypt_group_item() != 61994) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_generate_sharing_keypair() != 9787) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_generate_sharing_keypair() != 12450) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_share_item() != 4325) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_share_item() != 50726) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_func_ffi_unwrap_group_key() != 58918) {
+    if (uniffi_vautr_ffi_checksum_func_ffi_unwrap_group_key() != 17179) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_accept_share() != 52184) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_accept_share() != 42465) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member() != 948) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member() != 19186) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 63846) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 38822) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_create_group() != 44650) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_create_group() != 15288) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item() != 58727) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item() != 57983) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 5566) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 16474) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item() != 47572) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item() != 40554) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key() != 51610) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key() != 31436) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 43421) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 6104) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_is_locked() != 57584) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_is_locked() != 35505) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_list_overviews() != 18191) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_list_overviews() != 37499) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 43909) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 32748) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 14357) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_login() != 11049) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_release_secret() != 20178) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 43720) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_render_secret_in_overlay() != 49954) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_register() != 19236) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_reveal_secret() != 44030) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_release_secret() != 45216) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_rotate_key() != 54260) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_render_secret_in_overlay() != 58904) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_save_item() != 50716) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_reveal_secret() != 43852) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_search() != 12924) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_rotate_key() != 24275) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_secure_enclave_bridge() != 35208) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_save_item() != 39691) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_platform_handler() != 38588) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_search() != 51340) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge() != 41292) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_secure_enclave_bridge() != 26798) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_sharing_secret() != 17721) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_platform_handler() != 39212) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_share_item() != 62780) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge() != 15532) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret() != 55894) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_set_sharing_secret() != 37506) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 46351) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_share_item() != 1820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock() != 44837) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret() != 19694) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_password() != 42163) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 39233) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 21325) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock() != 45977) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key() != 62491) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_password() != 58098) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_platformactionhandler_on_action() != 52603) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 27173) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_save_svk() != 7504) {
+    if (uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key() != 47044) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_load_svk() != 25782) {
+    if (uniffi_vautr_ffi_checksum_method_platformactionhandler_on_action() != 35808) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_delete_svk() != 40513) {
+    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_save_svk() != 47482) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_has_svk() != 8090) {
+    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_load_svk() != 31942) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_ensure_sharing_key() != 65297) {
+    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_delete_svk() != 6761) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
+    if (uniffi_vautr_ffi_checksum_method_secureenclavebridge_has_svk() != 15016) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 1017) {
+    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_ensure_sharing_key() != 30705) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {
+    if (uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 25775) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vautr_ffi_checksum_constructor_mobilesharingstore_new() != 65081) {
+    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 39351) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 33475) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vautr_ffi_checksum_constructor_mobilesharingstore_new() != 6799) {
         return InitializationResult.apiChecksumMismatch
     }
 

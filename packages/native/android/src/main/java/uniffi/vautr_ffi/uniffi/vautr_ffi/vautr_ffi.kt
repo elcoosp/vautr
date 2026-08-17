@@ -31,13 +31,6 @@ import java.nio.charset.CodingErrorAction
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
-import kotlinx.coroutines.CancellableContinuation
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 
 // This is a helper for safely working with byte buffers returned from the Rust code.
 // A rust-owned buffer is represented by its capacity, its current length, and a
@@ -829,7 +822,7 @@ internal object UniffiLib {
 ): Long
 external fun uniffi_vautr_ffi_fn_free_mobileclient(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(`dbPath`: RustBuffer.ByValue,
+external fun uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_vautr_ffi_fn_constructor_mobileclient_new(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -837,48 +830,48 @@ external fun uniffi_vautr_ffi_fn_method_mobileclient_accept_share(`ptr`: Long,`i
 ): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_add_group_member(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`memberUuid`: RustBuffer.ByValue,`memberPubkeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(`ptr`: Long,`baseUrl`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(`ptr`: Long,`baseUrl`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_vautr_ffi_fn_method_mobileclient_create_group(`ptr`: Long,`name`: RustBuffer.ByValue,`adminUuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_decrypt_group_item(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`ctB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_vautr_ffi_fn_method_mobileclient_delete_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_delete_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_vautr_ffi_fn_method_mobileclient_encrypt_group_item(`ptr`: Long,`groupJson`: RustBuffer.ByValue,`itemUuid`: RustBuffer.ByValue,`plaintext`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_ensure_sharing_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_vautr_ffi_fn_method_mobileclient_get_overview(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_get_overview(`ptr`: Long,`uuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_is_locked(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
-external fun uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(`ptr`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_lock(`ptr`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_login(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_perform_action(`ptr`: Long,`action`: RustBuffer.ByValue,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_register(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_lock(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_login(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_vautr_ffi_fn_method_mobileclient_perform_action(`ptr`: Long,`action`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_register(`ptr`: Long,`serverUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_release_secret(`ptr`: Long,`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(`ptr`: Long,`handle`: Long,
+external fun uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(`ptr`: Long,`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(`ptr`: Long,`uuid`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(`ptr`: Long,`uuid`: RustBuffer.ByValue,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(`ptr`: Long,`newGen`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_save_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,`encKeyGen`: Long,`payload`: RustBuffer.ByValue,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_search(`ptr`: Long,`query`: RustBuffer.ByValue,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(`ptr`: Long,`newGen`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_save_item(`ptr`: Long,`uuid`: RustBuffer.ByValue,`encKeyGen`: Long,`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_search(`ptr`: Long,`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_secure_enclave_bridge(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(`ptr`: Long,`handler`: Long,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(`ptr`: Long,`handler`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_vautr_ffi_fn_method_mobileclient_set_secure_enclave_bridge(`ptr`: Long,`bridge`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_vautr_ffi_fn_method_mobileclient_set_sharing_secret(`ptr`: Long,`secretB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -887,14 +880,14 @@ external fun uniffi_vautr_ffi_fn_method_mobileclient_share_item(`ptr`: Long,`sen
 ): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_method_mobileclient_sharing_secret(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-external fun uniffi_vautr_ffi_fn_method_mobileclient_sync(`ptr`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(`ptr`: Long,`mp`: RustBuffer.ByValue,`kdfSaltB64`: RustBuffer.ByValue,`wrappedSvkB64`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,`localGen`: Long,
-): Long
-external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,
-): Long
+external fun uniffi_vautr_ffi_fn_method_mobileclient_sync(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(`ptr`: Long,`mp`: RustBuffer.ByValue,`kdfSaltB64`: RustBuffer.ByValue,`wrappedSvkB64`: RustBuffer.ByValue,`userId`: RustBuffer.ByValue,`localGen`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(`ptr`: Long,`rawKey`: RustBuffer.ByValue,`localGen`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_vautr_ffi_fn_method_mobileclient_unwrap_group_key(`ptr`: Long,`inboxJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_vautr_ffi_fn_clone_platformactionhandler(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1094,7 +1087,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_add_group_member() != 948) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 63846) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_connect_sync() != 64635) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_create_group() != 44650) {
@@ -1103,7 +1096,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_decrypt_group_item() != 58727) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 5566) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_delete_item() != 5076) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_encrypt_group_item() != 47572) {
@@ -1112,49 +1105,49 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_ensure_sharing_key() != 51610) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 43421) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_get_overview() != 53922) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_is_locked() != 57584) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_list_overviews() != 18191) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_list_overviews() != 56715) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 43909) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_lock() != 39166) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_login() != 18138) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_login() != 3575) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 14357) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_perform_action() != 32794) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_register() != 37781) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_register() != 32719) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_release_secret() != 20178) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_render_secret_in_overlay() != 49954) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_render_secret_in_overlay() != 1426) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_reveal_secret() != 44030) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_reveal_secret() != 61999) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_rotate_key() != 54260) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_rotate_key() != 46303) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_save_item() != 50716) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_save_item() != 56024) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_search() != 12924) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_search() != 55540) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_secure_enclave_bridge() != 35208) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_set_platform_handler() != 38588) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_set_platform_handler() != 48143) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_set_secure_enclave_bridge() != 41292) {
@@ -1169,16 +1162,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_sharing_secret() != 55894) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 46351) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_sync() != 50088) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock() != 44837) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock() != 52759) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_password() != 42163) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_password() != 39434) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 21325) {
+    if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unlock_with_raw_key() != 44722) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_method_mobileclient_unwrap_group_key() != 62491) {
@@ -1205,7 +1198,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_vautr_ffi_checksum_method_mobilesharingstore_sharing_secret() != 28459) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 34213) {
+    if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_initialize() != 33899) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_vautr_ffi_checksum_constructor_mobileclient_new() != 56546) {
@@ -1227,46 +1220,6 @@ public fun uniffiEnsureInitialized() {
 }
 
 // Async support
-// Async return type handlers
-
-internal const val UNIFFI_RUST_FUTURE_POLL_READY = 0.toByte()
-internal const val UNIFFI_RUST_FUTURE_POLL_WAKE = 1.toByte()
-
-internal val uniffiContinuationHandleMap = UniffiHandleMap<CancellableContinuation<Byte>>()
-
-// FFI type for Rust future continuations
-internal object uniffiRustFutureContinuationCallbackImpl: UniffiRustFutureContinuationCallback {
-    override fun callback(data: Long, pollResult: Byte) {
-        uniffiContinuationHandleMap.remove(data).resume(pollResult)
-    }
-}
-
-internal suspend fun<T, F, E: kotlin.Exception> uniffiRustCallAsync(
-    rustFuture: Long,
-    pollFunc: (Long, UniffiRustFutureContinuationCallback, Long) -> Unit,
-    completeFunc: (Long, UniffiRustCallStatus) -> F,
-    freeFunc: (Long) -> Unit,
-    liftFunc: (F) -> T,
-    errorHandler: UniffiRustCallStatusErrorHandler<E>
-): T {
-    try {
-        do {
-            val pollResult = suspendCancellableCoroutine<Byte> { continuation ->
-                pollFunc(
-                    rustFuture,
-                    uniffiRustFutureContinuationCallbackImpl,
-                    uniffiContinuationHandleMap.insert(continuation)
-                )
-            }
-        } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
-
-        return liftFunc(
-            uniffiRustCallWithError(errorHandler, { status -> completeFunc(rustFuture, status) })
-        )
-    } finally {
-        freeFunc(rustFuture)
-    }
-}
 
 // Public interface members begin here.
 
@@ -1678,7 +1631,7 @@ public interface MobileClientInterface {
     /**
      * Connect sync transport to the server.
      */
-    suspend fun `connectSync`(`baseUrl`: kotlin.String, `token`: kotlin.String, `userId`: kotlin.String)
+    fun `connectSync`(`baseUrl`: kotlin.String, `token`: kotlin.String, `userId`: kotlin.String)
     
     /**
      * Create a sharing group (admin). Returns the admin's `{ group, secret }`.
@@ -1693,7 +1646,7 @@ public interface MobileClientInterface {
     /**
      * Delete an item by uuid.
      */
-    suspend fun `deleteItem`(`uuid`: kotlin.String)
+    fun `deleteItem`(`uuid`: kotlin.String)
     
     /**
      * Encrypt a vault item's payload for a group.
@@ -1709,7 +1662,7 @@ public interface MobileClientInterface {
     /**
      * Get a single overview by uuid string. Returns JSON `DecryptedOverview`.
      */
-    suspend fun `getOverview`(`uuid`: kotlin.String): kotlin.String
+    fun `getOverview`(`uuid`: kotlin.String): kotlin.String
     
     /**
      * Whether the vault is currently locked.
@@ -1720,24 +1673,24 @@ public interface MobileClientInterface {
      * List all overviews (most-recently-used first) as a JSON array of
      * `DecryptedOverview`. Mirrors the web worker's empty-query search.
      */
-    suspend fun `listOverviews`(): kotlin.String
+    fun `listOverviews`(): kotlin.String
     
     /**
      * Lock the vault (zeroizes keys + in-memory secrets).
      */
-    suspend fun `lock`()
+    fun `lock`()
     
     /**
      * OPAQUE login → bearer token → fetch wrapped SVK → unlock the local vault.
      * Returns the recovery mnemonic (so the caller can offer "recover vault key"
      * if the password is correct but the local vault is missing).
      */
-    suspend fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
     
     /**
      * Delegate copy/autofill to the native platform handler.
      */
-    suspend fun `performAction`(`action`: CoreAction)
+    fun `performAction`(`action`: CoreAction)
     
     /**
      * Register a new account on the live server using native OPAQUE. Returns the
@@ -1745,7 +1698,7 @@ public interface MobileClientInterface {
      * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
      * `login` can re-derive the vault key.
      */
-    suspend fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
     
     /**
      * Explicitly release a handle (zeroizes the in-memory secret).
@@ -1760,28 +1713,28 @@ public interface MobileClientInterface {
      * and never crosses into the JS heap. The overlay component is responsible
      * for calling `release_secret` when it unmounts.
      */
-    suspend fun `renderSecretInOverlay`(`handle`: kotlin.ULong)
+    fun `renderSecretInOverlay`(`handle`: kotlin.ULong)
     
     /**
      * Reveal a secret, returning an opaque handle (secret stays in Rust).
      */
-    suspend fun `revealSecret`(`uuid`: kotlin.String): kotlin.ULong
+    fun `revealSecret`(`uuid`: kotlin.String): kotlin.ULong
     
     /**
      * Rotate the vault key to `new_gen`.
      */
-    suspend fun `rotateKey`(`newGen`: kotlin.ULong)
+    fun `rotateKey`(`newGen`: kotlin.ULong)
     
     /**
      * Save an item. `payload` is the pre-encrypted ciphertext blob; `enc_key_gen`
      * is the vault key generation that encrypted it.
      */
-    suspend fun `saveItem`(`uuid`: kotlin.String, `encKeyGen`: kotlin.ULong, `payload`: kotlin.ByteArray)
+    fun `saveItem`(`uuid`: kotlin.String, `encKeyGen`: kotlin.ULong, `payload`: kotlin.ByteArray)
     
     /**
      * FTS5 search. Returns JSON-encoded `Vec<DecryptedOverview>`.
      */
-    suspend fun `search`(`query`: kotlin.String): kotlin.String
+    fun `search`(`query`: kotlin.String): kotlin.String
     
     /**
      * The currently-registered Secure Enclave bridge, if any.
@@ -1791,7 +1744,7 @@ public interface MobileClientInterface {
     /**
      * Register the native platform handler (clipboard / autofill).
      */
-    suspend fun `setPlatformHandler`(`handler`: PlatformActionHandler)
+    fun `setPlatformHandler`(`handler`: PlatformActionHandler)
     
     /**
      * Register the native OS-keystore SVK bridge (biometric unlock).
@@ -1816,24 +1769,24 @@ public interface MobileClientInterface {
     /**
      * Run a metadata-first sync pull + selective payload download.
      */
-    suspend fun `sync`()
+    fun `sync`()
     
     /**
      * Unlock with a raw 32-byte SVK recovered from the OS keystore (biometric
      * unlock, crypto.md §6). `local_gen` is the local vault key generation.
      */
-    suspend fun `unlock`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
+    fun `unlock`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
     
     /**
      * Unlock with the master password. `kdf_salt_b64` / `wrapped_svk_b64` come
      * from the server auth bootstrap; `user_id` is the server user uuid.
      */
-    suspend fun `unlockWithPassword`(`mp`: kotlin.String, `kdfSaltB64`: kotlin.String, `wrappedSvkB64`: kotlin.String, `userId`: kotlin.String, `localGen`: kotlin.ULong)
+    fun `unlockWithPassword`(`mp`: kotlin.String, `kdfSaltB64`: kotlin.String, `wrappedSvkB64`: kotlin.String, `userId`: kotlin.String, `localGen`: kotlin.ULong)
     
     /**
      * Unlock directly with a raw 32-byte vault key + the local key generation.
      */
-    suspend fun `unlockWithRawKey`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
+    fun `unlockWithRawKey`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
     
     /**
      * Member-side: decapsulate the Group SIK from an inbox entry.
@@ -1992,26 +1945,17 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     /**
      * Connect sync transport to the server.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `connectSync`(`baseUrl`: kotlin.String, `token`: kotlin.String, `userId`: kotlin.String) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(
-                uniffiHandle,
-                FfiConverterString.lower(`baseUrl`),FfiConverterString.lower(`token`),FfiConverterString.lower(`userId`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `connectSync`(`baseUrl`: kotlin.String, `token`: kotlin.String, `userId`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_connect_sync(
+        it,
+        FfiConverterString.lower(`baseUrl`),FfiConverterString.lower(`token`),FfiConverterString.lower(`userId`),_status)
+}
     }
+    
+    
 
     
     /**
@@ -2051,26 +1995,17 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     /**
      * Delete an item by uuid.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `deleteItem`(`uuid`: kotlin.String) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_delete_item(
-                uniffiHandle,
-                FfiConverterString.lower(`uuid`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `deleteItem`(`uuid`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_delete_item(
+        it,
+        FfiConverterString.lower(`uuid`),_status)
+}
     }
+    
+    
 
     
     /**
@@ -2111,25 +2046,18 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     /**
      * Get a single overview by uuid string. Returns JSON `DecryptedOverview`.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `getOverview`(`uuid`: kotlin.String) : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_get_overview(
-                uniffiHandle,
-                FfiConverterString.lower(`uuid`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `getOverview`(`uuid`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_get_overview(
+        it,
+        FfiConverterString.lower(`uuid`),_status)
+}
+    }
     )
     }
+    
 
     
     /**
@@ -2152,49 +2080,33 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
      * List all overviews (most-recently-used first) as a JSON array of
      * `DecryptedOverview`. Mirrors the web worker's empty-query search.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `listOverviews`() : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(
-                uniffiHandle,
-                
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `listOverviews`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(
+        it,
+        _status)
+}
+    }
     )
     }
+    
 
     
     /**
      * Lock the vault (zeroizes keys + in-memory secrets).
-     */
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `lock`() {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_lock(
-                uniffiHandle,
-                
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        UniffiNullRustCallStatusErrorHandler,
-    )
+     */override fun `lock`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_lock(
+        it,
+        _status)
+}
     }
+    
+    
 
     
     /**
@@ -2202,50 +2114,34 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
      * Returns the recovery mnemonic (so the caller can offer "recover vault key"
      * if the password is correct but the local vault is missing).
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String) : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_login(
-                uniffiHandle,
-                FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `login`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_login(
+        it,
+        FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),_status)
+}
+    }
     )
     }
+    
 
     
     /**
      * Delegate copy/autofill to the native platform handler.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `performAction`(`action`: CoreAction) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_perform_action(
-                uniffiHandle,
-                FfiConverterTypeCoreAction.lower(`action`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `performAction`(`action`: CoreAction)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_perform_action(
+        it,
+        FfiConverterTypeCoreAction.lower(`action`),_status)
+}
     }
+    
+    
 
     
     /**
@@ -2254,25 +2150,18 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
      * Kit). The KDF salt + MP-wrapped SVK are persisted locally so a later
      * `login` can re-derive the vault key.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String) : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_register(
-                uniffiHandle,
-                FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `register`(`serverUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_register(
+        it,
+        FfiConverterString.lower(`serverUrl`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),_status)
+}
+    }
     )
     }
+    
 
     
     /**
@@ -2299,125 +2188,84 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
      * and never crosses into the JS heap. The overlay component is responsible
      * for calling `release_secret` when it unmounts.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `renderSecretInOverlay`(`handle`: kotlin.ULong) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(
-                uniffiHandle,
-                FfiConverterULong.lower(`handle`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `renderSecretInOverlay`(`handle`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_render_secret_in_overlay(
+        it,
+        FfiConverterULong.lower(`handle`),_status)
+}
     }
+    
+    
 
     
     /**
      * Reveal a secret, returning an opaque handle (secret stays in Rust).
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `revealSecret`(`uuid`: kotlin.String) : kotlin.ULong {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(
-                uniffiHandle,
-                FfiConverterString.lower(`uuid`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_u64(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_u64(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_u64(future) },
-        // lift function
-        { FfiConverterULong.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `revealSecret`(`uuid`: kotlin.String): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_reveal_secret(
+        it,
+        FfiConverterString.lower(`uuid`),_status)
+}
+    }
     )
     }
+    
 
     
     /**
      * Rotate the vault key to `new_gen`.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `rotateKey`(`newGen`: kotlin.ULong) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(
-                uniffiHandle,
-                FfiConverterULong.lower(`newGen`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `rotateKey`(`newGen`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_rotate_key(
+        it,
+        FfiConverterULong.lower(`newGen`),_status)
+}
     }
+    
+    
 
     
     /**
      * Save an item. `payload` is the pre-encrypted ciphertext blob; `enc_key_gen`
      * is the vault key generation that encrypted it.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `saveItem`(`uuid`: kotlin.String, `encKeyGen`: kotlin.ULong, `payload`: kotlin.ByteArray) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_save_item(
-                uniffiHandle,
-                FfiConverterString.lower(`uuid`),FfiConverterULong.lower(`encKeyGen`),FfiConverterByteArray.lower(`payload`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `saveItem`(`uuid`: kotlin.String, `encKeyGen`: kotlin.ULong, `payload`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_save_item(
+        it,
+        FfiConverterString.lower(`uuid`),FfiConverterULong.lower(`encKeyGen`),FfiConverterByteArray.lower(`payload`),_status)
+}
     }
+    
+    
 
     
     /**
      * FTS5 search. Returns JSON-encoded `Vec<DecryptedOverview>`.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `search`(`query`: kotlin.String) : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_search(
-                uniffiHandle,
-                FfiConverterString.lower(`query`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class)override fun `search`(`query`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_search(
+        it,
+        FfiConverterString.lower(`query`),_status)
+}
+    }
     )
     }
+    
 
     
     /**
@@ -2438,26 +2286,17 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     
     /**
      * Register the native platform handler (clipboard / autofill).
-     */
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `setPlatformHandler`(`handler`: PlatformActionHandler) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(
-                uniffiHandle,
-                FfiConverterTypePlatformActionHandler.lower(`handler`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        UniffiNullRustCallStatusErrorHandler,
-    )
+     */override fun `setPlatformHandler`(`handler`: PlatformActionHandler)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_set_platform_handler(
+        it,
+        FfiConverterTypePlatformActionHandler.lower(`handler`),_status)
+}
     }
+    
+    
 
     
     /**
@@ -2527,103 +2366,67 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
     /**
      * Run a metadata-first sync pull + selective payload download.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `sync`() {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_sync(
-                uniffiHandle,
-                
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `sync`()
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_sync(
+        it,
+        _status)
+}
     }
+    
+    
 
     
     /**
      * Unlock with a raw 32-byte SVK recovered from the OS keystore (biometric
      * unlock, crypto.md §6). `local_gen` is the local vault key generation.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `unlock`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock(
-                uniffiHandle,
-                FfiConverterByteArray.lower(`rawKey`),FfiConverterULong.lower(`localGen`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `unlock`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock(
+        it,
+        FfiConverterByteArray.lower(`rawKey`),FfiConverterULong.lower(`localGen`),_status)
+}
     }
+    
+    
 
     
     /**
      * Unlock with the master password. `kdf_salt_b64` / `wrapped_svk_b64` come
      * from the server auth bootstrap; `user_id` is the server user uuid.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `unlockWithPassword`(`mp`: kotlin.String, `kdfSaltB64`: kotlin.String, `wrappedSvkB64`: kotlin.String, `userId`: kotlin.String, `localGen`: kotlin.ULong) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(
-                uniffiHandle,
-                FfiConverterString.lower(`mp`),FfiConverterString.lower(`kdfSaltB64`),FfiConverterString.lower(`wrappedSvkB64`),FfiConverterString.lower(`userId`),FfiConverterULong.lower(`localGen`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `unlockWithPassword`(`mp`: kotlin.String, `kdfSaltB64`: kotlin.String, `wrappedSvkB64`: kotlin.String, `userId`: kotlin.String, `localGen`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_password(
+        it,
+        FfiConverterString.lower(`mp`),FfiConverterString.lower(`kdfSaltB64`),FfiConverterString.lower(`wrappedSvkB64`),FfiConverterString.lower(`userId`),FfiConverterULong.lower(`localGen`),_status)
+}
     }
+    
+    
 
     
     /**
      * Unlock directly with a raw 32-byte vault key + the local key generation.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `unlockWithRawKey`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong) {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(
-                uniffiHandle,
-                FfiConverterByteArray.lower(`rawKey`),FfiConverterULong.lower(`localGen`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_void(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_void(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_void(future) },
-        // lift function
-        { Unit },
-        
-        // Error FFI converter
-        FfiException.ErrorHandler,
-    )
+    @Throws(FfiException::class)override fun `unlockWithRawKey`(`rawKey`: kotlin.ByteArray, `localGen`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_method_mobileclient_unlock_with_raw_key(
+        it,
+        FfiConverterByteArray.lower(`rawKey`),FfiConverterULong.lower(`localGen`),_status)
+}
     }
+    
+    
 
     
     /**
@@ -2656,20 +2459,16 @@ open class MobileClient: Disposable, AutoCloseable, MobileClientInterface
      * is usable on first launch. The vault starts locked; call an unlock method
      * (or `unlock_with_password`) before accessing secrets.
      */
-    @Throws(FfiException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-     suspend fun `initialize`(`dbPath`: kotlin.String) : MobileClient {
-        return uniffiRustCallAsync(
-        UniffiLib.uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(FfiConverterString.lower(`dbPath`),),
-        { future, callback, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_poll_u64(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_vautr_ffi_rust_future_complete_u64(future, continuation) },
-        { future -> UniffiLib.ffi_vautr_ffi_rust_future_free_u64(future) },
-        // lift function
-        { FfiConverterTypeMobileClient.lift(it) },
-        // Error FFI converter
-        FfiException.ErrorHandler,
+    @Throws(FfiException::class) fun `initialize`(`dbPath`: kotlin.String): MobileClient {
+            return FfiConverterTypeMobileClient.lift(
+    uniffiRustCallWithError(FfiException) { _status ->
+    UniffiLib.uniffi_vautr_ffi_fn_constructor_mobileclient_initialize(
+    
+        FfiConverterString.lower(`dbPath`),_status)
+}
     )
     }
+    
 
         
     }
@@ -4296,14 +4095,6 @@ public object FfiConverterOptionalTypeSecureEnclaveBridge: FfiConverterRustBuffe
         }
     }
 }
-
-
-
-
-
-
-
-
         /**
          * Decrypt an incoming 1:1 share. `incoming_json` is the JSON `IncomingShare`
          * (share_id, sender_uuid, item_uuid, wrapped_sik, ephemeral_public_key,

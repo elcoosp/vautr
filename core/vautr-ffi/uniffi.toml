@@ -1,0 +1,10 @@
+# UniFFI configuration for vautr-ffi.
+#
+# Android Kotlin bindings use the JNI "system" load mode so the generated code
+# calls `System.loadLibrary("vautr_ffi")` directly and loads `libvautr_ffi.so`
+# from the APK's `lib/<abi>/` directory. The JNA backend (uniffi's other
+# option) needs `libjnidispatch.so` packaged separately and fails on Android
+# with `UnsatisfiedLinkError: native library not found in resource path`,
+# which blocked native vault-core init (register/login) on device.
+[bindings.kotlin]
+android_load_mode = "system"

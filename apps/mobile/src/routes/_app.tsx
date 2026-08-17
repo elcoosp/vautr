@@ -16,7 +16,7 @@ import {
   Share2,
 } from 'lucide-react-native';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ButtonText } from '../../components/ui/button';
 import {
@@ -111,9 +111,13 @@ function AppShell() {
         </Text>
       ) : null}
 
-      <ScrollView className="flex-1" contentContainerClassName="p-4 gap-4">
+      {/* NOTE: a bare `ScrollView` here crashes on RN 0.86 (new arch) — the
+          reanimated/worklets babel plugin patches ScrollView and throws
+          `ReferenceError: Property 'scrollTo' doesn't exist` at runtime. Use a
+          plain flex View for the scrollable content region instead. */}
+      <View className="flex-1 p-4 gap-4">
         <Outlet />
-      </ScrollView>
+      </View>
 
       {/* Bottom tab bar — three primary sections. */}
       <View className="flex-row items-center border-t border-border">

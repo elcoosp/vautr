@@ -105,7 +105,7 @@ mod tests {
     /// -> (release on detail unmount) -> lock. Confirms `release_secret` zeroizes
     /// the handle so a post-release action is rejected, mirroring the Detail
     /// screen's unmount cleanup (ui-state-charts §3).
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn mobile_unlock_list_reveal_release_lock() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_path = dir
@@ -115,9 +115,7 @@ mod tests {
             .into_owned();
 
         // initialize links the core and runs migrations on the fresh vault DB.
-        let client = MobileClient::initialize(db_path.clone())
-            .await
-            .expect("initialize");
+        let client = MobileClient::initialize(db_path.clone()).expect("initialize");
         assert!(client.is_locked(), "fresh vault must start locked");
 
         // Register a Secure Enclave bridge and persist the SVK.
@@ -141,33 +139,28 @@ mod tests {
 
         // Unlock via the recovered SVK (biometric path).
         let svk_vec = enclave.load_svk().expect("load").expect("present");
-        client.unlock(svk_vec.clone(), 1).await.expect("unlock");
+        client.unlock(svk_vec.clone(), 1).expect("unlock");
 
         // list_overviews returns the seeded item as a JSON array.
-        let list = client.list_overviews().await.expect("list");
+        let list = client.list_overviews().expect("list");
         let parsed: Vec<vautr_domain::DecryptedOverview> =
             serde_json::from_str(&list).expect("parse list");
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].uuid, uuid);
 
         // reveal -> opaque handle (u64 surfaced to TS as a string).
-        let handle = client
-            .reveal_secret(uuid.to_string())
-            .await
-            .expect("reveal");
+        let handle = client.reveal_secret(uuid.to_string()).expect("reveal");
         assert_ne!(handle, 0);
 
         // "Unmount" the Detail screen: the component's cleanup calls
         // release_secret (ui-state-charts §3). After release the handle is
         // zeroized and a subsequent action is rejected.
         client.release_secret(handle).expect("release");
-        let after_release = client
-            .perform_action(CoreAction::CopyToClipboard { handle })
-            .await;
+        let after_release = client.perform_action(CoreAction::CopyToClipboard { handle });
         assert!(after_release.is_err(), "released handle must be rejected");
 
         // lock wipes in-memory keys.
-        client.lock().await;
+        client.lock();
         assert!(client.is_locked());
         let db2 = Database::connect(&format!("sqlite://{db_path}"))
             .await
@@ -176,7 +169,7 @@ mod tests {
     }
 
     /// A locked vault must reject list/reveal (reads require unlock).
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn mobile_locked_rejects_reads() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_path = dir
@@ -184,11 +177,8 @@ mod tests {
             .join("vault2.sqlite3")
             .to_string_lossy()
             .into_owned();
-        let client = MobileClient::initialize(db_path).await.expect("initialize");
-        assert!(client
-            .reveal_secret(Uuid::new_v4().to_string())
-            .await
-            .is_err());
+        let client = MobileClient::initialize(db_path).expect("initialize");
+        assert!(client.reveal_secret(Uuid::new_v4().to_string()).is_err());
     }
 
     /// VTR-048 (TDD1/2 in Rust): a revealed secret rendered into the native
@@ -198,7 +188,7 @@ mod tests {
     /// the `(action, secret)` the core delegates and asserts the plaintext
     /// reached native code, with the opaque handle (not the string) being the
     /// only thing JS would have held.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn overlay_renders_plaintext_only_in_native_handler() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db_path = dir
@@ -206,9 +196,7 @@ mod tests {
             .join("vault3.sqlite3")
             .to_string_lossy()
             .into_owned();
-        let client = MobileClient::initialize(db_path.clone())
-            .await
-            .expect("initialize");
+        let client = MobileClient::initialize(db_path.clone()).expect("initialize");
 
         let enclave = Arc::new(MockEnclave {
             svk: std::sync::RwLock::new(None),
@@ -224,7 +212,7 @@ mod tests {
         let uuid = Uuid::new_v4();
         seed_item(&db, uuid, 1, "s3cr3t-overlay", &dek).await;
         let svk_vec = enclave.load_svk().expect("load").expect("present");
-        client.unlock(svk_vec, 1).await.expect("unlock");
+        client.unlock(svk_vec, 1).expect("unlock");
 
         // Capture the native action+secret delegated by the overlay render.
         let captured: Arc<std::sync::RwLock<Option<(CoreAction, String)>>> =
@@ -232,18 +220,14 @@ mod tests {
         let handler = Arc::new(MockActionHandler {
             captured: captured.clone(),
         });
-        client.set_platform_handler(handler).await;
+        client.set_platform_handler(handler);
 
-        let handle = client
-            .reveal_secret(uuid.to_string())
-            .await
-            .expect("reveal");
+        let handle = client.reveal_secret(uuid.to_string()).expect("reveal");
         // JS holds only the opaque handle (u64 as string) — never the secret.
         assert_ne!(handle, 0);
 
         client
             .render_secret_in_overlay(handle)
-            .await
             .expect("overlay render");
 
         let got = captured.read().unwrap().clone().expect("handler called");
@@ -255,7 +239,7 @@ mod tests {
 
         // Unmounting the overlay releases the handle (zeroizes the secret).
         client.release_secret(handle).expect("release");
-        let after_release = client.render_secret_in_overlay(handle).await;
+        let after_release = client.render_secret_in_overlay(handle);
         assert!(after_release.is_err(), "released handle must be rejected");
     }
 

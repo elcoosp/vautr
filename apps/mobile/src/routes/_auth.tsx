@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 
 export const Route = createFileRoute('/_auth')({
   component: AuthLayout,
@@ -8,11 +8,11 @@ export const Route = createFileRoute('/_auth')({
 /**
  * Container for auth screens (login / register).
  *
- * Wrapped in a KeyboardAvoidingView + ScrollView so the form stays reachable
- * when the soft keyboard covers the lower fields (Confirm password + the
- * action button) on small phones. The ScrollView only mounts inside the
- * keyboard-avoiding wrapper; the earlier RN 0.86 / reanimated v4 `scrollTo`
- * warning is benign and does not blank the screen.
+ * Uses `KeyboardAvoidingView` (no nested `ScrollView`) so the form stays above
+ * the soft keyboard on small phones. A nested `ScrollView` previously triggered
+ * a reanimated v4 / RN 0.86 new-arch `ReferenceError: Property 'scrollTo'
+ * doesn't exist` at runtime, so we avoid it — `KeyboardAvoidingView` alone
+ * provides the keyboard-reachability behavior without the crash.
  */
 function AuthLayout() {
   return (
@@ -21,13 +21,9 @@ function AuthLayout() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="flex-1 justify-center px-6"
-        keyboardShouldPersistTaps="handled"
-      >
+      <View className="flex-1 justify-center px-6">
         <Outlet />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }

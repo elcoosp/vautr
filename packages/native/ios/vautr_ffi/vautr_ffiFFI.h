@@ -379,9 +379,19 @@ uint64_t uniffi_vautr_ffi_fn_method_mobileclient_list_overviews(uint64_t ptr
 uint64_t uniffi_vautr_ffi_fn_method_mobileclient_lock(uint64_t ptr
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_LOGIN
+#define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_LOGIN
+uint64_t uniffi_vautr_ffi_fn_method_mobileclient_login(uint64_t ptr, RustBuffer server_url, RustBuffer username, RustBuffer password
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_PERFORM_ACTION
 #define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_PERFORM_ACTION
 uint64_t uniffi_vautr_ffi_fn_method_mobileclient_perform_action(uint64_t ptr, RustBuffer action
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_REGISTER
+#define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_REGISTER
+uint64_t uniffi_vautr_ffi_fn_method_mobileclient_register(uint64_t ptr, RustBuffer server_url, RustBuffer username, RustBuffer password
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_FN_METHOD_MOBILECLIENT_RELEASE_SECRET
@@ -970,9 +980,21 @@ uint16_t uniffi_vautr_ffi_checksum_method_mobileclient_lock(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_LOGIN
+#define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_LOGIN
+uint16_t uniffi_vautr_ffi_checksum_method_mobileclient_login(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_PERFORM_ACTION
 #define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_PERFORM_ACTION
 uint16_t uniffi_vautr_ffi_checksum_method_mobileclient_perform_action(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_REGISTER
+#define UNIFFI_FFIDEF_UNIFFI_VAUTR_FFI_CHECKSUM_METHOD_MOBILECLIENT_REGISTER
+uint16_t uniffi_vautr_ffi_checksum_method_mobileclient_register(void
     
 );
 #endif
