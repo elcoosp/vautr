@@ -27,7 +27,7 @@ interface NativeVautrModule {
   renderSecretInOverlay(handle: string): Promise<void>;
   lock(): Promise<void>;
   sync(): Promise<void>;
-  setSecureEnclaveBridge(bridge: SecureEnclaveBridge): Promise<void>;
+  setSecureEnclaveBridge(): Promise<void>;
   ensureSharingKey(): Promise<string>;
   setSharingSecret(secretB64: string | null): Promise<void>;
   shareItem(

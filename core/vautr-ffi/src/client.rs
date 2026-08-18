@@ -168,18 +168,41 @@ pub struct MobileClient {
     db_path: String,
 }
 
+/// Resolve `db_path` to a connectable sqlite URL + a stored absolute path.
+///
+/// The mobile boot contract (`bootVautrCore('vautr.sqlite')`) passes a bare
+/// filename; the native side is responsible for resolving it to a writable
+/// location per-platform (see `apps/mobile/src/routes/__root.tsx`). On iOS
+/// and Android the process CWD is not writable, so a relative path opened
+/// as-is fails with SQLite `code: 14` (unable to open database file). We
+/// join relative paths to `std::env::temp_dir()`, which is writable on both
+/// platforms (mirrors `vautr-server`'s use of `temp_dir()` for dev DBs).
+fn resolve_db_path(db_path: &str) -> (String, String) {
+    if db_path.starts_with("sqlite://") {
+        // Already a full URL — keep as-is; store the stripped path.
+        let stripped = db_path
+            .trim_start_matches("sqlite://")
+            .split('?')
+            .next()
+            .unwrap_or(db_path)
+            .to_string();
+        (db_path.to_string(), stripped)
+    } else if PathBuf::from(db_path).is_absolute() {
+        (format!("sqlite://{db_path}?mode=rwc"), db_path.to_string())
+    } else {
+        let abs = std::env::temp_dir().join(db_path);
+        let abs = abs.to_string_lossy().to_string();
+        (format!("sqlite://{abs}?mode=rwc"), abs)
+    }
+}
+
 #[uniffi::export]
 impl MobileClient {
     /// Open (or create) the vault at `db_path` (sqlite file). The vault starts
     /// locked; call an unlock method before accessing secrets.
     #[uniffi::constructor]
     pub fn new(db_path: String) -> Result<Arc<Self>, FfiError> {
-        let db_path_owned = db_path.clone();
-        let url = if db_path.starts_with("sqlite://") {
-            db_path
-        } else {
-            format!("sqlite://{db_path}?mode=rwc")
-        };
+        let (url, db_path_owned) = resolve_db_path(&db_path);
         // Connect without `block_on` so this works whether or not we are already
         // inside a Tokio runtime. The uniffi/Expo bridge calls `initialize` from
         // within a runtime; a naive `Handle::current().block_on(...)` panics with
@@ -202,12 +225,7 @@ impl MobileClient {
     #[uniffi::constructor]
     pub fn initialize(db_path: String) -> Result<Arc<Self>, FfiError> {
         block_on_ffi(async move {
-            let db_path_owned = db_path.clone();
-            let url = if db_path.starts_with("sqlite://") {
-                db_path
-            } else {
-                format!("sqlite://{db_path}?mode=rwc")
-            };
+            let (url, db_path_owned) = resolve_db_path(&db_path);
             let db = sea_orm::Database::connect(&url)
                 .await
                 .map_err(|e| FfiError::Core(format!("db connect: {e}")))?;

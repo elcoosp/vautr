@@ -2313,7 +2313,7 @@ DEPENDENCIES:
   - "RNReanimated (from `../../../node_modules/.pnpm/react-native-reanimated@4.5.3_react-native-worklets@0.11.3_@babel+core@7.29.7_@react-na_e183e19fe1f7c9cefbcc07bd3e9e8e35/node_modules/react-native-reanimated`)"
   - "RNSVG (from `../../../node_modules/.pnpm/react-native-svg@15.15.5_react-native@0.86.2_@babel+core@7.29.7_@react-native+metro-con_da26ca9d35a5b281f532162061590596/node_modules/react-native-svg`)"
   - "RNWorklets (from `../../../node_modules/.pnpm/react-native-worklets@0.11.3_@babel+core@7.29.7_@react-native+metro-config@0.87.0_@babe_a1aa43e1ca16e8e0ad87ad766e4b6ec3/node_modules/react-native-worklets`)"
-  - VautrNativeModule (from `./VautrNativeModule-src`)
+  - VautrNativeModule (from `../../../packages/native/ios`)
   - "Yoga (from `../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_@react-native+metro-config@0.87.0_@babel+core@7._dbf73a06d14d2fdfebe51135d36ef8cf/node_modules/react-native/ReactCommon/yoga`)"
 
 EXTERNAL SOURCES:
@@ -2509,7 +2509,7 @@ EXTERNAL SOURCES:
   RNWorklets:
     :path: "../../../node_modules/.pnpm/react-native-worklets@0.11.3_@babel+core@7.29.7_@react-native+metro-config@0.87.0_@babe_a1aa43e1ca16e8e0ad87ad766e4b6ec3/node_modules/react-native-worklets"
   VautrNativeModule:
-    :path: "./VautrNativeModule-src"
+    :path: "../../../packages/native/ios"
   Yoga:
     :path: "../../../node_modules/.pnpm/react-native@0.86.2_@babel+core@7.29.7_@react-native+metro-config@0.87.0_@babel+core@7._dbf73a06d14d2fdfebe51135d36ef8cf/node_modules/react-native/ReactCommon/yoga"
 
@@ -2609,9 +2609,9 @@ SPEC CHECKSUMS:
   RNReanimated: cf942bcc842dfe7473f35cca55e9c15115cddfa6
   RNSVG: 6cae8d4082913be2eb43eaec2a456222c42195ed
   RNWorklets: 29e7b796158d1fe6a4042a8ee92df2ae043646c3
-  VautrNativeModule: 5b16dcfeef82176b313c9c82cd8a09cdbc924c54
+  VautrNativeModule: c8cb235b97770980395e2b88906621d4f6c3f9c1
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b
 
-PODFILE CHECKSUM: ee8978269620bbf96c3e83513e47f0dfd4976ff9
+PODFILE CHECKSUM: 8b83336d8e394622c455757ab5ab1669b86bc818
 
 COCOAPODS: 1.17.0

@@ -75,7 +75,7 @@ export interface VautrNativeBridge {
   /** Run a metadata-first sync. */
   sync(): Promise<void>;
   /** Register the OS-keystore SVK adapter (biometric unlock). */
-  setSecureEnclaveBridge(bridge: SecureEnclaveBridge): Promise<void>;
+  setSecureEnclaveBridge(): Promise<void>;
 
   // ── Native OPAQUE account creation / first unlock (VTR-104) ──────────
   // On RN/Hermes the wasm crypto cannot run, so OPAQUE must execute in the
@@ -431,9 +431,12 @@ let activeClient: MobileVautrClient | null = null;
 export async function initializeVautrCore(
   options: InitializeCoreOptions,
 ): Promise<MobileVautrClient> {
-  const { native, secureEnclave, dbPath } = options;
+  const { native, dbPath } = options;
   await native.initialize(dbPath);
-  await native.setSecureEnclaveBridge(secureEnclave);
+  // The native module wires its own platform SecureEnclaveBridge (iOS Keychain
+  // under biometric protection); the JS `secureEnclave` adapter is only used on
+  // platforms without a native bridge, so no arg is passed here.
+  await native.setSecureEnclaveBridge();
   activeClient = new MobileVautrClient(native);
   return activeClient;
 }
