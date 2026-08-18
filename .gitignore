@@ -51,3 +51,6 @@ packages/native/android/build/
 
 # Expo dev/build generated artifacts
 apps/mobile/.expo/
+
+# Local dev-environment notes (port map, agent conventions) — not product source
+AGENTS.md
