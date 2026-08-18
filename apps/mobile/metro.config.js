@@ -1,6 +1,6 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
-const path = require('path');
+const path = require('node:path');
 
 // Pin projectRoot explicitly. In this pnpm workspace Expo's monorepo detection
 // otherwise resolves projectRoot to the repo root, so `./index` fails to resolve

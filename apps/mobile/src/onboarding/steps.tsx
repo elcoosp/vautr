@@ -1,10 +1,10 @@
-import { type OnboardingStep, useOnboarding } from '@onboardjs/react';
-import { useNavigate } from '@tanstack/react-router';
+import { type OnboardingStep, type StepComponent, useOnboarding } from '@onboardjs/react';
 import { useState } from 'react';
 import { Clipboard, Text, TextInput, View } from 'react-native';
 import { Button } from '../../components/ui/button';
 import { services } from '../../lib/client';
 import { shareKit } from '../lib/kit';
+import { router } from '../router';
 
 /**
  * First-run guided onboarding steps (mobile). Each step renders its own content
@@ -26,7 +26,6 @@ function WelcomeStep() {
 
 function CreateVaultStep() {
   const { next, updateContext, state } = useOnboarding();
-  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +36,7 @@ function CreateVaultStep() {
     try {
       const project = await services.api.createProject({ name: name.trim() || 'My Vault' });
       updateContext({ flowData: { vaultName: project.name } });
-      navigate({ to: '/projects/$projectId', params: { projectId: project.uuid } });
+      void router.navigate({ to: '/projects/$projectId', params: { projectId: project.uuid } });
       next();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create vault.');
@@ -70,7 +69,6 @@ function CreateVaultStep() {
 }
 
 function EmergencyKitStep() {
-  const navigate = useNavigate();
   const { next } = useOnboarding();
   const [revealed, setRevealed] = useState(false);
   const mnemonic = services.auth.pendingRecoveryMnemonic;
@@ -120,7 +118,7 @@ function EmergencyKitStep() {
           from Settings → Emergency Kit.
         </Text>
       )}
-      <Button variant="outline" onPress={() => navigate({ to: '/mfa' })}>
+      <Button variant="outline" onPress={() => void router.navigate({ to: '/mfa' })}>
         <Text className="text-foreground">Open security settings</Text>
       </Button>
       <Button
@@ -136,7 +134,6 @@ function EmergencyKitStep() {
 }
 
 function AddSecretStep() {
-  const navigate = useNavigate();
   return (
     <View className="gap-3">
       <Text className="text-xl font-semibold text-foreground">Add your first secret</Text>
@@ -144,7 +141,7 @@ function AddSecretStep() {
         Open your vault and add a login, note, or card. Everything is encrypted before it leaves
         your device.
       </Text>
-      <Button onPress={() => navigate({ to: '/secrets' })}>
+      <Button onPress={() => void router.navigate({ to: '/secrets' })}>
         <Text className="text-primary-foreground">Go to my vault</Text>
       </Button>
     </View>
@@ -152,6 +149,7 @@ function AddSecretStep() {
 }
 
 function DoneStep() {
+  const { next } = useOnboarding();
   return (
     <View className="gap-2">
       <Text className="text-xl font-semibold text-foreground">You&apos;re all set</Text>
@@ -159,16 +157,26 @@ function DoneStep() {
         That&apos;s the core loop: vault → Emergency Kit → secrets. You can replay this tour anytime
         from Settings.
       </Text>
+      <Button onPress={() => void next()}>
+        <Text className="text-primary-foreground">Finish</Text>
+      </Button>
     </View>
   );
 }
 
 export const onboardingSteps: OnboardingStep[] = [
-  { id: 'welcome', type: 'CUSTOM_COMPONENT', component: WelcomeStep, nextStep: 'create-vault' },
+  {
+    id: 'welcome',
+    type: 'CUSTOM_COMPONENT',
+    component: WelcomeStep,
+    payload: { componentKey: 'welcome' },
+    nextStep: 'create-vault',
+  },
   {
     id: 'create-vault',
     type: 'CUSTOM_COMPONENT',
     component: CreateVaultStep,
+    payload: { componentKey: 'create-vault' },
     previousStep: 'welcome',
     nextStep: 'emergency-kit',
   },
@@ -176,6 +184,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'emergency-kit',
     type: 'CUSTOM_COMPONENT',
     component: EmergencyKitStep,
+    payload: { componentKey: 'emergency-kit' },
     previousStep: 'create-vault',
     nextStep: 'add-secret',
     isSkippable: true,
@@ -185,6 +194,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'add-secret',
     type: 'CUSTOM_COMPONENT',
     component: AddSecretStep,
+    payload: { componentKey: 'add-secret' },
     previousStep: 'emergency-kit',
     nextStep: 'done',
     isSkippable: true,
@@ -194,7 +204,22 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'done',
     type: 'CUSTOM_COMPONENT',
     component: DoneStep,
+    payload: { componentKey: 'done' },
     previousStep: 'add-secret',
     nextStep: null,
   },
 ];
+
+/**
+ * Maps each `componentKey` to its React component. The onboarding engine does
+ * not carry the component function through its (serializable) state, so steps
+ * are resolved by key via this registry passed to `<OnboardingProvider
+ * componentRegistry={...} />`.
+ */
+export const onboardingComponentRegistry: Record<string, StepComponent> = {
+  welcome: WelcomeStep,
+  'create-vault': CreateVaultStep,
+  'emergency-kit': EmergencyKitStep,
+  'add-secret': AddSecretStep,
+  done: DoneStep,
+};

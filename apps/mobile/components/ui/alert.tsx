@@ -32,8 +32,16 @@ Alert.displayName = 'Alert';
 const AlertTitle = React.forwardRef<
   React.ComponentRef<typeof View>,
   React.ComponentPropsWithoutRef<typeof View>
->(({ className, ...props }, ref) => (
-  <View ref={ref} className={cn('text-sm font-semibold text-foreground', className)} {...props} />
+>(({ className, children, ...props }, ref) => (
+  // RN requires text in a <Text>; wrap bare strings while leaving
+  // already-<Text>-wrapped element children untouched.
+  <View ref={ref} className={cn('text-sm font-semibold text-foreground', className)} {...props}>
+    {typeof children === 'string' ? (
+      <Text className="text-sm font-semibold text-foreground">{children}</Text>
+    ) : (
+      children
+    )}
+  </View>
 ));
 AlertTitle.displayName = 'AlertTitle';
 

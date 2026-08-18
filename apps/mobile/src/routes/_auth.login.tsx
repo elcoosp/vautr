@@ -109,6 +109,7 @@ function LoginScreen() {
                   <Label htmlFor="username">Username</Label>
                   <Input
                     id="username"
+                    testID="username"
                     value={username}
                     onChangeText={setUsernameInput}
                     autoCapitalize="none"
@@ -120,10 +121,11 @@ function LoginScreen() {
                   <Label htmlFor="password">Master password</Label>
                   <Input
                     id="password"
+                    testID="password"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
-                    placeholder="••••••••"
+                    placeholder="Enter master password"
                   />
                 </View>
 
@@ -132,10 +134,11 @@ function LoginScreen() {
                     <Label htmlFor="confirmPassword">Confirm master password</Label>
                     <Input
                       id="confirmPassword"
+                      testID="confirmPassword"
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       secureTextEntry
-                      placeholder="••••••••"
+                      placeholder="Confirm master password"
                     />
                   </View>
                 ) : null}

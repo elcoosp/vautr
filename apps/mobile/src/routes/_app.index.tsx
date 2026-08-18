@@ -78,9 +78,13 @@ function ProjectsListScreen() {
               : 'Loading…'}
           </Text>
         </View>
-        <Button size="sm" onPress={() => router.navigate({ to: '/projects/new' })}>
+        <Button
+          size="sm"
+          className="gap-1.5"
+          onPress={() => router.navigate({ to: '/projects/new' })}
+        >
           <Plus size={16} className="text-primary-foreground" />
-          <ButtonText className="ml-1">New</ButtonText>
+          <ButtonText>New</ButtonText>
         </Button>
       </View>
 

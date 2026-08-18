@@ -1,0 +1,88 @@
+# Vautr mobile e2e — state-agnostic.
+# Register/onboarding steps are optional (skipped if already logged in);
+# the drawer + Projects assertions at the end are firm.
+appId: com.vautr.mobile
+---
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 25000
+
+# Register only if on the login screen (optional otherwise).
+- tapOn:
+    text: "Register"
+    optional: true
+- tapOn:
+    id: "username"
+    optional: true
+- inputText:
+    text: ${USERNAME}
+    optional: true
+- tapOn:
+    id: "password"
+    optional: true
+- inputText:
+    text: ${PASSWORD}
+    optional: true
+- tapOn:
+    id: "confirmPassword"
+    optional: true
+- inputText:
+    text: ${PASSWORD}
+    optional: true
+- tapOn:
+    text: "Create account"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 20000
+
+# Onboarding (optional — only on a first run).
+- tapOn:
+    text: "Next"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 15000
+- tapOn:
+    text: "Create vault & continue"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 15000
+- tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn:
+    text: "Skip"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn:
+    text: "Finish"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 15000
+
+# Projects screen should now be visible.
+- assertVisible: "Projects"
+- assertVisible: "New"
+
+# Drawer nav via the hamburger (top-left).
+- tapOn: "Open menu"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertVisible: "Dashboard"
+- tapOn: "Dashboard"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertVisible: "Dashboard"
+- takeScreenshot: drawer_dashboard
+
+- tapOn: "Open menu"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertVisible: "Import / export"
+- tapOn: "Import / export"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertVisible: "Import / export"
+- takeScreenshot: drawer_import_export

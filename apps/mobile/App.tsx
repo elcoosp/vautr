@@ -1,6 +1,7 @@
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import './global.css';
 
@@ -68,11 +69,11 @@ export function App() {
   }
 
   return (
-    <>
+    <SafeAreaProvider>
       <OnboardingFlow>
         <RouterProvider router={router} />
       </OnboardingFlow>
       <TourOverlay />
-    </>
+    </SafeAreaProvider>
   );
 }

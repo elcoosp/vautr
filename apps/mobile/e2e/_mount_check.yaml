@@ -1,0 +1,7 @@
+appId: com.vautr.mobile
+---
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 30000
+- assertVisible: "[_APP_MOUNTED]"
+- takeScreenshot: mounted_check
