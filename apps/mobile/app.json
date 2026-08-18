@@ -7,6 +7,9 @@
     "userInterfaceStyle": "automatic",
     "scheme": "vautr",
     "newArchEnabled": true,
+    "packagerOpts": {
+      "port": 8082
+    },
     "ios": {
       "bundleIdentifier": "com.vautr.mobile",
       "supportsTablet": true,
