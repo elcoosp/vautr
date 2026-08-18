@@ -53,10 +53,20 @@ function SharesScreen() {
   const [groupItemUuid, setGroupItemUuid] = useState('');
   const [groupItems, setGroupItems] = useState<GroupItem[] | null>(null);
 
-  const native = getMobileClient()?.getNativeBridge() ?? null;
-  const sharing: MobileSharingClient | null = native
-    ? new MobileSharingClient(native as VautrNativeBridge, services.api)
-    : null;
+  let native: VautrNativeBridge | null = null;
+  let sharing: MobileSharingClient | null = null;
+  try {
+    const client = getMobileClient();
+    native = (client?.getNativeBridge() as VautrNativeBridge | undefined) ?? null;
+    if (native && services.api) {
+      sharing = new MobileSharingClient(native, services.api);
+    }
+  } catch {
+    // FFI sharing client unavailable in this build/context — fall through to
+    // the gated message below instead of crashing the renderer.
+    native = null;
+    sharing = null;
+  }
 
   const loadInbox = useCallback(async () => {
     if (!sharing) return;

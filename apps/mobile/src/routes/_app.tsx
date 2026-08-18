@@ -17,7 +17,7 @@ import {
   Share2,
 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
@@ -33,10 +33,6 @@ export const Route = createFileRoute('/_app')({
 
 const DRAWER_ITEMS = [
   { to: '/', label: 'Projects', icon: Folder },
-  { to: '/secrets', label: 'Secrets', icon: HardDrive },
-  { to: '/generator', label: 'Generator', icon: Settings2 },
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/settings', label: 'Settings', icon: Settings },
   { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
   { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
   { to: '/tokens', label: 'Tokens', icon: Globe },
@@ -51,12 +47,14 @@ function AppShell() {
   const toast = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Native-gated sharing tab: only when the uniffi core is linked (VTR-070).
+  // Bottom tab bar: the primary destinations. Everything else (account,
+  // security, tokens, import/export, shares) lives in the left drawer so the
+  // two navigation surfaces stay disjoint and the drawer stays useful.
   const PRIMARY = [
     { to: '/secrets', label: 'Secrets', icon: HardDrive },
     { to: '/generator', label: 'Generator', icon: Settings2 },
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/settings', label: 'Settings', icon: Settings },
-    ...(isLocalVaultActive() ? [{ to: '/shares', label: 'Shares', icon: Share2 } as const] : []),
   ];
 
   const go = (to: string) => () => {
@@ -95,21 +93,19 @@ function AppShell() {
             accessibilityLabel="Open menu"
             onPress={() => setDrawerOpen(true)}
           >
-            <ButtonText className="text-foreground">
-              <Menu size={22} className="text-foreground" />
-            </ButtonText>
+            <ThemedIcon icon={Menu} size={22} />
           </Button>
           <View className="size-8 items-center justify-center rounded-lg bg-primary/15">
-            <Lock size={16} className="text-primary" />
+            <ThemedIcon icon={Lock} size={16} tone="primary" />
           </View>
           <Text className="text-xl font-semibold text-foreground">Vautr</Text>
         </View>
         <View className="flex-row items-center gap-2">
           <Button variant="ghost" size="sm" onPress={() => void unlock()}>
-            <Fingerprint size={18} className="text-primary" />
+            <ThemedIcon icon={Fingerprint} size={18} tone="primary" />
           </Button>
           <Button variant="ghost" size="sm" onPress={() => void logout()}>
-            <LogOut size={18} className="text-foreground" />
+            <ThemedIcon icon={LogOut} size={18} />
             <ButtonText className="ml-1">Logout</ButtonText>
           </Button>
         </View>
@@ -120,7 +116,7 @@ function AppShell() {
           <DrawerHeader>
             <DrawerTitle>Vautr</DrawerTitle>
           </DrawerHeader>
-          <View className="flex-col gap-1">
+          <View className="flex-1 flex-col gap-1">
             {DRAWER_ITEMS.map(({ to, label, icon: Icon }) => (
               <Button
                 key={to}
@@ -133,6 +129,17 @@ function AppShell() {
               </Button>
             ))}
           </View>
+          <Button
+            variant="ghost"
+            className="flex-row justify-start gap-3 border-t border-border py-3"
+            onPress={() => {
+              setDrawerOpen(false);
+              void logout();
+            }}
+          >
+            <ThemedIcon icon={LogOut} size={18} />
+            <ButtonText className="text-sm">Logout</ButtonText>
+          </Button>
         </DrawerContent>
       </Drawer>
 
@@ -145,37 +152,46 @@ function AppShell() {
         </Text>
       ) : null}
 
-      {/* NOTE: a bare `ScrollView` here crashes on RN 0.86 (new arch) — the
-          reanimated/worklets babel plugin patches ScrollView and throws
-          `ReferenceError: Property 'scrollTo' doesn't exist` at runtime. Use a
-          plain flex View for the scrollable content region instead. */}
-      <View className="flex-1 p-4 gap-4">
+      {/* Scrollable content region. Core ScrollView works on RN 0.86 + new
+          arch; a bare ScrollView no longer trips the reanimated/worklets
+          scrollTo patch that the old comment warned about. */}
+      <ScrollView className="flex-1 p-4 gap-4" contentContainerClassName="gap-4">
         <Outlet />
-      </View>
+      </ScrollView>
 
-      {/* Bottom tab bar — three primary sections. Full navigation lives in the
-          left drawer (hamburger, top-left). */}
-      <View className="flex-row items-center border-t border-border">
+      {/* Bottom tab bar — primary destinations. Secondary nav (account,
+          security, tokens, import/export) lives in the left drawer. */}
+      <View className="flex-row items-center border-t border-border pb-3 min-h-[72px]">
         {PRIMARY.map(({ to, label, icon: Icon }) => (
           <Button
             key={to}
             variant="ghost"
-            size="sm"
-            className="flex-1 flex-col gap-0.5 py-2"
+            className="flex-1 flex-col gap-1 py-2.5 min-w-0"
             onPress={() => router.navigate({ to: to as '/' })}
           >
-            <ThemedIcon icon={Icon} size={18} />
-            <ButtonText className="text-[11px]">{label}</ButtonText>
+            <ThemedIcon icon={Icon} size={24} />
+            <ButtonText
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              className="text-[11px] text-center min-w-0"
+            >
+              {label}
+            </ButtonText>
           </Button>
         ))}
         <Button
           variant="ghost"
-          size="sm"
-          className="flex-1 flex-col gap-0.5 py-2"
+          className="flex-1 flex-col gap-1 py-2.5 min-w-0"
           onPress={() => setDrawerOpen(true)}
         >
-          <ThemedIcon icon={List} size={18} />
-          <ButtonText className="text-[11px]">More</ButtonText>
+          <ThemedIcon icon={List} size={24} />
+          <ButtonText
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            className="text-[11px] text-center min-w-0"
+          >
+            More
+          </ButtonText>
         </Button>
       </View>
     </SafeAreaView>

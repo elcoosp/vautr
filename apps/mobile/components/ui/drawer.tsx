@@ -1,119 +1,88 @@
-import * as DialogPrimitive from '@rn-primitives/dialog';
 import { X } from 'lucide-react-native';
-import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
-import { forwardRef } from 'react';
-import { View } from 'react-native';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { cn } from '../../lib/utils';
 import { Button, ButtonText } from './button';
 import { ThemedIcon } from './icon';
 
 /**
- * Left-anchored navigation drawer, built on the same `@rn-primitives/dialog`
- * primitive as `Sheet`. Reusing the existing Dialog avoids pulling a second
- * navigation system alongside TanStack Router. Slide-in is from the left and the
- * content hugs the left edge.
+ * Left-anchored navigation drawer implemented WITHOUT @rn-primitives' portal.
+ *
+ * The portal-based Dialog approach (used previously) renders its children into
+ * a <PortalHost /> via a zustand store. On the iOS simulator that relocation
+ * produced no visible output, so the drawer never appeared. A plain inline
+ * overlay + Animated.View slide-in is self-contained, reliably renders, and
+ * gives the native slide animation the design calls for.
  */
 
-const Drawer = DialogPrimitive.Root;
-const DrawerTrigger = DialogPrimitive.Trigger;
-const DrawerClose = DialogPrimitive.Close;
-const DrawerPortal = DialogPrimitive.Portal;
+const DRAWER_WIDTH = 288; // w-72
 
-const DrawerOverlay = forwardRef<
-  ComponentRef<typeof DialogPrimitive.Overlay>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Overlay
-    className={cn('bg-black/50 absolute inset-0 z-50 flex items-center justify-start', className)}
-    {...props}
-    ref={ref}
-  />
-));
-DrawerOverlay.displayName = DialogPrimitive.Overlay.displayName;
+function Drawer({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  const translateX = useRef(new Animated.Value(open ? 0 : -DRAWER_WIDTH)).current;
+  const [mounted, setMounted] = useState(open);
 
-const DrawerContent = forwardRef<
-  ComponentRef<typeof DialogPrimitive.Content>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed native:absolute left-0 top-0 z-50 h-full w-72 max-w-[80%] border-r border-border bg-card web:animate-in web:slide-in-from-left',
-        className,
-      )}
-      {...props}
-    >
-      <View className="p-6">{children}</View>
-      <DialogPrimitive.Close asChild>
+  useEffect(() => {
+    if (open) setMounted(true);
+    const anim = Animated.timing(translateX, {
+      toValue: open ? 0 : -DRAWER_WIDTH,
+      duration: 240,
+      useNativeDriver: true,
+    });
+    anim.start(({ finished }) => {
+      if (finished && !open) setMounted(false);
+    });
+    return () => anim.stop();
+  }, [open, translateX]);
+
+  if (!mounted) return null;
+
+  return (
+    <View className="absolute inset-0 z-50" pointerEvents={open ? 'auto' : 'none'}>
+      <Pressable
+        className="absolute inset-0 bg-black/50"
+        onPress={() => onOpenChange(false)}
+        accessibilityLabel="Close menu"
+      />
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        className="absolute left-0 top-0 h-full w-72 max-w-[80%] border-r border-border bg-card"
+      >
+        {children}
         <Button
           variant="ghost"
           size="icon"
           className="absolute right-3 top-3"
           accessibilityLabel="Close"
+          onPress={() => onOpenChange(false)}
         >
           <ButtonText className="text-muted-foreground">
             <ThemedIcon icon={X} size={20} tone="muted" />
           </ButtonText>
         </Button>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DrawerPortal>
-));
-DrawerContent.displayName = DialogPrimitive.Content.displayName;
+      </Animated.View>
+    </View>
+  );
+}
 
-const DrawerHeader = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(
-  ({ className, ...props }, ref) => (
-    <View ref={ref} className={cn('flex flex-col space-y-1.5', className)} {...props} />
-  ),
+const DrawerContent = ({ className, ...props }: ComponentPropsWithoutRef<typeof View>) => (
+  <View className={cn('p-6', className)} {...props} />
 );
-DrawerHeader.displayName = 'DrawerHeader';
 
-const DrawerFooter = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(
-  ({ className, ...props }, ref) => (
-    <View
-      ref={ref}
-      className={cn('flex flex-row justify-end space-x-2 pt-4', className)}
-      {...props}
-    />
-  ),
+const DrawerHeader = ({ className, ...props }: ComponentPropsWithoutRef<typeof View>) => (
+  <View className={cn('flex flex-col space-y-1.5', className)} {...props} />
 );
-DrawerFooter.displayName = 'DrawerFooter';
 
-const DrawerTitle = forwardRef<
-  ComponentRef<typeof DialogPrimitive.Title>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
-    ref={ref}
-    className={cn('text-lg font-semibold text-foreground', className)}
-    {...props}
-  />
-));
-DrawerTitle.displayName = DialogPrimitive.Title.displayName;
+const DrawerTitle = ({ className, ...props }: ComponentPropsWithoutRef<typeof Text>) => (
+  <Text className={cn('text-xl font-semibold text-foreground', className)} {...props} />
+);
 
-const DrawerDescription = forwardRef<
-  ComponentRef<typeof DialogPrimitive.Description>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    className={cn('text-sm text-muted-foreground', className)}
-    {...props}
-  />
-));
-DrawerDescription.displayName = DialogPrimitive.Description.displayName;
-
-export {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerPortal,
-  DrawerTitle,
-  DrawerTrigger,
-};
+export { Drawer, DrawerContent, DrawerHeader, DrawerTitle };
