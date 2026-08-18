@@ -32,7 +32,7 @@ const SheetContent = forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-0 right-0 top-0 z-50 border-b border-border bg-card web:animate-in web:slide-in-from-top',
+        'fixed native:absolute left-0 right-0 top-0 z-50 border-b border-border bg-card web:animate-in web:slide-in-from-top',
         className,
       )}
       {...props}

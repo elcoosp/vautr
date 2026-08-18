@@ -1,3 +1,4 @@
+import { PortalHost } from '@rn-primitives/portal';
 import { RouterProvider } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
@@ -74,6 +75,10 @@ export function App() {
         <RouterProvider router={router} />
       </OnboardingFlow>
       <TourOverlay />
+      {/* RN-primitives portal host: required for Dialog/Sheet/Select portals
+          (drawer, bottom sheet, dropdowns) to have a render target. Without it
+          they mount but render into nothing, so the drawer never appears. */}
+      <PortalHost />
     </SafeAreaProvider>
   );
 }

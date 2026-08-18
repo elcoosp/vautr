@@ -1,7 +1,7 @@
 import * as Slot from '@rn-primitives/slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
-import { forwardRef } from 'react';
+import { createContext, forwardRef, useContext } from 'react';
 import { Pressable, Text } from 'react-native';
 
 import { cn } from '../../lib/utils';
@@ -59,21 +59,33 @@ const buttonTextVariants = cva(
   },
 );
 
+/**
+ * Lets a `ButtonText` inherit the variant of the `Button` that wraps it, so
+ * callers don't have to repeat it. Without this, a bare <ButtonText> defaults
+ * to the `default` variant (text-primary-foreground = near-black), which is
+ * only correct on teal `default` buttons — on `ghost`/`outline` buttons it
+ * renders dark text on a dark background (black-on-black, unreadable).
+ */
+const ButtonVariantContext =
+  createContext<VariantProps<typeof buttonVariants>['variant']>('default');
+
 type ButtonProps = ComponentPropsWithoutRef<typeof Pressable> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
   };
 
 const Button = forwardRef<ComponentRef<typeof Pressable>, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant = 'default', size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot.Pressable : Pressable;
     return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        role="button"
-        {...props}
-      />
+      <ButtonVariantContext.Provider value={variant}>
+        <Comp
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          role="button"
+          {...props}
+        />
+      </ButtonVariantContext.Provider>
     );
   },
 );
@@ -83,8 +95,14 @@ type ButtonTextProps = ComponentPropsWithoutRef<typeof Text> &
 
 const ButtonText = forwardRef<ComponentRef<typeof Text>, ButtonTextProps>(
   ({ className, variant, size, ...props }, ref) => {
+    const inherited = useContext(ButtonVariantContext);
+    const resolved = variant ?? inherited ?? 'default';
     return (
-      <Text className={cn(buttonTextVariants({ variant, size, className }))} ref={ref} {...props} />
+      <Text
+        className={cn(buttonTextVariants({ variant: resolved, size, className }))}
+        ref={ref}
+        {...props}
+      />
     );
   },
 );

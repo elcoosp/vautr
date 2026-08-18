@@ -39,7 +39,7 @@ const DrawerContent = forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-0 top-0 z-50 h-full w-72 max-w-[80%] border-r border-border bg-card web:animate-in web:slide-in-from-left',
+        'fixed native:absolute left-0 top-0 z-50 h-full w-72 max-w-[80%] border-r border-border bg-card web:animate-in web:slide-in-from-left',
         className,
       )}
       {...props}
