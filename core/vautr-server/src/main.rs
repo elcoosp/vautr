@@ -44,19 +44,19 @@ async fn main() {
         .layer(middleware::rate_limiter())
         .layer(TraceLayer::new_for_http());
 
-    // Bind dual-stack on [::]:8080 so the server answers both IPv6 (e.g.
-    // `localhost` resolving to ::1) and IPv4 (127.0.0.1) clients. Binding
-    // IPv4-only (0.0.0.0) breaks `localhost` on systems where it resolves to
-    // ::1 first: reqwest does not Happy-Eyeball-fallback the way curl does,
-    // so the desktop fails with "error sending request for url" even though
-    // the server is up (VTR-097). Fall back to 0.0.0.0 if [::] is unavailable.
-    let listener = match tokio::net::TcpListener::bind("[::]:8080").await {
+    // Bind primarily on 0.0.0.0:8080 (IPv4) so IPv4-first clients (reqwest,
+    // the desktop client, the mobile simulator reaching the host via its LAN
+    // IP) can connect. On macOS a [::] listener is IPv6-only and does NOT
+    // accept IPv4-mapped ::ffff addresses, so reqwest fails with "error
+    // sending request for url" even though the server is up (VTR-097). Fall
+    // back to [::]:8080 only if 0.0.0.0 is unavailable.
+    let listener = match tokio::net::TcpListener::bind("0.0.0.0:8080").await {
         Ok(l) => l,
-        Err(_) => tokio::net::TcpListener::bind("0.0.0.0:8080")
+        Err(_) => tokio::net::TcpListener::bind("[::]:0")
             .await
-            .expect("failed to bind [::]:8080 or 0.0.0.0:8080"),
+            .expect("failed to bind 0.0.0.0:8080 or [::]:8080"),
     };
-    tracing::info!("vautr-server listening on :8080 (dual-stack)");
+    tracing::info!("vautr-server listening on :8080 (IPv4-first, VTR-097)");
 
     let server = axum::serve(
         listener,
