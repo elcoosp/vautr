@@ -7,6 +7,7 @@ import { Avatar } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Separator } from '../../components/ui/separator';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Text } from '../../components/ui/text';
@@ -103,7 +104,7 @@ function DashboardScreen() {
           >
             <Card className="items-center gap-2 p-4">
               <Avatar size={36} className="bg-primary/15">
-                <stat.icon size={18} className="text-primary" />
+                <ThemedIcon icon={stat.icon} size={18} tone="primary" />
               </Avatar>
               <Text variant="h3">{stat.value}</Text>
               <Text variant="tiny">{stat.label}</Text>

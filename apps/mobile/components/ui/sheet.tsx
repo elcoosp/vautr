@@ -5,6 +5,7 @@ import { forwardRef } from 'react';
 import { View } from 'react-native';
 import { cn } from '../../lib/utils';
 import { Button, ButtonText } from './button';
+import { ThemedIcon } from './icon';
 
 const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
@@ -47,7 +48,7 @@ const SheetContent = forwardRef<
           accessibilityLabel="Close"
         >
           <ButtonText className="h-4 w-4 text-muted-foreground">
-            <X size={20} className="text-foreground" />
+            <ThemedIcon icon={X} size={20} />
           </ButtonText>
         </Button>
       </DialogPrimitive.Close>

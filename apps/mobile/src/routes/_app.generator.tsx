@@ -9,11 +9,11 @@ import {
 import { RefreshCw } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Switch, View } from 'react-native';
-
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Separator } from '../../components/ui/separator';
@@ -84,7 +84,7 @@ function GeneratorScreen() {
             {password}
           </Text>
           <Button size="sm" onPress={regenerate}>
-            <RefreshCw size={16} className="text-primary-foreground" />
+            <ThemedIcon icon={RefreshCw} size={16} tone="primaryForeground" />
             <ButtonText className="ml-1">Generate</ButtonText>
           </Button>
         </View>

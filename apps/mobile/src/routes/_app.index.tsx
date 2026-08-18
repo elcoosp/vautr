@@ -7,6 +7,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Separator } from '../../components/ui/separator';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Text } from '../../components/ui/text';
@@ -42,7 +43,7 @@ function ProjectCard({ project, onPress }: { project: Project; onPress: () => vo
             {project.permission ? ` · ${project.permission}` : ''}
           </Text>
         </View>
-        <Folder size={18} className="text-muted-foreground" />
+        <ThemedIcon icon={Folder} size={18} tone="muted" />
       </Card>
     </Pressable>
   );
@@ -83,7 +84,7 @@ function ProjectsListScreen() {
           className="gap-1.5"
           onPress={() => router.navigate({ to: '/projects/new' })}
         >
-          <Plus size={16} className="text-primary-foreground" />
+          <ThemedIcon icon={Plus} size={16} tone="primaryForeground" />
           <ButtonText>New</ButtonText>
         </Button>
       </View>

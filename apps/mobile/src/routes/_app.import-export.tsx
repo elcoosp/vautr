@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { BackupStatus } from '../../lib/api';
@@ -108,7 +109,7 @@ function BackupScreen() {
 
       <Card className="gap-3 p-4">
         <View className="flex-row items-center gap-2">
-          <ArrowDownToLine size={18} className="text-primary" />
+          <ThemedIcon icon={ArrowDownToLine} size={18} tone="primary" />
           <Text variant="label">Export encrypted backup</Text>
         </View>
         <Text variant="muted">
@@ -123,7 +124,7 @@ function BackupScreen() {
 
       <Card className="gap-3 p-4">
         <View className="flex-row items-center gap-2">
-          <ArrowUpFromLine size={18} className="text-muted-foreground" />
+          <ThemedIcon icon={ArrowUpFromLine} size={18} tone="muted" />
           <Text variant="label">Import / restore</Text>
         </View>
         <View className="flex-row items-start gap-2">

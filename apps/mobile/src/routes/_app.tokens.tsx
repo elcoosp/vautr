@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { AccessScope, AccessToken } from '../../lib/api';
@@ -118,7 +119,7 @@ function TokensScreen() {
           <Card key={token.uuid} className="gap-2 p-4">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <Ticket size={18} className="text-muted-foreground" />
+                <ThemedIcon icon={Ticket} size={18} tone="muted" />
                 <Text variant="p" className="font-medium">
                   {token.name}
                 </Text>

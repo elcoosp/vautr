@@ -77,8 +77,16 @@ export function App() {
       <TourOverlay />
       {/* RN-primitives portal host: required for Dialog/Sheet/Select portals
           (drawer, bottom sheet, dropdowns) to have a render target. Without it
-          they mount but render into nothing, so the drawer never appears. */}
-      <PortalHost />
+          they mount but render into nothing, so the drawer never appears.
+          We also re-declare the design-token CSS variables here: @rn-primitives
+          relocates portal children via a zustand store, and on native the
+          `:root` variables from global.css don't reliably reach that relocated
+          subtree — so text colors (text-foreground, etc.) fall back to RN's
+          default black, producing black-on-black drawer/sheet content. Setting
+          the vars explicitly on this wrapper makes them inherit into portals. */}
+      <View className="[--background:226_18%_11%] [--foreground:220_14%_92%] [--card:226_16%_14%] [--card-foreground:220_14%_92%] [--popover:226_16%_14%] [--popover-foreground:220_14%_92%] [--primary:166_47%_48%] [--primary-foreground:226_18%_11%] [--secondary:226_14%_18%] [--secondary-foreground:220_14%_92%] [--muted:226_14%_18%] [--muted-foreground:224_10%_62%] [--accent:226_14%_18%] [--accent-foreground:220_14%_92%] [--destructive:351_60%_60%] [--destructive-foreground:226_18%_11%] [--border:226_14%_22%] [--input:226_14%_22%] [--ring:166_47%_48%]">
+        <PortalHost />
+      </View>
     </SafeAreaProvider>
   );
 }

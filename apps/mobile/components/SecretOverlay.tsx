@@ -2,8 +2,8 @@ import { getMobileClient } from '@vautr/client-sdk/mobile';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-
 import { SecretHandleScope } from '../src/lib/secretLifecycle';
+import { ThemedIcon } from './ui/icon';
 
 interface SecretOverlayProps {
   /** The vault item uuid whose secret should be revealed in the native overlay. */
@@ -60,9 +60,9 @@ export function SecretOverlay({ uuid, label }: SecretOverlayProps) {
       <Text className="flex-1 pr-2 text-base font-medium text-foreground">{label}</Text>
       <Pressable onPress={() => void toggle()} accessibilityRole="button">
         {revealed ? (
-          <EyeOff size={18} className="text-muted-foreground" />
+          <ThemedIcon icon={EyeOff} size={18} tone="muted" />
         ) : (
-          <Eye size={18} className="text-muted-foreground" />
+          <ThemedIcon icon={Eye} size={18} tone="muted" />
         )}
       </Pressable>
     </View>

@@ -8,6 +8,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Text } from '../../components/ui/text';
@@ -131,7 +132,7 @@ function MachineAccountsScreen() {
             <View className="flex-row items-center gap-2">
               <Avatar>
                 <AvatarFallbackText>
-                  <Bot size={18} className="text-muted-foreground" />
+                  <ThemedIcon icon={Bot} size={18} tone="muted" />
                 </AvatarFallbackText>
               </Avatar>
               <Text variant="p" className="font-medium">

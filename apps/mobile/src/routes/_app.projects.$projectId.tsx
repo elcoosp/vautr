@@ -8,6 +8,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { ThemedIcon } from '../../components/ui/icon';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
   Table,
@@ -88,7 +89,7 @@ function ProjectDetailScreen() {
         <View className="flex-1 flex-row items-center gap-3">
           <Avatar size={44} className="bg-primary/15">
             <AvatarFallbackText>
-              <Folder size={20} className="text-primary" />
+              <ThemedIcon icon={Folder} size={20} tone="primary" />
             </AvatarFallbackText>
           </Avatar>
           <View className="flex-1 gap-1">
@@ -126,7 +127,7 @@ function ProjectDetailScreen() {
                   router.navigate({ to: '/projects/$projectId/secrets/new', params: { projectId } })
                 }
               >
-                <Plus size={16} className="text-primary-foreground" />
+                <ThemedIcon icon={Plus} size={16} tone="primaryForeground" />
                 <ButtonText className="ml-1">New</ButtonText>
               </Button>
             </View>

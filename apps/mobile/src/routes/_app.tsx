@@ -21,6 +21,7 @@ import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
+import { ThemedIcon } from '../../components/ui/icon';
 import { useToast } from '../../components/ui/toast';
 import { requireBiometric } from '../../lib/biometrics';
 import { isLocalVaultActive, services } from '../../lib/client';
@@ -127,7 +128,7 @@ function AppShell() {
                 className="flex-row justify-start gap-3 py-2"
                 onPress={go(to)}
               >
-                <Icon size={18} className="text-foreground" />
+                <ThemedIcon icon={Icon} size={18} />
                 <ButtonText className="text-sm">{label}</ButtonText>
               </Button>
             ))}
@@ -163,7 +164,7 @@ function AppShell() {
             className="flex-1 flex-col gap-0.5 py-2"
             onPress={() => router.navigate({ to: to as '/' })}
           >
-            <Icon size={18} className="text-foreground" />
+            <ThemedIcon icon={Icon} size={18} />
             <ButtonText className="text-[11px]">{label}</ButtonText>
           </Button>
         ))}
@@ -173,7 +174,7 @@ function AppShell() {
           className="flex-1 flex-col gap-0.5 py-2"
           onPress={() => setDrawerOpen(true)}
         >
-          <List size={18} className="text-foreground" />
+          <ThemedIcon icon={List} size={18} />
           <ButtonText className="text-[11px]">More</ButtonText>
         </Button>
       </View>

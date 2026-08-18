@@ -12,8 +12,8 @@ import {
   useState,
 } from 'react';
 import { Pressable, View } from 'react-native';
-
 import { cn } from '../../lib/utils';
+import { ThemedIcon } from './icon';
 
 type ToastVariant = 'default' | 'destructive';
 
@@ -127,7 +127,7 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number)
       </View>
       <ToastPrimitive.Close asChild onPress={() => onDismiss(toast.id)}>
         <Pressable accessibilityLabel="Dismiss toast">
-          <X size={16} className="text-muted-foreground" />
+          <ThemedIcon icon={X} size={16} tone="muted" />
         </Pressable>
       </ToastPrimitive.Close>
     </ToastPrimitive.Root>
