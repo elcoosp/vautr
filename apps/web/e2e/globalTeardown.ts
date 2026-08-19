@@ -1,28 +1,12 @@
-import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 /**
- * Stops the Vautr server spawned by `globalSetup` (see e2e/globalSetup.ts).
- * Kills the recorded PID and any leftover binary as a fallback.
+ * Teardown for the WebAuthn (FIDO2) e2e (VTR-052).
+ *
+ * The Vautr server is managed by Playwright as a `webServer` entry, so its
+ * lifecycle (start / keep-alive / kill) is handled automatically. This is kept
+ * as a no-op so the config can still reference a globalTeardown without error.
  */
 export default function globalTeardown(): void {
-  try {
-    const state = JSON.parse(
-      readFileSync(join(tmpdir(), 'vautr-webauthn-e2e-state.json'), 'utf8'),
-    ) as { pid: number };
-    try {
-      process.kill(state.pid, 'SIGTERM');
-    } catch {
-      // already gone
-    }
-  } catch {
-    // no state file
-  }
-  try {
-    execSync('pkill -f "target/debug/vautr-server"', { stdio: 'ignore' });
-  } catch {
-    // nothing left to kill
-  }
+  // Intentionally empty: the backend server is torn down by Playwright's
+  // webServer management. No leftover process should remain (the webServer
+  // command used `exec`, so the server IS the managed child).
 }
