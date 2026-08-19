@@ -74,7 +74,7 @@ function Drawer({
 }
 
 const DrawerContent = ({ className, ...props }: ComponentPropsWithoutRef<typeof View>) => (
-  <View className={cn('p-6', className)} {...props} />
+  <View className={cn('flex h-full flex-col p-6', className)} {...props} />
 );
 
 const DrawerHeader = ({ className, ...props }: ComponentPropsWithoutRef<typeof View>) => (

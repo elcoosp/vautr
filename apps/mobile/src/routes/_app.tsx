@@ -116,7 +116,7 @@ function AppShell() {
           <DrawerHeader>
             <DrawerTitle>Vautr</DrawerTitle>
           </DrawerHeader>
-          <View className="flex-1 flex-col gap-1">
+          <View className="min-h-0 flex-1 flex-col gap-1">
             {DRAWER_ITEMS.map(({ to, label, icon: Icon }) => (
               <Button
                 key={to}
@@ -131,7 +131,7 @@ function AppShell() {
           </View>
           <Button
             variant="ghost"
-            className="flex-row justify-start gap-3 border-t border-border py-3"
+            className="mt-auto flex-row justify-start gap-3 border-t border-border py-3"
             onPress={() => {
               setDrawerOpen(false);
               void logout();
