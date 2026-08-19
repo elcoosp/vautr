@@ -11,6 +11,7 @@ import {
   Inbox,
   Lock,
   Replace,
+  ScrollText,
   Settings2,
   Users,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getApiUrl } from '../lib/apiUrl';
 import { triggerReplayOnboarding } from '../onboarding/OnboardingFlow';
 import { triggerReplayTour } from '../tour/TourOverlay';
+import { AuditTab } from './components/AuditTab';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
@@ -47,6 +49,7 @@ const TABS = [
   { id: 'tokens', label: 'Tokens', icon: Globe },
   { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'groups', label: 'Groups', icon: Users },
+  { id: 'audit', label: 'Security log', icon: ScrollText },
 ];
 
 // Maps popup tabs to the `data-tour` anchors the feature tour highlights (VTR-077).
@@ -217,6 +220,9 @@ export function App() {
           </TabsContent>
           <TabsContent value="groups" className="mt-0">
             {mlp && client ? <GroupsTab client={client} mlp={mlp} /> : null}
+          </TabsContent>
+          <TabsContent value="audit" className="mt-0">
+            {mlp && client ? <AuditTab /> : null}
           </TabsContent>
         </div>
       </Tabs>

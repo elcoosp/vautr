@@ -4,6 +4,7 @@ import {
   type SecureEnclaveBridge,
   type VautrNativeBridge,
 } from '@vautr/client-sdk/mobile';
+import { VautrMlpClient } from '@vautr/client-sdk';
 import { createSecureEnclaveBridge, createVautrNativeBridge } from '@vautr/native';
 import { MobileApiClient } from './api';
 import { secureTokenStore, VautrAuth } from './auth';
@@ -12,6 +13,7 @@ import { secureTokenStore, VautrAuth } from './auth';
 class AppServices {
   private _api: MobileApiClient | null = null;
   private _auth: VautrAuth | null = null;
+  private _mlp: VautrMlpClient | null = null;
 
   get api(): MobileApiClient {
     if (!this._api) {
@@ -27,10 +29,21 @@ class AppServices {
     return this._auth;
   }
 
+  /** MLP (org-model) client — shares the same authenticated HTTP session as `api`. */
+  get mlp(): VautrMlpClient {
+    if (!this._mlp) {
+      this._mlp = new VautrMlpClient(
+        this.api.http as unknown as ConstructorParameters<typeof VautrMlpClient>[0],
+      );
+    }
+    return this._mlp;
+  }
+
   /** Recreate the auth singleton (used after logout). */
   reset(): void {
     this._auth = null;
     this._api = null;
+    this._mlp = null;
   }
 }
 

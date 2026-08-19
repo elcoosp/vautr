@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   Replace,
+  ScrollText,
   Settings,
   Settings2,
   Share2,
@@ -38,6 +39,7 @@ const DRAWER_ITEMS = [
   { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
   { to: '/mfa', label: 'MFA & security', icon: CircleCheck },
   { to: '/tokens', label: 'Tokens', icon: Globe },
+  { to: '/audit', label: 'Security log', icon: ScrollText },
   { to: '/import-export', label: 'Import / export', icon: Replace },
   ...(isLocalVaultActive() ? [{ to: '/shares', label: 'Shares', icon: Share2 } as const] : []),
 ];

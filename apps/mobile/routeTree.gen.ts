@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './src/routes/__root'
 import { Route as AppRouteImport } from './src/routes/_app'
 import { Route as AuthRouteImport } from './src/routes/_auth'
 import { Route as AppIndexRouteImport } from './src/routes/_app.index'
+import { Route as AppAuditRouteImport } from './src/routes/_app.audit'
 import { Route as AppDashboardRouteImport } from './src/routes/_app.dashboard'
 import { Route as AppGeneratorRouteImport } from './src/routes/_app.generator'
 import { Route as AppImportExportRouteImport } from './src/routes/_app.import-export'
@@ -37,6 +38,11 @@ const AuthRoute = AuthRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuditRoute = AppAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
@@ -108,6 +114,7 @@ const AppProjectsProjectIdSecretsNewRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/audit': typeof AppAuditRoute
   '/dashboard': typeof AppDashboardRoute
   '/generator': typeof AppGeneratorRoute
   '/import-export': typeof AppImportExportRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
+  '/audit': typeof AppAuditRoute
   '/dashboard': typeof AppDashboardRoute
   '/generator': typeof AppGeneratorRoute
   '/import-export': typeof AppImportExportRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/_app/audit': typeof AppAuditRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/generator': typeof AppGeneratorRoute
   '/_app/import-export': typeof AppImportExportRoute
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/audit'
     | '/dashboard'
     | '/generator'
     | '/import-export'
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/audit'
     | '/dashboard'
     | '/generator'
     | '/import-export'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_auth'
+    | '/_app/audit'
     | '/_app/dashboard'
     | '/_app/generator'
     | '/_app/import-export'
@@ -236,6 +248,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/audit': {
+      id: '/_app/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AppAuditRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/dashboard': {
@@ -344,6 +363,7 @@ const AppProjectsProjectIdRouteWithChildren =
   AppProjectsProjectIdRoute._addFileChildren(AppProjectsProjectIdRouteChildren)
 
 interface AppRouteChildren {
+  AppAuditRoute: typeof AppAuditRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppGeneratorRoute: typeof AppGeneratorRoute
   AppImportExportRoute: typeof AppImportExportRoute
@@ -359,6 +379,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAuditRoute: AppAuditRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppGeneratorRoute: AppGeneratorRoute,
   AppImportExportRoute: AppImportExportRoute,
