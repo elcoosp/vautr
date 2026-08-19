@@ -80,7 +80,7 @@ function NewSecretScreen() {
           </Alert>
         ) : null}
 
-        <Button disabled={busy} onPress={() => void create()}>
+        <Button className="self-end" disabled={busy} onPress={() => void create()}>
           <ButtonText>{busy ? 'Saving…' : 'Save secret'}</ButtonText>
         </Button>
       </Card>

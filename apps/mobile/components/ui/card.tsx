@@ -57,7 +57,7 @@ CardContent.displayName = 'CardContent';
 
 const CardFooter = forwardRef<ComponentRef<typeof View>, ComponentPropsWithoutRef<typeof View>>(
   ({ className, ...props }, ref) => (
-    <View ref={ref} className={cn('flex flex-row items-center p-6 pt-0', className)} {...props} />
+    <View ref={ref} className={cn('flex flex-row items-center justify-end p-6 pt-0', className)} {...props} />
   ),
 );
 CardFooter.displayName = 'CardFooter';
