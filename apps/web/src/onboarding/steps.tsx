@@ -152,6 +152,7 @@ function EmergencyKitStep() {
 }
 
 function AddSecretStep() {
+  const { next } = useOnboarding();
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-semibold text-text">Add your first secret</h2>
@@ -160,7 +161,10 @@ function AddSecretStep() {
         your device.
       </p>
       <Button
-        onClick={() => void router.navigate({ to: '/projects', search: { create: false } })}
+        onClick={() => {
+          void router.navigate({ to: '/projects', search: { create: false } });
+          next();
+        }}
         className="w-full"
       >
         Go to my vault
@@ -170,6 +174,7 @@ function AddSecretStep() {
 }
 
 function DoneStep() {
+  const { next } = useOnboarding();
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-semibold text-text">You&apos;re all set</h2>
@@ -177,6 +182,9 @@ function DoneStep() {
         That&apos;s the core loop: vault → Emergency Kit → secrets. You can replay this tour anytime
         from Settings.
       </p>
+      <Button onClick={() => next()} className="w-full">
+        Finish
+      </Button>
     </div>
   );
 }

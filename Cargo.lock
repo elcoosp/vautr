@@ -10170,6 +10170,7 @@ dependencies = [
  "vautr-backup",
  "vautr-crypto",
  "vautr-domain",
+ "vautr-sharing",
  "vautr-telemetry",
  "webauthn-rs",
 ]
