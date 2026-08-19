@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { Dimensions, Modal, Pressable, Text, View } from 'react-native';
 import { Button, ButtonText } from '../../components/ui/button';
+import { ACCENT } from '../lib/colors';
 import { getTourAnchor } from './anchors';
 import { TOUR_STEPS } from './steps';
 
@@ -97,7 +98,7 @@ export function TourOverlay() {
               width: rect.width + 12,
               height: rect.height + 12,
               borderWidth: 2,
-              borderColor: '#42b59a',
+              borderColor: ACCENT,
             }}
           />
         )}

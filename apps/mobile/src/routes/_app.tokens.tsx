@@ -18,7 +18,7 @@ export const Route = createFileRoute('/_app/tokens')({
   component: TokensScreen,
 });
 
-const ACCENT = '#42b59a';
+import { ACCENT } from '../lib/colors';
 
 function TokensScreen() {
   const toast = useToast();

@@ -17,7 +17,7 @@ export const Route = createFileRoute('/_app/import-export')({
   component: BackupScreen,
 });
 
-const ACCENT = '#42b59a';
+import { ACCENT } from '../lib/colors';
 
 function formatBytes(bytes?: number | null): string {
   if (!bytes) return '—';

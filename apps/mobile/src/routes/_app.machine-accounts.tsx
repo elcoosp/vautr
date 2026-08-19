@@ -16,13 +16,13 @@ import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { AccessScope, MachineAccount } from '../../lib/api';
 import { services } from '../../lib/client';
+import { ACCENT } from '../lib/colors';
 
 export const Route = createFileRoute('/_app/machine-accounts')({
   component: MachineAccountsScreen,
 });
 
 const SCOPES: AccessScope[] = ['secrets:read', 'secrets:write', 'secrets:reveal'];
-const ACCENT = '#42b59a';
 
 function MachineAccountsScreen() {
   const toast = useToast();

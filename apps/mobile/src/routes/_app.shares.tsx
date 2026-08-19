@@ -17,6 +17,7 @@ import { Input } from '../../components/ui/input';
 import { Text } from '../../components/ui/text';
 import { services } from '../../lib/client';
 import { useSession } from '../../lib/session';
+import { ACCENT } from '../lib/colors';
 
 interface GroupInboxEntry {
   group_id: string;
@@ -31,8 +32,6 @@ interface GroupItem {
   itemUuid: string;
   bytes: number;
 }
-
-const ACCENT = '#42b59a';
 
 /**
  * Native-gated sharing inbox + group sharing (VTR-070). Only meaningful when
