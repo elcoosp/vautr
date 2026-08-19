@@ -1,4 +1,6 @@
+import { Inbox } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '@/components/EmptyState';
 import { acceptShare, getShareInbox, revokeShare } from '../lib/client';
 
 interface IncomingShare {
@@ -78,7 +80,7 @@ export function InboxView() {
       <div className="flex-1 overflow-auto p-4">
         {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
         {shares.length === 0 ? (
-          <p className="text-sm text-text-muted">No pending shares.</p>
+          <EmptyState variant="inline" icon={Inbox} title="No pending shares." />
         ) : (
           <ul className="space-y-2">
             {shares.map((share) => (

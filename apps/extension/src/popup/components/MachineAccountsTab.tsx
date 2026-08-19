@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { EmptyState } from '@/popup/components/EmptyState';
 
 const SCOPES: AccessScope[] = [
   'secrets:read',
@@ -125,7 +126,7 @@ export function MachineAccountsTab({ mlp }: { mlp: VautrMlpClient }) {
         </CardHeader>
         <CardContent className="space-y-2">
           {!loading && accounts.length === 0 ? (
-            <p className="py-6 text-center text-xs text-text-muted">No machine accounts yet.</p>
+            <EmptyState variant="inline" icon={Bot} title="No machine accounts yet." />
           ) : (
             accounts.map((acc) => (
               <div

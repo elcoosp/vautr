@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { Folder, Plus } from 'lucide-react-native';
+import { Folder, KeyRound, Plus, Users } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SecretOverlay } from '../../components/SecretOverlay';
@@ -8,6 +8,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { ThemedIcon } from '../../components/ui/icon';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
@@ -132,7 +133,11 @@ function ProjectDetailScreen() {
               </Button>
             </View>
             {secrets.length === 0 ? (
-              <Text variant="muted">No secrets in this project yet.</Text>
+              <EmptyState
+                variant="inline"
+                icon={KeyRound}
+                title="No secrets in this project yet."
+              />
             ) : (
               secrets.map((secret) => (
                 <Card key={secret.uuid} className="p-4">
@@ -156,26 +161,34 @@ function ProjectDetailScreen() {
         </TabsContent>
 
         <TabsContent value="members">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="flex-[2]">User</TableHead>
-                <TableHead className="flex-1">Role</TableHead>
-                <TableHead className="flex-1">Permission</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((member) => (
-                <TableRow key={member.user_uuid}>
-                  <TableCell className="flex-[2]">
-                    {member.display_name ?? member.user_uuid}
-                  </TableCell>
-                  <TableCell className="flex-1">{member.role}</TableCell>
-                  <TableCell className="flex-1">{member.permission}</TableCell>
+          {members.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No members yet."
+              description="This project has no collaborators. Add a teammate or a machine account to share access."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="flex-[2]">User</TableHead>
+                  <TableHead className="flex-1">Role</TableHead>
+                  <TableHead className="flex-1">Permission</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {members.map((member) => (
+                  <TableRow key={member.user_uuid}>
+                    <TableCell className="flex-[2]">
+                      {member.display_name ?? member.user_uuid}
+                    </TableCell>
+                    <TableCell className="flex-1">{member.role}</TableCell>
+                    <TableCell className="flex-1">{member.permission}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </TabsContent>
       </Tabs>
     </View>

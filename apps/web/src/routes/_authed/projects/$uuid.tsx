@@ -1,8 +1,19 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import type { Project, ProjectMember, Secret, UserGroup } from '@vautr/api-contract';
-import { ArrowLeft, Eye, EyeOff, MoreHorizontal, Plus, Trash2, UserPlus } from 'lucide-react';
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  KeyRound,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -278,7 +289,7 @@ function SecretsTab({
       </CardHeader>
       <CardContent>
         {secrets.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">No secrets yet.</p>
+          <EmptyState variant="inline" icon={KeyRound} title="No secrets yet." />
         ) : (
           <Table>
             <TableHeader>
@@ -456,7 +467,7 @@ function MembersTab({
       </CardHeader>
       <CardContent>
         {members.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">No members yet.</p>
+          <EmptyState variant="inline" icon={Users} title="No members yet." />
         ) : (
           <Table>
             <TableHeader>
@@ -624,7 +635,7 @@ function GroupsTab({
       </CardHeader>
       <CardContent className="space-y-2">
         {groups.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">No groups yet.</p>
+          <EmptyState variant="inline" icon={Users} title="No groups yet." />
         ) : (
           groups.map((g) => (
             <div

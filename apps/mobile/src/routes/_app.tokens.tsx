@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { ThemedIcon } from '../../components/ui/icon';
 import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
@@ -113,7 +114,7 @@ function TokensScreen() {
           {null}
         </BoneSkeleton>
       ) : tokens.length === 0 ? (
-        <Text variant="muted">No access tokens yet.</Text>
+        <EmptyState icon={Ticket} title="No access tokens yet." />
       ) : (
         tokens.map((token) => (
           <Card key={token.uuid} className="gap-2 p-4">

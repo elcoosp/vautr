@@ -4,6 +4,7 @@ import { Skeleton } from 'boneyard-js/react';
 import { Bot, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -146,7 +147,7 @@ function MachineAccountsPage() {
         </CardHeader>
         <CardContent>
           {!loading && accounts.length === 0 ? (
-            <p className="py-10 text-center text-sm text-text-muted">No machine accounts yet.</p>
+            <EmptyState variant="inline" icon={Bot} title="No machine accounts yet." />
           ) : (
             <Table>
               <TableHeader>

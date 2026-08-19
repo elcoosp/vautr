@@ -1,5 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { getMobileClient } from '@vautr/client-sdk/mobile';
+import { KeyRound } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SecretOverlay } from '../../components/SecretOverlay';
@@ -8,6 +9,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { Separator } from '../../components/ui/separator';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Text } from '../../components/ui/text';
@@ -108,17 +110,12 @@ function SecretsScreen() {
           ))}
         </View>
       ) : entries.length === 0 ? (
-        <Alert variant="info">
-          <AlertTitle>No secrets yet</AlertTitle>
-          <AlertDescription>Add secrets inside a project to see them here.</AlertDescription>
-          <Button
-            variant="outline"
-            className="mt-3 self-start"
-            onPress={() => router.navigate({ to: '/' })}
-          >
-            <ButtonText>Manage in Projects</ButtonText>
-          </Button>
-        </Alert>
+        <EmptyState
+          icon={KeyRound}
+          title="No secrets yet."
+          description="Add secrets inside a project to see them here."
+          action={{ label: 'Manage in Projects', onPress: () => router.navigate({ to: '/' }) }}
+        />
       ) : (
         <View className="gap-3">
           {entries.map((entry) => (

@@ -7,6 +7,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { ThemedIcon } from '../../components/ui/icon';
 import { Separator } from '../../components/ui/separator';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -106,18 +107,15 @@ function ProjectsListScreen() {
           ))}
         </View>
       ) : projects.length === 0 ? (
-        <Alert variant="info">
-          <AlertTitle>No projects yet</AlertTitle>
-          <AlertDescription>
-            Create a vault space to start storing passwords and secrets.
-          </AlertDescription>
-          <Button
-            className="mt-3 self-start"
-            onPress={() => router.navigate({ to: '/projects/new' })}
-          >
-            <ButtonText>Create project</ButtonText>
-          </Button>
-        </Alert>
+        <EmptyState
+          icon={Folder}
+          title="No projects yet."
+          description="Create a vault space to start storing passwords and secrets."
+          action={{
+            label: 'Create project',
+            onPress: () => router.navigate({ to: '/projects/new' }),
+          }}
+        />
       ) : (
         <View className="gap-3">
           {projects.map((project) => (

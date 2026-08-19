@@ -4,6 +4,7 @@ import { Skeleton } from 'boneyard-js/react';
 import { Copy, MoreHorizontal, Plus, Ticket, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -133,7 +134,7 @@ function TokensPage() {
         </CardHeader>
         <CardContent>
           {!loading && tokens.length === 0 ? (
-            <p className="py-10 text-center text-sm text-text-muted">No access tokens yet.</p>
+            <EmptyState variant="inline" icon={Ticket} title="No access tokens yet." />
           ) : (
             <Table>
               <TableHeader>

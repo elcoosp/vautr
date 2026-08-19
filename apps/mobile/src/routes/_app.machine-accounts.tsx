@@ -8,6 +8,7 @@ import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { ThemedIcon } from '../../components/ui/icon';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -125,7 +126,7 @@ function MachineAccountsScreen() {
           {null}
         </BoneSkeleton>
       ) : machines.length === 0 ? (
-        <Text variant="muted">No machine accounts yet.</Text>
+        <EmptyState icon={Bot} title="No machine accounts yet." />
       ) : (
         machines.map((m) => (
           <Card key={m.uuid} className="flex-row items-center justify-between p-4">

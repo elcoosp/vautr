@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { EmptyState } from '@/popup/components/EmptyState';
 
 const SCOPES: AccessScope[] = [
   'secrets:read',
@@ -122,7 +123,7 @@ export function TokensTab({ mlp }: { mlp: VautrMlpClient }) {
         </CardHeader>
         <CardContent className="space-y-2">
           {!loading && tokens.length === 0 ? (
-            <p className="py-6 text-center text-xs text-text-muted">No access tokens yet.</p>
+            <EmptyState variant="inline" icon={Ticket} title="No access tokens yet." />
           ) : (
             tokens.map((t) => (
               <div

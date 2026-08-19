@@ -1,11 +1,13 @@
 import type { VautrMlpClient } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
+import { Inbox } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { EmptyState } from '@/popup/components/EmptyState';
 
 interface InboxTabProps {
   mlp: VautrMlpClient;
@@ -89,7 +91,7 @@ export function InboxTab({ mlp, client }: InboxTabProps) {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {shares.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No pending shares.</p>
+        <EmptyState variant="inline" icon={Inbox} title="No pending shares." />
       ) : (
         <div className="space-y-2">
           {shares.map((share) => (

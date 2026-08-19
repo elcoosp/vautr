@@ -4,6 +4,7 @@ import { Skeleton } from 'boneyard-js/react';
 import { FolderKanban, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -138,9 +139,12 @@ function ProjectsPage() {
       </div>
 
       {!loading && projects.length === 0 && (
-        <p className="py-16 text-center text-sm text-text-muted">
-          No projects yet. Create one to organize your vaults and secrets.
-        </p>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet."
+          description="Create one to organize your vaults and secrets."
+          action={{ label: 'Create project', onClick: () => setDialogOpen(true) }}
+        />
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

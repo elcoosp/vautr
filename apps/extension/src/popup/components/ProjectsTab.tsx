@@ -1,5 +1,6 @@
 import type { Project, ProjectType } from '@vautr/api-contract';
 import type { VautrMlpClient } from '@vautr/client-sdk';
+import { FolderKanban } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { EmptyState } from '@/popup/components/EmptyState';
 import { usePopupStore } from '../store';
 
 interface ProjectsTabProps {
@@ -97,9 +99,12 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
       </div>
 
       {projects.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No projects yet. Create one to organize items.
-        </p>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet."
+          description="Create one to organize items."
+          action={{ label: 'Create project', onClick: () => setShowCreate(true) }}
+        />
       ) : (
         <div className="space-y-2">
           {projects.map((p) => (

@@ -13,13 +13,6 @@ import {
 } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
 import { Text } from '../../components/ui/text';
 import { useToast } from '../../components/ui/toast';
 import type { ProjectType } from '../../lib/api';
@@ -90,24 +83,21 @@ function NewProjectScreen() {
           </View>
           <View className="gap-1.5">
             <Label>Type</Label>
-            <Select
-              value={{ value: type, label: type }}
-              onValueChange={(option) => {
-                if (option) setType(option.value as ProjectType);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="personal" label="personal">
-                  Personal
-                </SelectItem>
-                <SelectItem value="shared" label="shared">
-                  Shared
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <View className="flex-row gap-2">
+              {(['personal', 'shared'] as const).map((value) => {
+                const active = type === value;
+                return (
+                  <Button
+                    key={value}
+                    variant={active ? 'default' : 'outline'}
+                    className="flex-1 capitalize"
+                    onPress={() => setType(value)}
+                  >
+                    <ButtonText className="capitalize">{value}</ButtonText>
+                  </Button>
+                );
+              })}
+            </View>
           </View>
 
           {error ? (

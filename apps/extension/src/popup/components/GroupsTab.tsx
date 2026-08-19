@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/popup/components/EmptyState';
 
 interface GroupInboxEntry {
   group_id: string;
@@ -184,7 +185,7 @@ export function GroupsTab({ client, mlp }: Props) {
       ) : null}
 
       {groups.length === 0 ? (
-        <p className="text-xs text-text-muted">No groups yet.</p>
+        <EmptyState variant="inline" icon={Users} title="No groups yet." />
       ) : (
         <ul className="space-y-2">
           {groups.map((g) => (

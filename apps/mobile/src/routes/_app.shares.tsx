@@ -5,12 +5,14 @@ import {
   type VautrNativeBridge,
 } from '@vautr/client-sdk/mobile';
 import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
+import { Box, Inbox } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
+import { EmptyState } from '../../components/ui/empty-state';
 import { Input } from '../../components/ui/input';
 import { Text } from '../../components/ui/text';
 import { services } from '../../lib/client';
@@ -299,7 +301,7 @@ function SharesScreen() {
         </Button>
         {groupItems ? (
           groupItems.length === 0 ? (
-            <Text variant="tiny">No items in this group.</Text>
+            <EmptyState variant="inline" icon={Box} title="No items in this group." />
           ) : (
             groupItems.map((it) => (
               <Text key={it.itemUuid} variant="tiny">
@@ -346,7 +348,7 @@ function SharesScreen() {
             {null}
           </BoneSkeleton>
         ) : inbox.length === 0 ? (
-          <Text variant="muted">No pending shares.</Text>
+          <EmptyState variant="inline" icon={Inbox} title="No pending shares." />
         ) : (
           inbox.map((s) => (
             <Card key={s.itemUuid} className="p-4">

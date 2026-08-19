@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import type { Project, Secret } from '@vautr/api-contract';
 import { Skeleton } from 'boneyard-js/react';
-import { Eye, EyeOff, Lock } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Lock } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -110,13 +111,19 @@ function SecretsManagerPage() {
         </CardHeader>
         <CardContent>
           {!loading && rows.length === 0 ? (
-            <p className="py-10 text-center text-sm text-text-muted">
-              No secrets found across your projects.{' '}
-              <Link to="/projects" search={{ create: false }} className="text-accent underline">
-                Open a project
-              </Link>{' '}
-              to add one.
-            </p>
+            <EmptyState
+              icon={KeyRound}
+              title="No secrets yet."
+              description={
+                <span>
+                  No secrets found across your projects.{' '}
+                  <Link to="/projects" search={{ create: false }} className="text-accent underline">
+                    Open a project
+                  </Link>{' '}
+                  to add one.
+                </span>
+              }
+            />
           ) : (
             <Table>
               <TableHeader>

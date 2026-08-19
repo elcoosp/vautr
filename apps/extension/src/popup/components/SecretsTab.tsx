@@ -1,6 +1,7 @@
 import type { Secret } from '@vautr/api-contract';
 import type { VautrMlpClient } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
+import { KeyRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { EmptyState } from '@/popup/components/EmptyState';
 import { usePopupStore } from '../store';
 
 interface SecretsTabProps {
@@ -140,7 +142,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
           </div>
 
           {secrets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No secrets in this project yet.</p>
+            <EmptyState variant="inline" icon={KeyRound} title="No secrets in this project yet." />
           ) : (
             <div className="space-y-2">
               {secrets.map((s) => (

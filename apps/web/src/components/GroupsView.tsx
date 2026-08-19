@@ -1,5 +1,6 @@
 import { Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '@/components/EmptyState';
 import {
   acceptGroupItem,
   addGroupMember,
@@ -192,7 +193,7 @@ export function GroupsView() {
       ) : null}
 
       {groups.length === 0 ? (
-        <p className="text-sm text-text-muted">No groups yet.</p>
+        <EmptyState variant="inline" icon={Users} title="No groups yet." />
       ) : (
         <ul className="space-y-3">
           {groups.map((g) => (

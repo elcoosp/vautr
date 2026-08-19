@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, useRouter } from '@tanstack/react-router';
+import type { LucideIcon } from 'lucide-react-native';
 import {
   Bot,
   CircleCheck,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
@@ -39,6 +41,46 @@ const DRAWER_ITEMS = [
   { to: '/import-export', label: 'Import / export', icon: Replace },
   ...(isLocalVaultActive() ? [{ to: '/shares', label: 'Shares', icon: Share2 } as const] : []),
 ];
+
+type NavItemProps = {
+  icon: LucideIcon;
+  label: string;
+  onPress: () => void;
+};
+
+function NavItem({ icon: Icon, label, onPress }: NavItemProps) {
+  const pressed = useSharedValue(0);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * 0.08 }],
+  }));
+  return (
+    <Button
+      variant="ghost"
+      className="flex-1 flex-col items-center gap-1 py-2 min-w-0 active:bg-transparent"
+      onPress={onPress}
+      onPressIn={() => {
+        pressed.value = withSpring(1, { damping: 14, stiffness: 200 });
+      }}
+      onPressOut={() => {
+        pressed.value = withSpring(0, { damping: 14, stiffness: 200 });
+      }}
+    >
+      <Animated.View style={animStyle}>
+        <View className="items-center justify-center rounded-xl p-1 group-active:bg-accent">
+          <ThemedIcon icon={Icon} size={20} />
+        </View>
+      </Animated.View>
+      <ButtonText
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        className="w-full text-center"
+        style={{ fontSize: 10, lineHeight: 12 }}
+      >
+        {label}
+      </ButtonText>
+    </Button>
+  );
+}
 
 function AppShell() {
   const username = useSession((s) => s.username);
@@ -163,36 +205,14 @@ function AppShell() {
           security, tokens, import/export) lives in the left drawer. */}
       <View className="flex-row items-center border-t border-border pb-3 min-h-[72px]">
         {PRIMARY.map(({ to, label, icon: Icon }) => (
-          <Button
+          <NavItem
             key={to}
-            variant="ghost"
-            className="flex-1 flex-col gap-1 py-2.5 min-w-0"
+            icon={Icon}
+            label={label}
             onPress={() => router.navigate({ to: to as '/' })}
-          >
-            <ThemedIcon icon={Icon} size={24} />
-            <ButtonText
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              className="text-[11px] text-center min-w-0"
-            >
-              {label}
-            </ButtonText>
-          </Button>
+          />
         ))}
-        <Button
-          variant="ghost"
-          className="flex-1 flex-col gap-1 py-2.5 min-w-0"
-          onPress={() => setDrawerOpen(true)}
-        >
-          <ThemedIcon icon={List} size={24} />
-          <ButtonText
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            className="text-[11px] text-center min-w-0"
-          >
-            More
-          </ButtonText>
-        </Button>
+        <NavItem icon={List} label="More" onPress={() => setDrawerOpen(true)} />
       </View>
     </SafeAreaView>
   );
