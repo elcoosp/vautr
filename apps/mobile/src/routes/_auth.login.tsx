@@ -125,6 +125,8 @@ function LoginScreen() {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
+                    textContentType="oneTimeCode"
+                    autoComplete="off"
                     placeholder="Enter master password"
                   />
                 </View>
@@ -138,6 +140,8 @@ function LoginScreen() {
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       secureTextEntry
+                      textContentType="oneTimeCode"
+                      autoComplete="off"
                       placeholder="Confirm master password"
                     />
                   </View>

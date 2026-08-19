@@ -70,6 +70,7 @@ function NewSecretScreen() {
             onChangeText={setValue}
             placeholder="Secret value"
             secureTextEntry
+            textContentType="oneTimeCode"
           />
         </View>
 
