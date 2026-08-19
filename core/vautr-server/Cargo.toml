@@ -55,6 +55,12 @@ tokio.workspace = true
 # build raw registration/assertion payloads that the handler must parse.
 sha2.workspace = true
 openssl = "0.10"
+# Sharing/Shares e2e (Shares feature, shipped to all clients): exercises the
+# real `/shares/*` + `/users/{id}/public-key` relay with the actual KEM-DEM
+# crypto from vautr_sharing. `sharing` enables vautr_crypto::sharing for the
+# test build only (dev-dep, does not touch the server binary).
+vautr-sharing.workspace = true
+vautr-crypto = { workspace = true, features = ["sharing"] }
 
 [features]
 default = []
