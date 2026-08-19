@@ -1,9 +1,7 @@
-import { Inbox, Lock, Plus, Users, Vault } from 'lucide-react';
+import { Lock, Plus, Vault } from 'lucide-react';
 import { useState } from 'react';
 import { lock } from '../lib/client';
 import { AddItemForm } from './AddItemForm';
-import { GroupsView } from './GroupsView';
-import { InboxView } from './InboxView';
 import { ItemDetail } from './ItemDetail';
 import { ReadOnlyBanner } from './ReadOnlyBanner';
 import { SyncIndicator } from './SyncIndicator';
@@ -12,7 +10,6 @@ import { VaultList } from './VaultList';
 export function VaultView() {
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [tab, setTab] = useState<'vault' | 'inbox' | 'groups'>('vault');
 
   const onLock = () => {
     void lock();
@@ -26,41 +23,6 @@ export function VaultView() {
           Vault
         </h1>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md border border-border">
-            <button
-              type="button"
-              onClick={() => setTab('vault')}
-              aria-pressed={tab === 'vault'}
-              className={`px-3 py-1.5 text-sm ${
-                tab === 'vault' ? 'bg-surface-raised text-text' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              <Vault className="mr-1 inline size-4" aria-hidden="true" />
-              Vault
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('inbox')}
-              aria-pressed={tab === 'inbox'}
-              className={`px-3 py-1.5 text-sm ${
-                tab === 'inbox' ? 'bg-surface-raised text-text' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              <Inbox className="mr-1 inline size-4" aria-hidden="true" />
-              Inbox
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('groups')}
-              aria-pressed={tab === 'groups'}
-              className={`px-3 py-1.5 text-sm ${
-                tab === 'groups' ? 'bg-surface-raised text-text' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              <Users className="mr-1 inline size-4" aria-hidden="true" />
-              Groups
-            </button>
-          </div>
           <SyncIndicator />
           <button
             type="button"
@@ -89,11 +51,7 @@ export function VaultView() {
 
       <ReadOnlyBanner />
 
-      {tab === 'inbox' ? (
-        <InboxView />
-      ) : tab === 'groups' ? (
-        <GroupsView />
-      ) : (
+      {adding || selectedUuid ? (
         <div className="flex min-h-0 flex-1">
           {/* List pane (hidden on small screens while an item is open). */}
           <section
@@ -125,6 +83,20 @@ export function VaultView() {
                 Select an item to view its details.
               </p>
             )}
+          </section>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <section
+            aria-label="Vault items"
+            className="w-full md:w-80 md:shrink-0 md:border-r md:border-border"
+          >
+            <VaultList selectedUuid={selectedUuid} onSelect={setSelectedUuid} />
+          </section>
+          <section aria-label="Item details" className="hidden min-w-0 flex-1 md:block">
+            <p className="p-6 text-center text-sm text-text-muted">
+              Select an item to view its details.
+            </p>
           </section>
         </div>
       )}

@@ -116,7 +116,7 @@ function SecretsManagerPage() {
               title="No secrets yet."
               description={
                 <span>
-                  No secrets found across your projects.{' '}
+                  No secrets yet across your projects.{' '}
                   <Link to="/projects" search={{ create: false }} className="text-accent underline">
                     Open a project
                   </Link>{' '}

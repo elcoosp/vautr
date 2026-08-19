@@ -6094,7 +6094,7 @@ impl DesktopView {
             None => "Backup API unavailable".to_string(),
         };
         let projects_desc = if projects.is_empty() {
-            "You have no projects yet."
+            "No projects yet."
         } else {
             "Your most recently active projects."
         };
@@ -6264,7 +6264,7 @@ impl DesktopView {
                     .when(!loading && rows.is_empty(), |this| {
                         this.child(empty_state(
                             IconName::HardDrive,
-                            "No secrets found",
+                            "No secrets yet",
                             "No secrets exist across your projects. Open a project to add one.",
                             None,
                         ))
