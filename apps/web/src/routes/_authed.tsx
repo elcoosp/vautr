@@ -14,6 +14,7 @@ import {
   ScrollText,
   Settings,
   Settings2,
+  Share2,
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { logout } from '@/lib/client';
@@ -29,6 +30,7 @@ const NAV = [
   { to: '/vault', label: 'Vault', icon: Eye },
   { to: '/generator', label: 'Generator', icon: Settings2 },
   { to: '/secrets', label: 'Secrets', icon: HardDrive },
+  { to: '/shares', label: 'Shares', icon: Share2 },
   { to: '/machine-accounts', label: 'Machine accounts', icon: Bot },
   { to: '/tokens', label: 'Tokens', icon: Globe },
   { to: '/mfa', label: 'MFA & security', icon: CircleCheck },

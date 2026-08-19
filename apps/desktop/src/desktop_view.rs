@@ -51,6 +51,7 @@ pub enum Section {
     Tokens,
     Mfa,
     ImportExport,
+    Shares,
     Settings,
 }
 
@@ -279,6 +280,14 @@ pub struct DesktopView {
     settings_name_input: Entity<InputState>,
     settings_scopes: Vec<String>,
     settings_text: String,
+
+    // ── Shares section (Inbox + Groups; VTR-072) ───────────────────────
+    /// Incoming shares awaiting the current user (raw JSON from `/shares/inbox`).
+    share_inbox: serde_json::Value,
+    /// Groups the user belongs to / is invited to (raw JSON from `/shares/groups`).
+    share_groups: serde_json::Value,
+    shares_loading: bool,
+    shares_text: String,
 
     // ── Dashboard section ───────────────────────────────────────────────
     backup: Option<api_client::BackupStatusDto>,
@@ -546,6 +555,10 @@ impl DesktopView {
             settings_name_input,
             settings_scopes: vec!["secrets:read".into()],
             settings_text: String::new(),
+            share_inbox: serde_json::Value::Null,
+            share_groups: serde_json::Value::Null,
+            shares_loading: false,
+            shares_text: String::new(),
             backup: None,
             dashboard_loading: false,
             toasts: Vec::new(),
@@ -2555,6 +2568,162 @@ impl DesktopView {
         .detach();
     }
 
+    // ── Shares (Inbox + Groups; VTR-072) ─────────────────────────────────
+
+    fn do_refresh_shares(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.shares_loading = true;
+        self.shares_text = String::new();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let inbox = api.get_share_inbox(&token).await;
+            let groups = api.get_group_inbox(&token).await;
+            this.update(cx, |this, cx| {
+                this.shares_loading = false;
+                match inbox {
+                    Ok(v) => this.share_inbox = v,
+                    Err(e) => this.shares_text = format!("Could not load inbox: {e}"),
+                }
+                match groups {
+                    Ok(v) => this.share_groups = v,
+                    Err(e) => {
+                        if this.shares_text.is_empty() {
+                            this.shares_text = format!("Could not load groups: {e}");
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn render_shares(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let inbox = &self.share_inbox;
+        let groups = &self.share_groups;
+        let loading = self.shares_loading;
+        let err = self.shares_text.clone();
+
+        let inbox_items = inbox.as_array().cloned().unwrap_or_default();
+        let group_items = groups.as_array().cloned().unwrap_or_default();
+
+        let field = |v: &serde_json::Value, key: &str| -> Option<String> {
+            v.get(key)
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        };
+
+        let inbox_section = {
+            let mut rows = vec!["Inbox".to_string()];
+            if loading {
+                rows.push("Loading…".into());
+            } else if let Some(msg) = err.strip_prefix("Could not load inbox: ") {
+                rows.push(format!("Inbox unavailable: {msg}"));
+            } else if inbox_items.is_empty() {
+                rows.push("No shares waiting for you.".into());
+            } else {
+                for item in &inbox_items {
+                    let who = field(item, "from_email")
+                        .or_else(|| field(item, "owner_email"))
+                        .or_else(|| field(item, "sender_email"))
+                        .unwrap_or_else(|| "Someone".into());
+                    let kind = field(item, "kind")
+                        .or_else(|| field(item, "type"))
+                        .unwrap_or_else(|| "share".into());
+                    let name = field(item, "name")
+                        .or_else(|| field(item, "item_name"))
+                        .unwrap_or_else(|| "a secret".into());
+                    rows.push(format!("{who} shared {name} ({kind})"));
+                }
+            }
+            rows
+        };
+
+        let groups_section = {
+            let mut rows = vec!["Groups".to_string()];
+            if loading {
+                rows.push("Loading…".into());
+            } else if let Some(msg) = err.strip_prefix("Could not load groups: ") {
+                rows.push(format!("Groups unavailable: {msg}"));
+            } else if group_items.is_empty() {
+                rows.push("You are not a member of any groups.".into());
+            } else {
+                for g in &group_items {
+                    let name = field(g, "name")
+                        .or_else(|| field(g, "group_name"))
+                        .unwrap_or_else(|| "Untitled group".into());
+                    let role = field(g, "role").unwrap_or_else(|| "member".into());
+                    rows.push(format!("{name} ({role})"));
+                }
+            }
+            rows
+        };
+
+        let err_banner = if !err.is_empty() && !err.starts_with("Could not load") {
+            Some(err.clone())
+        } else {
+            None
+        };
+
+        v_flex()
+            .id("shares-scroll")
+            .overflow_y_scroll()
+            .size_full()
+            .p_6()
+            .gap_6()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Shares"))
+                    .child(
+                        Button::new("shares-refresh")
+                            .label("Refresh")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.do_refresh_shares(window, cx)
+                            })),
+                    ),
+            )
+            .when_some(err_banner, |el, msg| {
+                el.child(div().text_sm().text_color(theme::DANGER).child(msg))
+            })
+            .child(self.shares_subsection("Inbox", &inbox_section))
+            .child(self.shares_subsection("Groups", &groups_section))
+    }
+
+    fn shares_subsection(&self, title: &str, rows: &[String]) -> impl IntoElement {
+        v_flex()
+            .gap_2()
+            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(title.to_string()))
+            .child(
+                div()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(rgb(0x2a_2f_3a))
+                    .p_3()
+                    .text_sm()
+                    .children(rows.iter().skip(1).map(|line| {
+                        div().py_1().border_b_1().border_color(rgb(0x22_26_30)).child(line.clone())
+                    }))
+                    .when(rows.len() <= 1, |el| {
+                        el.child(div().py_1().text_color(rgb(0x9a_a3_b2)).child({
+                            if title == "Inbox" {
+                                "No shares waiting for you."
+                            } else {
+                                "You are not a member of any groups."
+                            }
+                            .to_string()
+                        }))
+                    }),
+            )
+    }
+
     // ── Settings (canonical screen: machine accounts + tokens) ──────────
 
     fn do_refresh_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -3404,6 +3573,7 @@ impl DesktopView {
             Section::Tokens => self.render_tokens(cx).into_any_element(),
             Section::Mfa => self.render_mfa(cx).into_any_element(),
             Section::ImportExport => self.render_import_export(cx).into_any_element(),
+            Section::Shares => self.render_shares(cx).into_any_element(),
             Section::Settings => self.render_settings(cx).into_any_element(),
         };
 
@@ -3532,7 +3702,7 @@ impl DesktopView {
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
 
-        let items: [(Section, &'static str, IconName); 10] = [
+        let items: [(Section, &'static str, IconName); 11] = [
             (Section::Dashboard, "Dashboard", IconName::LayoutDashboard),
             (Section::Projects, "Projects", IconName::Folder),
             (Section::Vault, "Vault", IconName::Eye),
@@ -3542,6 +3712,7 @@ impl DesktopView {
             (Section::Tokens, "Tokens", IconName::Globe),
             (Section::Mfa, "MFA & security", IconName::CircleCheck),
             (Section::ImportExport, "Import / export", IconName::Replace),
+            (Section::Shares, "Shares", IconName::Inbox),
             (Section::Settings, "Settings", IconName::Settings),
         ];
 
@@ -3653,6 +3824,7 @@ impl DesktopView {
             Section::MachineAccounts | Section::Tokens => self.do_refresh_settings(window, cx),
             Section::Mfa => self.do_refresh_mfa(window, cx),
             Section::ImportExport => self.do_refresh_backup(cx),
+            Section::Shares => self.do_refresh_shares(window, cx),
             Section::Settings => self.do_refresh_settings(window, cx),
         }
     }

@@ -8,12 +8,11 @@ import {
   Folder,
   Globe,
   HardDrive,
-  Inbox,
   Lock,
   Replace,
   ScrollText,
   Settings2,
-  Users,
+  Share2,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import * as browser from 'webextension-polyfill';
@@ -26,13 +25,12 @@ import { AuditTab } from './components/AuditTab';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
 import { GeneratorTab } from './components/GeneratorTab';
-import { GroupsTab } from './components/GroupsTab';
 import { ImportExportTab } from './components/ImportExportTab';
-import { InboxTab } from './components/InboxTab';
 import { MachineAccountsTab } from './components/MachineAccountsTab';
 import { MfaTab } from './components/MfaTab';
 import { ProjectsTab } from './components/ProjectsTab';
 import { SecretsTab } from './components/SecretsTab';
+import { SharesTab } from './components/SharesTab';
 import { TokensTab } from './components/TokensTab';
 import { VaultTab } from './components/VaultTab';
 import { disposePopupClient, getPopupClient, getPopupMlpClient } from './popupClient';
@@ -47,8 +45,7 @@ const TABS = [
   { id: 'import-export', label: 'Import / export', icon: Replace },
   { id: 'machine-accounts', label: 'Machines', icon: Bot },
   { id: 'tokens', label: 'Tokens', icon: Globe },
-  { id: 'inbox', label: 'Inbox', icon: Inbox },
-  { id: 'groups', label: 'Groups', icon: Users },
+  { id: 'shares', label: 'Shares', icon: Share2 },
   { id: 'audit', label: 'Security log', icon: ScrollText },
 ];
 
@@ -56,7 +53,7 @@ const TABS = [
 const TOUR_ANCHORS: Record<string, string | undefined> = {
   vault: 'vault',
   mfa: 'emergency-kit',
-  inbox: 'audit',
+  shares: 'audit',
 };
 
 export function App() {
@@ -215,11 +212,8 @@ export function App() {
           <TabsContent value="tokens" className="mt-0">
             {mlp ? <TokensTab mlp={mlp} /> : null}
           </TabsContent>
-          <TabsContent value="inbox" className="mt-0">
-            {mlp && client ? <InboxTab mlp={mlp} client={client} /> : null}
-          </TabsContent>
-          <TabsContent value="groups" className="mt-0">
-            {mlp && client ? <GroupsTab client={client} mlp={mlp} /> : null}
+          <TabsContent value="shares" className="mt-0">
+            {mlp && client ? <SharesTab mlp={mlp} client={client} /> : null}
           </TabsContent>
           <TabsContent value="audit" className="mt-0">
             {mlp && client ? <AuditTab /> : null}

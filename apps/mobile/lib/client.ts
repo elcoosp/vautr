@@ -1,10 +1,10 @@
+import { VautrMlpClient } from '@vautr/client-sdk';
 import {
   getMobileClient,
   initializeVautrCore,
   type SecureEnclaveBridge,
   type VautrNativeBridge,
 } from '@vautr/client-sdk/mobile';
-import { VautrMlpClient } from '@vautr/client-sdk';
 import { createSecureEnclaveBridge, createVautrNativeBridge } from '@vautr/native';
 import { MobileApiClient } from './api';
 import { secureTokenStore, VautrAuth } from './auth';

@@ -21,6 +21,7 @@ import { Route as AuthedMachineAccountsRouteImport } from './routes/_authed/mach
 import { Route as AuthedMfaRouteImport } from './routes/_authed/mfa'
 import { Route as AuthedSecretsRouteImport } from './routes/_authed/secrets'
 import { Route as AuthedSettingsRouteImport } from './routes/_authed/settings'
+import { Route as AuthedSharesRouteImport } from './routes/_authed/shares'
 import { Route as AuthedTokensRouteImport } from './routes/_authed/tokens'
 import { Route as AuthedVaultRouteImport } from './routes/_authed/vault'
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects/index'
@@ -85,6 +86,11 @@ const AuthedSettingsRoute = AuthedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedSharesRoute = AuthedSharesRouteImport.update({
+  id: '/shares',
+  path: '/shares',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedTokensRoute = AuthedTokensRouteImport.update({
   id: '/tokens',
   path: '/tokens',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/mfa': typeof AuthedMfaRoute
   '/secrets': typeof AuthedSecretsRoute
   '/settings': typeof AuthedSettingsRoute
+  '/shares': typeof AuthedSharesRoute
   '/tokens': typeof AuthedTokensRoute
   '/vault': typeof AuthedVaultRoute
   '/projects/$uuid': typeof AuthedProjectsUuidRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/mfa': typeof AuthedMfaRoute
   '/secrets': typeof AuthedSecretsRoute
   '/settings': typeof AuthedSettingsRoute
+  '/shares': typeof AuthedSharesRoute
   '/tokens': typeof AuthedTokensRoute
   '/vault': typeof AuthedVaultRoute
   '/': typeof AuthedIndexRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/_authed/mfa': typeof AuthedMfaRoute
   '/_authed/secrets': typeof AuthedSecretsRoute
   '/_authed/settings': typeof AuthedSettingsRoute
+  '/_authed/shares': typeof AuthedSharesRoute
   '/_authed/tokens': typeof AuthedTokensRoute
   '/_authed/vault': typeof AuthedVaultRoute
   '/_authed/': typeof AuthedIndexRoute
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | '/mfa'
     | '/secrets'
     | '/settings'
+    | '/shares'
     | '/tokens'
     | '/vault'
     | '/projects/$uuid'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/mfa'
     | '/secrets'
     | '/settings'
+    | '/shares'
     | '/tokens'
     | '/vault'
     | '/'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/_authed/mfa'
     | '/_authed/secrets'
     | '/_authed/settings'
+    | '/_authed/shares'
     | '/_authed/tokens'
     | '/_authed/vault'
     | '/_authed/'
@@ -306,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedSettingsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/shares': {
+      id: '/_authed/shares'
+      path: '/shares'
+      fullPath: '/shares'
+      preLoaderRoute: typeof AuthedSharesRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/tokens': {
       id: '/_authed/tokens'
       path: '/tokens'
@@ -346,6 +365,7 @@ interface AuthedRouteChildren {
   AuthedMfaRoute: typeof AuthedMfaRoute
   AuthedSecretsRoute: typeof AuthedSecretsRoute
   AuthedSettingsRoute: typeof AuthedSettingsRoute
+  AuthedSharesRoute: typeof AuthedSharesRoute
   AuthedTokensRoute: typeof AuthedTokensRoute
   AuthedVaultRoute: typeof AuthedVaultRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
@@ -362,6 +382,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedMfaRoute: AuthedMfaRoute,
   AuthedSecretsRoute: AuthedSecretsRoute,
   AuthedSettingsRoute: AuthedSettingsRoute,
+  AuthedSharesRoute: AuthedSharesRoute,
   AuthedTokensRoute: AuthedTokensRoute,
   AuthedVaultRoute: AuthedVaultRoute,
   AuthedIndexRoute: AuthedIndexRoute,
