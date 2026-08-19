@@ -2,16 +2,16 @@ import type { VautrMlpClient } from '@vautr/client-sdk';
 import { createClipboardHandler } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import {
-  ArrowLeftRight,
   Bot,
   CircleCheck,
   Eye,
   Folder,
+  Globe,
   HardDrive,
   Inbox,
   Lock,
+  Replace,
   Settings2,
-  Ticket,
   Users,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
@@ -42,9 +42,9 @@ const TABS = [
   { id: 'generator', label: 'Generator', icon: Settings2 },
   { id: 'secrets', label: 'Secrets', icon: HardDrive },
   { id: 'mfa', label: 'MFA & security', icon: CircleCheck },
-  { id: 'import-export', label: 'Backup', icon: ArrowLeftRight },
+  { id: 'import-export', label: 'Import / export', icon: Replace },
   { id: 'machine-accounts', label: 'Machines', icon: Bot },
-  { id: 'tokens', label: 'Tokens', icon: Ticket },
+  { id: 'tokens', label: 'Tokens', icon: Globe },
   { id: 'inbox', label: 'Inbox', icon: Inbox },
   { id: 'groups', label: 'Groups', icon: Users },
 ];

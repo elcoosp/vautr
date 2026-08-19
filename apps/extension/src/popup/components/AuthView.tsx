@@ -104,7 +104,13 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <Button className="w-full" disabled={busy} onClick={() => void submit()}>
-            {busy ? 'Working…' : mode === 'login' ? 'Unlock' : 'Register'}
+            {busy
+              ? mode === 'login'
+                ? 'Unlocking…'
+                : 'Creating account…'
+              : mode === 'login'
+                ? 'Unlock'
+                : 'Register'}
           </Button>
         </CardContent>
       </Card>
