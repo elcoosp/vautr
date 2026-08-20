@@ -49,14 +49,21 @@ async fn main() {
     // IP) can connect. On macOS a [::] listener is IPv6-only and does NOT
     // accept IPv4-mapped ::ffff addresses, so reqwest fails with "error
     // sending request for url" even though the server is up (VTR-097). Fall
-    // back to [::]:8080 only if 0.0.0.0 is unavailable.
-    let listener = match tokio::net::TcpListener::bind("0.0.0.0:8080").await {
+    // back to [::]:8080 only if 0.0.0.0 is unavailable. The bind port is
+    // overridable via VAUTR_PORT (default 8080) so e2e can avoid the
+    // well-known port when needed.
+    let port: u16 = std::env::var("VAUTR_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8080);
+    let bind_addr = format!("0.0.0.0:{port}");
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(l) => l,
         Err(_) => tokio::net::TcpListener::bind("[::]:0")
             .await
             .expect("failed to bind 0.0.0.0:8080 or [::]:8080"),
     };
-    tracing::info!("vautr-server listening on :8080 (IPv4-first, VTR-097)");
+    tracing::info!("vautr-server listening on :{port} (IPv4-first, VTR-097)");
 
     let server = axum::serve(
         listener,

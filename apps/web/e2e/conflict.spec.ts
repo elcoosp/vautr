@@ -179,10 +179,10 @@ async function addItem(page: Page): Promise<string> {
   await registerViaUi(page, randomUsername());
   await dismissOnboarding(page);
 
-  // Navigate to the Vault via the in-app nav link (a hard reload would re-lock).
-  // Dismiss any transient overlay (e.g. a stray Radix dialog) that could
-  // intercept the click, then click. force:true is a last-resort fallback so a
-  // momentary overlay can't hang the whole suite.
+  // Navigate to the Vault view (in-app SPA nav; a hard reload would re-lock).
+  // Dismiss any transient overlay first, then ensure we're on the Vault. The
+  // "Add item" button lives in the Vault header and is always present once
+  // authenticated, so prefer clicking it directly over re-navigating.
   for (let i = 0; i < 3; i++) {
     const open = page.getByRole('dialog').first();
     if (await open.isVisible().catch(() => false)) {
@@ -190,21 +190,23 @@ async function addItem(page: Page): Promise<string> {
       await page.waitForTimeout(300);
     }
   }
-  await page.getByRole('link', { name: 'Vault', exact: true }).click({ force: true });
-  // SPA client-nav may not fire a `load` event (and the URL can be a vault
-  // sub-route like /vault/<uuid>), so wait for the destination UI instead.
-  await page.getByRole('button', { name: /add item/i }).waitFor({ timeout: 15_000 });
-  // Open the inline add-item form (secrets are project/vault-scoped; the
-  // top-level "Add item" lives in the Vault view, not /secrets).
-  await page.getByRole('button', { name: /add item/i }).click();
+  const addBtn = page.getByRole('button', { name: /add item/i });
+  if (!(await addBtn.isVisible().catch(() => false))) {
+    // Not on the Vault view — click the Vault nav link.
+    await page.getByRole('link', { name: /vault/i }).first().click({ force: true });
+    await addBtn.waitFor({ timeout: 15_000 });
+  }
+  await addBtn.click();
   await page.getByLabel(/title/i).fill('Conflict Item');
   await page.getByLabel(/username/i).fill('user');
   await page.getByLabel(/password/i).fill('s3cr3t');
   await page.getByRole('button', { name: /save/i }).click();
-  // The created item is selected and listed; read its uuid from the row.
-  const row = page.locator('[data-uuid]').last();
-  await row.waitFor({ state: 'visible', timeout: 15_000 });
-  return (await row.getAttribute('data-uuid')) ?? 'unknown';
+  // After save, VaultView selects the new item (selectedUuid = uuid), so its
+  // row is aria-selected="true". The list is sorted by updatedAt desc with a
+  // virtualizer, so DOM order is NOT creation order — read the selected row.
+  const selected = page.locator('[data-uuid][aria-selected="true"]');
+  await selected.first().waitFor({ state: 'visible', timeout: 15_000 });
+  return (await selected.first().getAttribute('data-uuid')) ?? 'unknown';
 }
 
 test.describe('VTR-056 conflict modal', () => {
