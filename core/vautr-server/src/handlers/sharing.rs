@@ -178,7 +178,17 @@ async fn put_public_key(
     Json(req): Json<PutPublicKeyReq>,
 ) -> Result<Json<PublicKeyResp>, ApiError> {
     let caller = auth_user(&st.repo, &auth.0).await?;
-    if caller != user_id {
+    // The path param may be the caller's UUID or their email (the web client
+    // only knows the email locally). The token already proves identity, and
+    // storage always keys on `caller`, so accept either form.
+    let accepted = if caller == user_id {
+        true
+    } else if let Some(user) = st.repo.get_user_by_id(&caller).await.map_err(|e| ApiError::internal(&e.to_string()))? {
+        user.email == user_id
+    } else {
+        false
+    };
+    if !accepted {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "forbidden",
