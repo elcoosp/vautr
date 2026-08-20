@@ -9,7 +9,7 @@ interface IncomingShare {
   item_uuid: string;
   wrapped_sik: string;
   ephemeral_public_key: string;
-  payload: string | null;
+  encrypted_payload: string | null;
 }
 
 /**
@@ -19,6 +19,7 @@ interface IncomingShare {
  */
 export function InboxView() {
   const [shares, setShares] = useState<IncomingShare[]>([]);
+  const [decrypted, setDecrypted] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -42,9 +43,7 @@ export function InboxView() {
     try {
       const plaintext = await acceptShare(share);
       const text = new TextDecoder().decode(plaintext);
-      setShares((prev) =>
-        prev.map((s) => (s.share_id === share.share_id ? { ...s, payload: text } : s)),
-      );
+      setDecrypted((prev) => ({ ...prev, [share.share_id]: text }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to decrypt share.');
     } finally {
@@ -89,13 +88,13 @@ export function InboxView() {
                   <span className="text-sm font-medium text-text">Item {share.item_uuid}</span>
                   <span className="text-xs text-text-muted">From {share.sender_uuid}</span>
                 </div>
-                {share.payload ? (
+                {share.encrypted_payload ? (
                   <pre className="mt-2 max-h-40 overflow-auto rounded border border-border bg-bg p-2 text-xs text-text">
-                    {share.payload}
+                    {decrypted[share.share_id] ?? share.encrypted_payload}
                   </pre>
                 ) : null}
                 <div className="mt-2 flex gap-2">
-                  {share.payload ? (
+                  {decrypted[share.share_id] ? (
                     <span className="rounded-md border border-border px-3 py-1.5 text-sm text-text-muted">
                       Decrypted
                     </span>

@@ -76,8 +76,15 @@ pub fn share_item(
     recipient_public_b64: &str,
     plaintext: &[u8],
 ) -> Result<String, JsValue> {
-    let sender =
-        uuid::Uuid::parse_str(sender_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    // The server recomputes `sender_uuid` from the authenticated session
+    // (create_share ignores the bundle's sender_uuid field), so the client may
+    // pass a non-UUID identifier (e.g. the local email). Accept it by mapping
+    // any non-UUID sender to a placeholder; the authoritative sender is the
+    // token's user id on the server.
+    let sender = match uuid::Uuid::parse_str(sender_uuid) {
+        Ok(u) => u,
+        Err(_) => uuid::Uuid::nil(),
+    };
     let recipient =
         uuid::Uuid::parse_str(recipient_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let item = uuid::Uuid::parse_str(item_uuid).map_err(|e| JsValue::from_str(&e.to_string()))?;

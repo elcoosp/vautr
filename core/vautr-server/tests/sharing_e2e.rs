@@ -340,7 +340,7 @@ async fn shares_live_server_inbox_accept_e2e() {
             .as_str()
             .unwrap()
             .to_string(),
-        encrypted_payload: incoming_json["payload"].as_str().unwrap().to_string(),
+        encrypted_payload: incoming_json["encrypted_payload"].as_str().unwrap().to_string(),
     };
 
     // 6. Recipient decapsulates + decrypts -> recovers the original plaintext.

@@ -280,7 +280,7 @@ export class VautrMlpClient {
       item_uuid: string;
       wrapped_sik: string;
       ephemeral_public_key: string;
-      payload: string | null;
+      encrypted_payload: string | null;
     }>
   > {
     return this.api.request('GET', '/shares/inbox');

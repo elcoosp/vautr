@@ -124,7 +124,7 @@ pub(crate) struct InboxItem {
     item_uuid: String,
     wrapped_sik: String,          // base64
     ephemeral_public_key: String, // base64
-    payload: Option<String>,      // base64 (may be absent)
+    encrypted_payload: Option<String>, // base64 (may be absent)
 }
 
 #[derive(Serialize)]
@@ -295,7 +295,7 @@ async fn inbox(State(st): State<AppState>, auth: Bearer) -> Result<Json<Vec<Inbo
             item_uuid: s.item_uuid,
             wrapped_sik: b64(&s.wrapped_sik),
             ephemeral_public_key: b64(&s.ephemeral_public_key),
-            payload: payload.map(|p| b64(&p)),
+            encrypted_payload: payload.map(|p| b64(&p)),
         });
     }
     Ok(Json(items))

@@ -29,6 +29,16 @@ export const {
   generate_recovery_mnemonic_js,
   wrap_svk_with_rk_js,
   derive_dek_js,
+  // --- sharing (ADR-007) — zero-knowledge 1:1 + group share relay ---
+  generate_sharing_keypair,
+  restore_sharing_keypair,
+  share_item,
+  accept_share,
+  create_sharing_group,
+  add_group_member,
+  unwrap_group_key,
+  encrypt_group_item,
+  decrypt_group_item,
 }: {
   generate_kdf_salt_js: () => Uint8Array;
   derive_master_key_js: (password: string, salt: Uint8Array) => Uint8Array;
@@ -39,6 +49,29 @@ export const {
   generate_recovery_mnemonic_js: () => string;
   wrap_svk_with_rk_js: (svk: Uint8Array, mnemonic: string) => Uint8Array;
   derive_dek_js: (svk: Uint8Array) => Uint8Array;
+  generate_sharing_keypair: () => string;
+  restore_sharing_keypair: (secretB64: string) => string;
+  share_item: (
+    senderUuid: string,
+    recipientUuid: string,
+    itemUuid: string,
+    recipientPublicB64: string,
+    plaintext: Uint8Array,
+  ) => string;
+  accept_share: (incomingJson: string, recipientSecretB64: string) => Uint8Array;
+  create_sharing_group: (name: string, adminUuid: string) => string;
+  add_group_member: (
+    groupJson: string,
+    memberUuid: string,
+    memberPublicB64: string,
+  ) => string;
+  unwrap_group_key: (inboxJson: string, recipientSecretB64: string) => string;
+  encrypt_group_item: (groupJson: string, itemUuid: string, plaintext: Uint8Array) => string;
+  decrypt_group_item: (
+    groupJson: string,
+    itemUuid: string,
+    ciphertextB64: string,
+  ) => Uint8Array;
 } = raw as any;
 
 function ensureBigInt(v: number): bigint {
