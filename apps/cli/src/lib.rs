@@ -40,8 +40,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn run(raw: &[String]) -> i32 {
     use clap::Parser;
 
-    let cli = match cli::Cli::try_parse_from(std::iter::once("vautr-cli".to_string()).chain(raw.iter().cloned()))
-    {
+    let cli = match cli::Cli::try_parse_from(
+        std::iter::once("vautr-cli".to_string()).chain(raw.iter().cloned()),
+    ) {
         Ok(c) => c,
         Err(e) => {
             // clap prints help/usage/errors to the appropriate stream.

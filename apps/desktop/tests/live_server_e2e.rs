@@ -20,8 +20,8 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use rand::RngCore;
-use vautr_app_state::sharing::{generate_vault_sharing_keypair, ShareTransport};
 use vautr_app_state::VautrClient;
+use vautr_app_state::sharing::{ShareTransport, generate_vault_sharing_keypair};
 use vautr_crypto::{aead, kdf, key_tree};
 use vautr_desktop::api_client::{self, ApiClient};
 use vautr_desktop::auth_client::AuthClient;
@@ -263,7 +263,13 @@ async fn fresh_user(pw: &str) -> (String, String, Arc<VautrClient>) {
     let _dek = key_tree::derive_dek(&svk).expect("DEK derive");
     let local_gen = login.min_enc_key_gen.max(1);
     client
-        .unlock_with_password(mp, &reg.kdf_salt, &login.wrapped_svk, Uuid::nil(), local_gen)
+        .unlock_with_password(
+            mp,
+            &reg.kdf_salt,
+            &login.wrapped_svk,
+            Uuid::nil(),
+            local_gen,
+        )
         .await
         .expect("unlock should succeed");
     (user, login.session_token, client)
@@ -558,7 +564,9 @@ async fn lock_then_reveal_is_refused() {
         .reveal_secret(item_uuid)
         .await
         .expect("reveal works while unlocked");
-    let s = client.read_secret(handle).expect("read works while unlocked");
+    let s = client
+        .read_secret(handle)
+        .expect("read works while unlocked");
     assert_eq!(s.as_str(), "lock-test-pw-123!", "unlocked reveal matches");
 
     // Now lock: reveal + read_secret must be refused.
@@ -646,7 +654,10 @@ async fn share_accept_roundtrip_live() {
         .expect("sender shares to recipient");
 
     // Recipient sees it in the inbox.
-    let inbox = recipient.fetch_shares().await.expect("recipient fetches inbox");
+    let inbox = recipient
+        .fetch_shares()
+        .await
+        .expect("recipient fetches inbox");
     assert!(
         inbox.iter().any(|s| s.share_id == bundle.share_id),
         "recipient inbox must contain the share"
@@ -661,10 +672,16 @@ async fn share_accept_roundtrip_live() {
         .accept_share(&incoming)
         .await
         .expect("recipient accepts + decrypts");
-    assert_eq!(decrypted, plaintext, "recipient recovers the shared plaintext");
+    assert_eq!(
+        decrypted, plaintext,
+        "recipient recovers the shared plaintext"
+    );
 
     // Revoking removes it from the inbox.
-    recipient.revoke_share(bundle.share_id).await.expect("revoke");
+    recipient
+        .revoke_share(bundle.share_id)
+        .await
+        .expect("revoke");
     let after = recipient.fetch_shares().await.expect("fetch again");
     assert!(
         !after.iter().any(|s| s.share_id == bundle.share_id),

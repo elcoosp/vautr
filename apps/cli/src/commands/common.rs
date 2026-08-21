@@ -106,7 +106,10 @@ pub async fn resolve_secret(
         return Err(CliError::SecretNotFound(key.to_string()));
     }
     if candidates.len() > 1 {
-        let names: Vec<String> = candidates.iter().map(|(p, _)| format!("{}/{}", p.name, bare_key)).collect();
+        let names: Vec<String> = candidates
+            .iter()
+            .map(|(p, _)| format!("{}/{}", p.name, bare_key))
+            .collect();
         return Err(CliError::Api {
             status: 0,
             message: format!(

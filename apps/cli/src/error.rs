@@ -96,7 +96,8 @@ mod tests {
 
     #[test]
     fn parses_server_error_envelope() {
-        let e = CliError::from_response_status(403, r#"{"error":"forbidden","message":"no access"}"#);
+        let e =
+            CliError::from_response_status(403, r#"{"error":"forbidden","message":"no access"}"#);
         match e {
             CliError::Api { status, message } => {
                 assert_eq!(status, 403);

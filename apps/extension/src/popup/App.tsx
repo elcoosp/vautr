@@ -8,6 +8,7 @@ import {
   Folder,
   Globe,
   HardDrive,
+  LayoutDashboard,
   Lock,
   Replace,
   ScrollText,
@@ -24,6 +25,7 @@ import { triggerReplayTour } from '../tour/TourOverlay';
 import { AuditTab } from './components/AuditTab';
 import { AuthView } from './components/AuthView';
 import { ConflictModal } from './components/ConflictModal';
+import { DashboardTab } from './components/DashboardTab';
 import { GeneratorTab } from './components/GeneratorTab';
 import { ImportExportTab } from './components/ImportExportTab';
 import { MachineAccountsTab } from './components/MachineAccountsTab';
@@ -37,6 +39,7 @@ import { disposePopupClient, getPopupClient, getPopupMlpClient } from './popupCl
 import { usePopupStore } from './store';
 
 const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'projects', label: 'Projects', icon: Folder },
   { id: 'vault', label: 'Vault', icon: Eye },
   { id: 'generator', label: 'Generator', icon: Settings2 },
@@ -188,6 +191,9 @@ export function App() {
               {error}
             </div>
           ) : null}
+          <TabsContent value="dashboard" className="mt-0">
+            {mlp && client ? <DashboardTab /> : null}
+          </TabsContent>
           <TabsContent value="vault" className="mt-0">
             {client && mlp ? <VaultTab client={client} mlp={mlp} /> : null}
           </TabsContent>

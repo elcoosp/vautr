@@ -6,7 +6,7 @@
 //! OPAQUE auth handshake.
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::error::{CliError, CliResult};
 
@@ -52,6 +52,25 @@ pub struct IssuedToken {
     pub token_id: String,
 }
 
+/// `POST /backup/export` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackupExportResponse {
+    pub backup_id: String,
+    pub download_url: Option<String>,
+    pub size_bytes: u64,
+    pub checksum: String,
+    pub created_at: i64,
+}
+
+/// `POST /backup/restore` (restore test) response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackupRestoreResponse {
+    pub status: String,
+    pub test_id: String,
+    pub restored_records: u64,
+    pub restored_at: i64,
+}
+
 /// The OPAQUE login-start response.
 #[derive(Deserialize)]
 struct LoginStartResp {
@@ -82,9 +101,7 @@ pub struct Api {
 impl Api {
     /// Build a client for the given server base URL.
     pub fn new(base: impl Into<String>) -> CliResult<Self> {
-        let client = reqwest::Client::builder()
-            .build()
-            .map_err(CliError::Http)?;
+        let client = reqwest::Client::builder().build().map_err(CliError::Http)?;
         Ok(Self {
             base: base.into(),
             client,
@@ -300,11 +317,7 @@ impl Api {
     }
 
     /// `GET /secrets/{uuid}/value` — reveal a secret's ciphertext (secrets:reveal gate).
-    pub async fn reveal_secret(
-        &self,
-        token: &str,
-        uuid: &str,
-    ) -> CliResult<(String, String)> {
+    pub async fn reveal_secret(&self, token: &str, uuid: &str) -> CliResult<(String, String)> {
         let resp = self
             .client
             .get(self.url(&format!("/secrets/{uuid}/value")))
@@ -360,6 +373,42 @@ impl Api {
                 "machine_account_uuid": machine_account_uuid,
                 "scopes": scopes,
             }))
+            .send()
+            .await?;
+        let body = self.check(resp).await?;
+        serde_json::from_value(body).map_err(CliError::Json)
+    }
+
+    /// `POST /backup/export` — create an encrypted backup archive and return
+    /// its server-side id + download URL (does not return the archive bytes).
+    pub async fn export_backup(
+        &self,
+        token: &str,
+        include_secrets: bool,
+    ) -> CliResult<BackupExportResponse> {
+        let resp = self
+            .client
+            .post(self.url("/backup/export"))
+            .bearer_auth(token)
+            .json(&json!({ "include_secrets": include_secrets }))
+            .send()
+            .await?;
+        let body = self.check(resp).await?;
+        serde_json::from_value(body).map_err(CliError::Json)
+    }
+
+    /// `POST /backup/restore` — validate a local `.vautr` archive (restore
+    /// test) without touching the live store.
+    pub async fn restore_backup(
+        &self,
+        token: &str,
+        archive_base64: &str,
+    ) -> CliResult<BackupRestoreResponse> {
+        let resp = self
+            .client
+            .post(self.url("/backup/restore"))
+            .bearer_auth(token)
+            .json(&json!({ "archive_base64": archive_base64 }))
             .send()
             .await?;
         let body = self.check(resp).await?;

@@ -44,6 +44,12 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
   const [showCreate] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
+  const [query, setQuery] = useState('');
+
+  const visibleSecrets = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q === '' ? secrets : secrets.filter((s) => s.key.toLowerCase().includes(q));
+  }, [secrets, query]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.uuid === projectUuid),
@@ -141,11 +147,21 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
             </Button>
           </div>
 
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search secrets…"
+            aria-label="Search secrets"
+          />
+
           {secrets.length === 0 ? (
             <EmptyState variant="inline" icon={KeyRound} title="No secrets in this project yet." />
+          ) : visibleSecrets.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No secrets match “{query}”.</p>
           ) : (
             <div className="space-y-2">
-              {secrets.map((s) => (
+              {visibleSecrets.map((s) => (
                 <div key={s.uuid} className="rounded-lg border p-3">
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">

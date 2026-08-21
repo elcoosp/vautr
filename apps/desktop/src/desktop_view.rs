@@ -52,7 +52,20 @@ pub enum Section {
     Mfa,
     ImportExport,
     Shares,
+    Audit,
     Settings,
+}
+
+/// A single audit-log row rendered in the Audit section. Parsed from the
+/// `GET /audit` JSON array (metadata-only; no secret/item payloads).
+#[derive(Clone, Debug)]
+struct AuditRow {
+    id: i64,
+    action: String,
+    actor: Option<String>,
+    detail: Option<String>,
+    created_at: i64,
+    event_type: Option<String>,
 }
 
 impl Section {
@@ -269,6 +282,8 @@ pub struct DesktopView {
     mfa_status: Option<api_client::MfaStatusDto>,
     mfa_enrolled: Option<api_client::TotpIssueDto>,
     mfa_code_input: Entity<InputState>,
+    /// Search box for the Vault list (G2: client-side filter over loaded items).
+    vault_search_input: Entity<InputState>,
     mfa_text: String,
     /// Recovery codes returned when (re)verifying TOTP enrollment. Shown once
     /// with the canonical "save these now" warning, then cleared on next render.
@@ -288,6 +303,11 @@ pub struct DesktopView {
     share_groups: serde_json::Value,
     shares_loading: bool,
     shares_text: String,
+
+    // ── Audit section (VTR-104 homogeneity: parity with web/extension/mobile) ──
+    audit_rows: Vec<AuditRow>,
+    audit_loading: bool,
+    audit_text: String,
 
     // ── Dashboard section ───────────────────────────────────────────────
     backup: Option<api_client::BackupStatusDto>,
@@ -415,6 +435,8 @@ impl DesktopView {
         let settings_name_input = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Machine account name, e.g. ci-deploy")
         });
+        let vault_search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search vault…"));
         let import_archive_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Paste base64 archive here…"));
         let export_path_input =
@@ -548,6 +570,7 @@ impl DesktopView {
             mfa_status: None,
             mfa_enrolled: None,
             mfa_code_input,
+            vault_search_input,
             mfa_text: String::new(),
             mfa_recovery_codes: None,
             machines: Vec::new(),
@@ -559,6 +582,9 @@ impl DesktopView {
             share_groups: serde_json::Value::Null,
             shares_loading: false,
             shares_text: String::new(),
+            audit_rows: Vec::new(),
+            audit_loading: false,
+            audit_text: String::new(),
             backup: None,
             dashboard_loading: false,
             toasts: Vec::new(),
@@ -2681,14 +2707,15 @@ impl DesktopView {
                 h_flex()
                     .items_center()
                     .justify_between()
-                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Shares"))
                     .child(
-                        Button::new("shares-refresh")
-                            .label("Refresh")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.do_refresh_shares(window, cx)
-                            })),
-                    ),
+                        div()
+                            .text_2xl()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Shares"),
+                    )
+                    .child(Button::new("shares-refresh").label("Refresh").on_click(
+                        cx.listener(|this, _, window, cx| this.do_refresh_shares(window, cx)),
+                    )),
             )
             .when_some(err_banner, |el, msg| {
                 el.child(div().text_sm().text_color(theme::DANGER).child(msg))
@@ -2700,7 +2727,12 @@ impl DesktopView {
     fn shares_subsection(&self, title: &str, rows: &[String]) -> impl IntoElement {
         v_flex()
             .gap_2()
-            .child(div().text_lg().font_weight(FontWeight::SEMIBOLD).child(title.to_string()))
+            .child(
+                div()
+                    .text_lg()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(title.to_string()),
+            )
             .child(
                 div()
                     .rounded_lg()
@@ -2709,7 +2741,11 @@ impl DesktopView {
                     .p_3()
                     .text_sm()
                     .children(rows.iter().skip(1).map(|line| {
-                        div().py_1().border_b_1().border_color(rgb(0x22_26_30)).child(line.clone())
+                        div()
+                            .py_1()
+                            .border_b_1()
+                            .border_color(rgb(0x22_26_30))
+                            .child(line.clone())
                     }))
                     .when(rows.len() <= 1, |el| {
                         el.child(div().py_1().text_color(rgb(0x9a_a3_b2)).child({
@@ -3574,6 +3610,7 @@ impl DesktopView {
             Section::Mfa => self.render_mfa(cx).into_any_element(),
             Section::ImportExport => self.render_import_export(cx).into_any_element(),
             Section::Shares => self.render_shares(cx).into_any_element(),
+            Section::Audit => self.render_audit(cx).into_any_element(),
             Section::Settings => self.render_settings(cx).into_any_element(),
         };
 
@@ -3702,7 +3739,7 @@ impl DesktopView {
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let section = self.section;
 
-        let items: [(Section, &'static str, IconName); 11] = [
+        let items: [(Section, &'static str, IconName); 12] = [
             (Section::Dashboard, "Dashboard", IconName::LayoutDashboard),
             (Section::Projects, "Projects", IconName::Folder),
             (Section::Vault, "Vault", IconName::Eye),
@@ -3713,6 +3750,7 @@ impl DesktopView {
             (Section::Mfa, "MFA & security", IconName::CircleCheck),
             (Section::ImportExport, "Import / export", IconName::Replace),
             (Section::Shares, "Shares", IconName::Inbox),
+            (Section::Audit, "Audit", IconName::Inspector),
             (Section::Settings, "Settings", IconName::Settings),
         ];
 
@@ -3825,6 +3863,7 @@ impl DesktopView {
             Section::Mfa => self.do_refresh_mfa(window, cx),
             Section::ImportExport => self.do_refresh_backup(cx),
             Section::Shares => self.do_refresh_shares(window, cx),
+            Section::Audit => self.load_audit(cx),
             Section::Settings => self.do_refresh_settings(window, cx),
         }
     }
@@ -3896,11 +3935,22 @@ impl DesktopView {
     // ── Vault section ────────────────────────────────────────────────────
 
     fn render_vault_content(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut rows = Vec::new();
+        let q = self.vault_search_input.read(cx).value().to_lowercase();
+        let mut indices: Vec<usize> = Vec::new();
         for (index, item) in self.vault.items.iter().enumerate() {
+            if !q.is_empty()
+                && !item.title.to_lowercase().contains(&q)
+                && !item.subtitle.to_lowercase().contains(&q)
+            {
+                continue;
+            }
+            indices.push(index);
+        }
+        let mut rows = Vec::new();
+        for index in indices {
             let selected = self.vault.selected_index == Some(index);
-            let title = item.title.clone();
-            let subtitle = item.subtitle.clone();
+            let title = self.vault.items[index].title.clone();
+            let subtitle = self.vault.items[index].subtitle.clone();
 
             let row = div()
                 .id(SharedString::from(format!("vault-row-{index}")))
@@ -3933,6 +3983,7 @@ impl DesktopView {
         let mut page =
             self.page()
                 .child(self.page_header("Vault", "Your encrypted secrets, unlocked locally."))
+                .child(Input::new(&self.vault_search_input).w_full())
                 .child(
                     self.card("Items", "Select an item to view or reveal its secret.")
                         .child(
@@ -5858,6 +5909,133 @@ impl DesktopView {
                         this.do_generator_option_toggle(field, cx);
                     })),
             )
+    }
+
+    // ── Audit section (VTR-104 homogeneity: parity with web/extension/mobile) ──
+
+    fn render_audit(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Lazily load on first view.
+        if self.audit_rows.is_empty() && !self.audit_loading && self.audit_text.is_empty() {
+            self.load_audit(cx);
+        }
+
+        let loading = self.audit_loading;
+        let err = self.audit_text.clone();
+        let rows = self.audit_rows.clone();
+
+        v_flex()
+            .gap_3()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().text_2xl().font_weight(FontWeight::SEMIBOLD).child("Audit log"))
+                    .child(
+                        Button::new("audit-refresh")
+                            .label("Refresh")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.load_audit(cx);
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(theme::TEXT_MUTED)
+                    .child("Server-side timeline of logins, key rotations, and account changes. Metadata only — no secret contents."),
+            )
+            .when_some(
+                if loading {
+                    Some("Loading audit log…".to_string())
+                } else if !err.is_empty() {
+                    Some(err)
+                } else if rows.is_empty() {
+                    Some("No audit events yet.".to_string())
+                } else {
+                    None
+                },
+                |el, msg| el.child(div().text_sm().text_color(theme::TEXT_MUTED).child(msg)),
+            )
+            .when(!rows.is_empty(), |el| {
+                el.child(
+                    v_flex()
+                        .gap_1()
+                        .children(rows.iter().map(|r| {
+                            let when = chrono::DateTime::from_timestamp(r.created_at / 1000, 0)
+                                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                                .unwrap_or_else(|| "unknown".to_string());
+                            let actor = r.actor.clone().unwrap_or_else(|| "system".to_string());
+                            div()
+                                .flex()
+                                .justify_between()
+                                .gap_3()
+                                .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(r.action.clone()))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(theme::TEXT_MUTED)
+                                        .child(format!("{actor} · {when}")),
+                                )
+                        })),
+                    )
+            })
+    }
+
+    fn load_audit(&mut self, cx: &mut Context<Self>) {
+        let Some(token) = self.token.clone() else {
+            return;
+        };
+        let api = self.api();
+        self.audit_loading = true;
+        self.audit_text = String::new();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let res = api.audit_list(&token, Some(100), Some(0)).await;
+            this.update(cx, |this, cx| {
+                this.audit_loading = false;
+                match res {
+                    Ok(v) => {
+                        this.audit_rows = v
+                            .as_array()
+                            .cloned()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|e| {
+                                let id = e.get("id")?.as_i64()?;
+                                let action = e.get("action")?.as_str()?.to_string();
+                                let actor = e
+                                    .get("actor")
+                                    .and_then(|x| x.as_str())
+                                    .map(|s| s.to_string());
+                                let detail = e
+                                    .get("detail")
+                                    .and_then(|x| x.as_str())
+                                    .map(|s| s.to_string());
+                                let created_at =
+                                    e.get("created_at").and_then(|x| x.as_i64()).unwrap_or(0);
+                                let event_type = e
+                                    .get("event_type")
+                                    .and_then(|x| x.as_str())
+                                    .map(|s| s.to_string());
+                                Some(AuditRow {
+                                    id,
+                                    action,
+                                    actor,
+                                    detail,
+                                    created_at,
+                                    event_type,
+                                })
+                            })
+                            .collect();
+                    }
+                    Err(e) => this.audit_text = format!("Could not load audit log: {e}"),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     // ── MFA section ───────────────────────────────────────────────────────

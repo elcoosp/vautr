@@ -17,7 +17,9 @@ pub fn encode(bytes: &[u8]) -> String {
 
 /// STANDARD base64 decode (tolerates surrounding whitespace).
 pub fn decode(s: &str) -> CliResult<Vec<u8>> {
-    STANDARD.decode(s.trim()).map_err(crate::error::CliError::Base64)
+    STANDARD
+        .decode(s.trim())
+        .map_err(crate::error::CliError::Base64)
 }
 
 #[cfg(test)]

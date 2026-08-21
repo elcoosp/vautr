@@ -15,7 +15,16 @@ pub async fn run(cfg: &mut Config, api: &Api, args: CreateArgs) -> CliResult<()>
             name,
             description,
             proj_type,
-        } => create_project(cfg, api, &name, description.as_deref(), proj_type.as_deref()).await,
+        } => {
+            create_project(
+                cfg,
+                api,
+                &name,
+                description.as_deref(),
+                proj_type.as_deref(),
+            )
+            .await
+        }
         CreateArgs::Secret {
             key,
             project,
@@ -68,13 +77,17 @@ async fn create_secret(
         Some(v) => v.into_bytes(),
         None => {
             let mut buf = Vec::new();
-            std::io::stdin().read_to_end(&mut buf).map_err(CliError::Io)?;
+            std::io::stdin()
+                .read_to_end(&mut buf)
+                .map_err(CliError::Io)?;
             buf
         }
     };
 
     let ciphertext = crypto::encrypt_value(&key_b64, &plaintext)?;
-    let secret = api.create_secret(token, project_uuid, key, &ciphertext).await?;
+    let secret = api
+        .create_secret(token, project_uuid, key, &ciphertext)
+        .await?;
     println!("created secret {key} ({})", secret.uuid);
     Ok(())
 }

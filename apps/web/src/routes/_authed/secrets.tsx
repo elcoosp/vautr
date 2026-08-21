@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { performAction, release, reveal } from '@/lib/client';
 import { MlpApiError, mlp } from '@/lib/mlp';
+import { useMemo } from 'react';
 
 export const Route = createFileRoute('/_authed/secrets')({
   component: SecretsManagerPage,
@@ -33,6 +34,7 @@ function SecretsManagerPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const [revealError, setRevealError] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +60,19 @@ function SecretsManagerPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const q = query.trim().toLowerCase();
+  const visibleRows = useMemo(
+    () =>
+      q === ''
+        ? rows
+        : rows.filter(
+            ({ project, secret }) =>
+              project.name.toLowerCase().includes(q) ||
+              secret.key.toLowerCase().includes(q),
+          ),
+    [rows, q],
+  );
 
   // ZK reveal: the plaintext is decrypted in the wasm `WebClient` behind an
   // opaque handle and copied to the clipboard via `perform_action`; it never
@@ -108,6 +123,14 @@ function SecretsManagerPage() {
             <Lock className="size-4 text-accent" aria-hidden="true" />
             All secrets
           </CardTitle>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search secrets and projects…"
+            aria-label="Search secrets"
+            className="mt-2 w-full rounded-md border border-border bg-bg px-3 py-1.5 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
+          />
         </CardHeader>
         <CardContent>
           {!loading && rows.length === 0 ? (
@@ -124,6 +147,10 @@ function SecretsManagerPage() {
                 </span>
               }
             />
+          ) : visibleRows.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              No secrets match “{query}”.
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -135,7 +162,7 @@ function SecretsManagerPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map(({ project, secret }) => (
+                {visibleRows.map(({ project, secret }) => (
                   <TableRow key={secret.uuid}>
                     <TableCell>
                       <Link

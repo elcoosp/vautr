@@ -1,8 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { getMobileClient } from '@vautr/client-sdk/mobile';
 import { KeyRound } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { TextInput, View } from 'react-native';
 import { SecretOverlay } from '../../components/SecretOverlay';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
@@ -55,6 +55,7 @@ function SecretsScreen() {
   const router = useRouter();
   const [entries, setEntries] = useState<SecretsEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -79,6 +80,19 @@ function SecretsScreen() {
 
   const hasNativeVault = getMobileClient() !== null;
 
+  const q = query.trim().toLowerCase();
+  const visibleEntries = useMemo(
+    () =>
+      q === '' || !entries
+        ? entries ?? []
+        : entries.filter(
+            ({ project, secret }) =>
+              secret.key.toLowerCase().includes(q) ||
+              project.name.toLowerCase().includes(q),
+          ),
+    [q, entries],
+  );
+
   return (
     <View className="gap-5">
       <View className="flex-row items-center justify-between">
@@ -94,6 +108,16 @@ function SecretsScreen() {
       </View>
 
       <Separator />
+
+      <TextInput
+        className="rounded border border-border bg-background px-3 py-2 text-foreground"
+        placeholder="Search secrets…"
+        placeholderTextColor="#6b7280"
+        value={query}
+        onChangeText={setQuery}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
 
       {error ? (
         <Alert variant="destructive">
@@ -116,9 +140,15 @@ function SecretsScreen() {
           description="Add secrets inside a project to see them here."
           action={{ label: 'Manage in Projects', onPress: () => router.navigate({ to: '/' }) }}
         />
+      ) : visibleEntries.length === 0 ? (
+        <EmptyState
+          icon={KeyRound}
+          title="No matches."
+          description={`Nothing matches “${query}”.`}
+        />
       ) : (
         <View className="gap-3">
-          {entries.map((entry) => (
+          {visibleEntries.map((entry) => (
             <SecretRow key={entry.secret.uuid} entry={entry} hasNativeVault={hasNativeVault} />
           ))}
         </View>

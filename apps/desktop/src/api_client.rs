@@ -769,19 +769,13 @@ impl ApiClient {
 
     /// `GET /shares/inbox` — list shares awaiting the current user (VTR-072).
     /// Returns the raw JSON array of incoming shares.
-    pub async fn get_share_inbox(
-        &self,
-        token: &str,
-    ) -> Result<serde_json::Value, String> {
+    pub async fn get_share_inbox(&self, token: &str) -> Result<serde_json::Value, String> {
         self.send(Method::GET, token, "/shares/inbox", None).await
     }
 
     /// `GET /shares/groups` — list the groups the current user belongs to,
     /// including pending invites (VTR-072). Returns the raw JSON array.
-    pub async fn get_group_inbox(
-        &self,
-        token: &str,
-    ) -> Result<serde_json::Value, String> {
+    pub async fn get_group_inbox(&self, token: &str) -> Result<serde_json::Value, String> {
         self.send(Method::GET, token, "/shares/groups", None).await
     }
 }

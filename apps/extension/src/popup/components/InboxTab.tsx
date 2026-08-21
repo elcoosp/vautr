@@ -20,7 +20,7 @@ interface IncomingShare {
   item_uuid: string;
   wrapped_sik: string;
   ephemeral_public_key: string;
-  payload: string | null;
+  encrypted_payload: string | null;
 }
 
 export function InboxTab({ mlp, client }: InboxTabProps) {
@@ -101,17 +101,17 @@ export function InboxTab({ mlp, client }: InboxTabProps) {
                 <CardDescription className="text-xs">From {share.sender_uuid}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 py-2">
-                {share.payload ? (
+                {share.encrypted_payload ? (
                   <div className="space-y-1">
-                    <Label>Decrypted content</Label>
+                    <Label>Encrypted payload</Label>
                     <pre className="max-h-40 overflow-auto rounded border bg-muted p-2 text-xs">
-                      {share.payload}
+                      {share.encrypted_payload}
                     </pre>
                   </div>
                 ) : null}
                 <div className="flex gap-2">
-                  {share.payload ? (
-                    <Badge variant="secondary">Decrypted</Badge>
+                  {share.encrypted_payload ? (
+                    <Badge variant="secondary">Encrypted</Badge>
                   ) : (
                     <Button
                       size="sm"

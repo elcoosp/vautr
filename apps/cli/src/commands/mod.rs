@@ -3,7 +3,9 @@
 pub mod common;
 pub mod create;
 pub mod edit;
+pub mod export;
 pub mod get;
+pub mod import;
 pub mod list;
 pub mod login;
 pub mod machine_account;
@@ -12,6 +14,8 @@ pub mod run;
 
 use crate::api::Api;
 use crate::cli::Command;
+use crate::commands::export::run as export_run;
+use crate::commands::import::run as import_run;
 use crate::error::CliResult;
 
 /// Run the parsed subcommand against a freshly loaded config + API client.
@@ -34,6 +38,8 @@ pub async fn dispatch(command: Command, server_override: Option<&str>) -> CliRes
         Command::Run(args) => run::run(&cfg, &api, &args.command).await,
         Command::Create { command } => create::run(&mut cfg, &api, command).await,
         Command::Edit { command } => edit::run(&cfg, &api, command).await,
+        Command::Export => export_run(&cfg, &api).await,
+        Command::Import(args) => import_run(&cfg, &api, args).await,
     }
 }
 

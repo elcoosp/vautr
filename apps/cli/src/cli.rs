@@ -50,6 +50,11 @@ pub enum Command {
         #[command(subcommand)]
         command: EditArgs,
     },
+    /// Export an encrypted backup archive of the vault.
+    Export,
+    /// Validate a local `.vautr` backup archive (restore test) without
+    /// touching the live store.
+    Import(ImportArgs),
 }
 
 /// `login` arguments.
@@ -155,4 +160,11 @@ pub enum EditArgs {
         #[arg(long)]
         value: Option<String>,
     },
+}
+
+/// `import` arguments.
+#[derive(Debug, Args)]
+pub struct ImportArgs {
+    /// Path to a `.vautr` backup archive to validate (restore test).
+    pub path: String,
 }

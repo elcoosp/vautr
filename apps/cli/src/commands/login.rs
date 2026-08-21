@@ -33,8 +33,8 @@ pub async fn run(cfg: &mut Config, username: Option<String>) -> CliResult<()> {
     let api = Api::new(&cfg.server_url)?;
 
     // OPAQUE client login.
-    let (lreq, cstate) =
-        opaque::client_login_start(password.as_bytes()).map_err(|e| CliError::Crypto(e.to_string()))?;
+    let (lreq, cstate) = opaque::client_login_start(password.as_bytes())
+        .map_err(|e| CliError::Crypto(e.to_string()))?;
     let login_start_b64 = b64::encode(&lreq);
     let login_response_b64 = api.login_start(&username, &login_start_b64).await?;
     let login_response = b64::decode(&login_response_b64)?;
@@ -55,6 +55,9 @@ pub async fn run(cfg: &mut Config, username: Option<String>) -> CliResult<()> {
 
     // The raw token is sensitive; print a truncated hint only.
     println!("logged in as {username}");
-    println!("session stored (token {}…)", &session_token[..session_token.len().min(12)]);
+    println!(
+        "session stored (token {}…)",
+        &session_token[..session_token.len().min(12)]
+    );
     Ok(())
 }

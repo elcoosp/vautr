@@ -142,7 +142,10 @@ mod tests {
     fn honors_vautr_config_env_override() {
         let p = std::env::var("VAUTR_CONFIG").ok();
         std::env::set_var("VAUTR_CONFIG", "/tmp/custom-vautr-config.json");
-        assert_eq!(Config::config_path(), PathBuf::from("/tmp/custom-vautr-config.json"));
+        assert_eq!(
+            Config::config_path(),
+            PathBuf::from("/tmp/custom-vautr-config.json")
+        );
         match p {
             Some(v) => std::env::set_var("VAUTR_CONFIG", v),
             None => std::env::remove_var("VAUTR_CONFIG"),
@@ -151,19 +154,24 @@ mod tests {
 
     #[test]
     fn round_trips_via_file() {
-        let path = std::env::temp_dir().join(format!("vautr_cli_cfg_test_{}.json", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("vautr_cli_cfg_test_{}.json", uuid::Uuid::new_v4()));
         let prev = std::env::var("VAUTR_CONFIG").ok();
         std::env::set_var("VAUTR_CONFIG", path.to_str().unwrap());
 
         let mut cfg = Config::with_server_url("http://x:8080");
         cfg.session_token = Some("tok".to_string());
-        cfg.project_keys.insert("p1".to_string(), "a2V5".to_string());
+        cfg.project_keys
+            .insert("p1".to_string(), "a2V5".to_string());
         cfg.save().unwrap();
 
         let loaded = Config::load().unwrap();
         assert_eq!(loaded.server_url, "http://x:8080");
         assert_eq!(loaded.session_token.as_deref(), Some("tok"));
-        assert_eq!(loaded.project_keys.get("p1").map(String::as_str), Some("a2V5"));
+        assert_eq!(
+            loaded.project_keys.get("p1").map(String::as_str),
+            Some("a2V5")
+        );
 
         let _ = std::fs::remove_file(&path);
         match prev {

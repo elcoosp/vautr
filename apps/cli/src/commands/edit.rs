@@ -67,11 +67,7 @@ async fn edit_secret(
     let updated = api
         .update_secret(token, &secret.uuid, new_key, value_ct.as_deref())
         .await?;
-    println!(
-        "updated secret {} ({})",
-        updated.key,
-        updated.uuid
-    );
+    println!("updated secret {} ({})", updated.key, updated.uuid);
     Ok(())
 }
 
@@ -79,11 +75,7 @@ fn is_uuid(s: &str) -> bool {
     uuid::Uuid::parse_str(s).is_ok()
 }
 
-async fn find_secret_by_uuid(
-    api: &Api,
-    token: &str,
-    uuid: &str,
-) -> CliResult<crate::api::Secret> {
+async fn find_secret_by_uuid(api: &Api, token: &str, uuid: &str) -> CliResult<crate::api::Secret> {
     let projects = api.list_projects(token).await?;
     for p in &projects {
         let secrets = api.list_secrets(token, &p.uuid).await?;

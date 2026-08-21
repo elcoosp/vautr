@@ -20,12 +20,12 @@ pub async fn run(cfg: &Config, api: &Api, project: Option<&str>) -> CliResult<()
                 continue;
             }
         }
-        let proj_type = if p.proj_type == "shared" { "shared" } else { "personal" };
-        println!(
-            "{}  ({proj_type}, {})",
-            p.name,
-            p.uuid
-        );
+        let proj_type = if p.proj_type == "shared" {
+            "shared"
+        } else {
+            "personal"
+        };
+        println!("{}  ({proj_type}, {})", p.name, p.uuid);
         if let Some(d) = &p.description {
             if !d.is_empty() {
                 println!("    {d}");

@@ -119,70 +119,147 @@ fn live_server_cli_e2e() {
         }
     }
     if !server_up(&server) {
-        eprintln!(
-            "SKIP: no live server at {server} (set VAUTR_SERVER and/or VAUTR_SERVER_BIN)"
-        );
+        eprintln!("SKIP: no live server at {server} (set VAUTR_SERVER and/or VAUTR_SERVER_BIN)");
         return;
     }
 
-    let config = std::env::temp_dir().join(format!("vautr_cli_e2e_cfg_{}.json", uuid::Uuid::new_v4()));
+    let config =
+        std::env::temp_dir().join(format!("vautr_cli_e2e_cfg_{}.json", uuid::Uuid::new_v4()));
     let config = config.to_str().unwrap().to_string();
     let user = format!("cli-e2e-{}@example.com", uuid::Uuid::new_v4().to_string());
 
     // 1. register
     let o = run_cli(&server, &config, &["register", &user], None);
     assert!(o.status.success(), "register failed: {}", err(&o));
-    assert!(out(&o).contains("registered"), "register output: {}", out(&o));
+    assert!(
+        out(&o).contains("registered"),
+        "register output: {}",
+        out(&o)
+    );
 
     // 2. login (OPAQUE)
     let o = run_cli(&server, &config, &["login", &user], None);
     assert!(o.status.success(), "login failed: {}", err(&o));
-    assert!(out(&o).contains("logged in as"), "login output: {}", out(&o));
+    assert!(
+        out(&o).contains("logged in as"),
+        "login output: {}",
+        out(&o)
+    );
 
     // 3. create project
-    let o = run_cli(&server, &config, &["create", "project", "e2e-app", "--description", "E2E"], None);
+    let o = run_cli(
+        &server,
+        &config,
+        &["create", "project", "e2e-app", "--description", "E2E"],
+        None,
+    );
     assert!(o.status.success(), "create project failed: {}", err(&o));
-    assert!(out(&o).contains("created project"), "create project output: {}", out(&o));
+    assert!(
+        out(&o).contains("created project"),
+        "create project output: {}",
+        out(&o)
+    );
     let project = read_project_uuid(&config);
 
     // 4. create secrets (flag + stdin)
-    let o = run_cli(&server, &config, &["create", "secret", "API_TOKEN", "--project", &project, "--value", "tok-abc-123"], None);
+    let o = run_cli(
+        &server,
+        &config,
+        &[
+            "create",
+            "secret",
+            "API_TOKEN",
+            "--project",
+            &project,
+            "--value",
+            "tok-abc-123",
+        ],
+        None,
+    );
     assert!(o.status.success(), "create secret failed: {}", err(&o));
-    let o = run_cli(&server, &config, &["create", "secret", "DB_PASS", "--project", &project], Some("pw-x\n"));
-    assert!(o.status.success(), "create secret (stdin) failed: {}", err(&o));
+    let o = run_cli(
+        &server,
+        &config,
+        &["create", "secret", "DB_PASS", "--project", &project],
+        Some("pw-x\n"),
+    );
+    assert!(
+        o.status.success(),
+        "create secret (stdin) failed: {}",
+        err(&o)
+    );
 
     // 5. list
     let o = run_cli(&server, &config, &["list"], None);
     assert!(o.status.success(), "list failed: {}", err(&o));
-    assert!(out(&o).contains("API_TOKEN"), "list missing API_TOKEN: {}", out(&o));
-    assert!(out(&o).contains("DB_PASS"), "list missing DB_PASS: {}", out(&o));
+    assert!(
+        out(&o).contains("API_TOKEN"),
+        "list missing API_TOKEN: {}",
+        out(&o)
+    );
+    assert!(
+        out(&o).contains("DB_PASS"),
+        "list missing DB_PASS: {}",
+        out(&o)
+    );
 
     // 6. get (reveal + decrypt)
     let o = run_cli(&server, &config, &["get", "API_TOKEN"], None);
     assert!(o.status.success(), "get failed: {}", err(&o));
     assert_eq!(out(&o).trim(), "tok-abc-123", "get value mismatch");
-    let o = run_cli(&server, &config, &["get", &format!("e2e-app/DB_PASS")], None);
+    let o = run_cli(
+        &server,
+        &config,
+        &["get", &format!("e2e-app/DB_PASS")],
+        None,
+    );
     assert_eq!(out(&o).trim(), "pw-x", "scoped get value mismatch");
 
     // 7. run with env injection + assert
     let o = run_cli(
         &server,
         &config,
-        &["run", "--", "sh", "-c", "printf '%s|%s' \"$API_TOKEN\" \"$DB_PASS\""],
+        &[
+            "run",
+            "--",
+            "sh",
+            "-c",
+            "printf '%s|%s' \"$API_TOKEN\" \"$DB_PASS\"",
+        ],
         None,
     );
     assert!(o.status.success(), "run failed: {}", err(&o));
-    assert_eq!(out(&o).trim(), "tok-abc-123|pw-x", "run env injection mismatch");
+    assert_eq!(
+        out(&o).trim(),
+        "tok-abc-123|pw-x",
+        "run env injection mismatch"
+    );
 
     // 8. machine-account provision (issue/use an access token)
-    let o = run_cli(&server, &config, &["machine-account", "--name", "ci-runner"], None);
+    let o = run_cli(
+        &server,
+        &config,
+        &["machine-account", "--name", "ci-runner"],
+        None,
+    );
     assert!(o.status.success(), "machine-account failed: {}", err(&o));
     let otext = out(&o);
-    assert!(otext.contains("machine account: ci-runner"), "ma output: {otext}");
-    assert!(otext.contains("access token (shown once):"), "ma token missing: {otext}");
+    assert!(
+        otext.contains("machine account: ci-runner"),
+        "ma output: {otext}"
+    );
+    assert!(
+        otext.contains("access token (shown once):"),
+        "ma token missing: {otext}"
+    );
 
     // 9. edit secret value, then get reflects it
-    let o = run_cli(&server, &config, &["edit", "secret", "API_TOKEN", "--value", "rotated-xyz"], None);
+    let o = run_cli(
+        &server,
+        &config,
+        &["edit", "secret", "API_TOKEN", "--value", "rotated-xyz"],
+        None,
+    );
     assert!(o.status.success(), "edit failed: {}", err(&o));
     let o = run_cli(&server, &config, &["get", "API_TOKEN"], None);
     assert_eq!(out(&o).trim(), "rotated-xyz", "edit not reflected");
