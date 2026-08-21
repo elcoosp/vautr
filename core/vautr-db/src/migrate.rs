@@ -1,13 +1,19 @@
-//! Schema bootstrap for the client local DB.
+//! Schema bootstrap + versioned migrations for the client local DB.
 //! Spec: docs/architecture/db-contract.md §2 (PRAGMAs), §3 (tables), §4 (FTS5).
 //! Opens SQLite WAL, sets `synchronous=NORMAL`, creates STRICT tables, the
 //! `items_fts` virtual table with insert/update/delete triggers, and the
 //! `CHECK(state IN (...))` constraint on `local_blacklist`.
+//!
+//! Migrations are versioned: a `migrations` bookkeeping table records the highest
+//! applied version, and `run_migrations` applies any pending `up` statements in
+//! order (each with an optional `down` for rollback). The initial client schema
+//! is migration `1`; future schema changes append a new `Migration` entry rather
+//! than editing the `SCHEMA` constant.
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 
 /// Full client schema as one batch (idempotent via `IF NOT EXISTS`).
-/// SQLite executes multiple statements in a single unprepared call.
+/// This is migration version 1 and is applied by `run_migrations`.
 const SCHEMA: &str = r#"
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
@@ -80,8 +86,86 @@ CREATE TRIGGER IF NOT EXISTS overviews_au AFTER UPDATE ON item_overviews BEGIN
 END;
 "#;
 
-/// Open and initialize the client SQLite database per db-contract §2–4.
-pub async fn init(db: &DatabaseConnection) -> Result<(), DbErr> {
-    db.execute_unprepared(SCHEMA).await?;
+/// A single, ordered schema migration. `up` is applied once when the current
+/// recorded version is below `version`; `down` (if present) is the inverse used
+/// by `rollback_to` for disaster recovery / downgrade testing.
+pub struct Migration {
+    pub version: u32,
+    pub name: &'static str,
+    pub up: &'static str,
+    pub down: Option<&'static str>,
+}
+
+/// Ordered list of all migrations. The first entry is the baseline client
+/// schema (migration 1). Append new migrations here with strictly increasing
+/// `version` values — never edit an already-shipped `up`/`down`.
+pub const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    name: "baseline_client_schema",
+    up: SCHEMA,
+    down: Some(
+        "DROP TRIGGER IF EXISTS overviews_au; \
+         DROP TRIGGER IF EXISTS overviews_ad; \
+         DROP TRIGGER IF EXISTS overviews_ai; \
+         DROP TABLE IF EXISTS items_fts; \
+         DROP TABLE IF EXISTS quarantine; \
+         DROP TABLE IF EXISTS local_blacklist; \
+         DROP TABLE IF EXISTS sync_meta; \
+         DROP TABLE IF EXISTS item_payloads; \
+         DROP TABLE IF EXISTS item_overviews;",
+    ),
+}];
+
+/// Highest migration version defined in this build.
+pub fn latest_version() -> u32 {
+    MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0)
+}
+
+/// Apply every migration in `MIGRATIONS`, in ascending order, recording each in
+/// the `migrations` bookkeeping table. Each `up` script is written with
+/// `IF NOT EXISTS`/idempotent DDL, and the bookkeeping row uses `INSERT OR
+/// IGNORE`, so re-running is always a safe no-op once applied.
+pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS migrations (\
+            version INTEGER PRIMARY KEY,\
+            name TEXT NOT NULL,\
+            applied_at INTEGER NOT NULL\
+        ) STRICT;",
+    )
+    .await?;
+    for m in MIGRATIONS.iter() {
+        db.execute_unprepared(m.up).await?;
+        db.execute_unprepared(&format!(
+            "INSERT OR IGNORE INTO migrations (version, name, applied_at) \
+             VALUES ({}, '{}', strftime('%s','now'))",
+            m.version, m.name
+        ))
+        .await?;
+    }
     Ok(())
+}
+
+/// Roll back every migration with `version > target` (in descending order),
+/// applying each migration's `down` script. Used for downgrade testing / disaster
+/// recovery. `down` must be `Some` for every migration above `target`.
+pub async fn rollback_to(db: &DatabaseConnection, target: u32) -> Result<(), DbErr> {
+    for m in MIGRATIONS.iter().filter(|m| m.version > target).rev() {
+        let down = m
+            .down
+            .ok_or_else(|| DbErr::Custom(format!("migration {} has no down script", m.version)))?;
+        db.execute_unprepared(down).await?;
+        db.execute_unprepared(&format!(
+            "DELETE FROM migrations WHERE version = {}",
+            m.version
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+/// Open and initialize the client SQLite database per db-contract §2–4.
+/// Applies the versioned migration set (baseline is migration 1).
+pub async fn init(db: &DatabaseConnection) -> Result<(), DbErr> {
+    run_migrations(db).await
 }

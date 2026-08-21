@@ -199,30 +199,84 @@ class VautrNativeModule : Module() {
 }
 
 /**
- * Android Keystore-backed `SecureEnclaveBridge`. The SVK is encrypted with a
- * key stored in the Android Keystore and the ciphertext persisted in
- * `SharedPreferences`; biometric (or device-credential) auth gates reads.
+ * Android Keystore-backed `SecureEnclaveBridge`. The 32-byte SVK is encrypted at
+ * rest with an AES-GCM key held in the Android Keystore (hardware-backed where
+ * available) and the resulting ciphertext persisted in `SharedPreferences`. No
+ * per-call biometric prompt is required, so biometric unlock on app open can
+ * silently recover the SVK (the Keystore key itself is hardware-protected).
  */
 class AndroidSecureEnclaveBridge(private val context: Context) : SecureEnclaveBridge {
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences("vautr.secure", Context.MODE_PRIVATE)
     }
+    private val keystore = "AndroidKeyStore"
+    private val keyAlias = "vautr_svk"
+    private val prefsEnc = "svk_enc"
+    private val prefsIv = "svk_iv"
+    private val prefsLegacy = "svk"
+
+    private fun keyStore(): KeyStore =
+        KeyStore.getInstance(keystore).apply { load(null) }
+
+    private fun secretKey(): javax.crypto.SecretKey {
+        val ks = keyStore()
+        ks.getKey(keyAlias, null)?.let { return it as javax.crypto.SecretKey }
+        val generator = javax.crypto.KeyGenerator.getInstance(
+            android.security.keystore.KeyProperties.KEY_ALGORITHM_AES,
+            keystore,
+        )
+        generator.init(
+            android.security.keystore.KeyGenParameterSpec.Builder(
+                keyAlias,
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
+                    android.security.keystore.KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build(),
+        )
+        return generator.generateKey()
+    }
 
     override fun saveSvk(svk: ByteArray) {
-        val b64 = android.util.Base64.encodeToString(svk, android.util.Base64.NO_WRAP)
-        prefs.edit().putString("svk", b64).apply()
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey())
+        val iv = cipher.iv
+        val enc = cipher.doFinal(svk)
+        prefs.edit()
+            .remove(prefsLegacy)
+            .putString(prefsIv, android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
+            .putString(prefsEnc, android.util.Base64.encodeToString(enc, android.util.Base64.NO_WRAP))
+            .apply()
     }
 
     override fun loadSvk(): ByteArray? {
-        val b64 = prefs.getString("svk", null) ?: return null
-        return android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
+        val encB64 = prefs.getString(prefsEnc, null)
+        if (encB64 != null) {
+            val ivB64 = prefs.getString(prefsIv, null) ?: return null
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                javax.crypto.Cipher.DECRYPT_MODE,
+                secretKey(),
+                javax.crypto.spec.GCMParameterSpec(128, android.util.Base64.decode(ivB64, android.util.Base64.NO_WRAP)),
+            )
+            return cipher.doFinal(android.util.Base64.decode(encB64, android.util.Base64.NO_WRAP))
+        }
+        // Fall back to the legacy plaintext-base64 form written by older builds.
+        val legacy = prefs.getString(prefsLegacy, null) ?: return null
+        return android.util.Base64.decode(legacy, android.util.Base64.NO_WRAP)
     }
 
     override fun deleteSvk() {
-        prefs.edit().remove("svk").apply()
+        prefs.edit().remove(prefsEnc).remove(prefsIv).remove(prefsLegacy).apply()
+        try {
+            keyStore().deleteEntry(keyAlias)
+        } catch (_: Exception) {
+            // Key already absent — ignore.
+        }
     }
 
     override fun hasSvk(): Boolean {
-        return prefs.contains("svk")
+        return prefs.contains(prefsEnc) || prefs.contains(prefsLegacy)
     }
 }

@@ -58,4 +58,26 @@ Open a GitHub Issue using the Feature Request template. Please explain *why* the
 - **React/TypeScript:** Follow the existing biome configuration.
 - **Commit Messages:** We follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (e.g., `feat:`, `fix:`, `docs:`, `refactor:`).
 
+## 🚀 Local Onboarding & Build Scripts
+
+The repo provides thin wrappers so a fresh checkout builds with one command. See `AGENTS.md` for the full dev reference.
+
+- **`make help`** — list all targets.
+- **`make web-bootstrap`** — builds the WASM crypto modules (`scripts/prepare-wasm.sh`) and installs web deps.
+- **`make mobile-bootstrap`** — builds the `vautr-ffi` native lib, regenerates the Swift/Kotlin bindings, and installs mobile deps. The Android `.so` cross-compile needs the NDK (`cargo ndk -t arm64-v8a build -p vautr-ffi --release`) — see the `vautr-mobile-uniffi` skill.
+- **`make server-build`** — release build of the Rust server.
+- **`make test-all`** — `cargo test --workspace` plus the web/extension TS suites.
+- **`make prepare-wasm` / `make check-wasm`** — (re)build or verify the prebuilt WASM artifacts. The clients `build` scripts run `check-wasm` so a missing `.wasm` fails the build fast instead of silently shipping the throwing dev shim.
+
+### Verification gate
+
+Before opening a PR, run the same gates CI runs:
+
+```bash
+cargo fmt --all && cargo clippy --workspace --all-targets -D warnings
+cargo test --workspace
+pnpm -r typecheck && pnpm -r test
+pnpm prepare:wasm   # ensure real crypto is built
+```
+
 Thank you for building the moat with us.

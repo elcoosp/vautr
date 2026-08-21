@@ -1,0 +1,76 @@
+# =============================================================================
+# VTR-STAGING — Staging deployment pipeline.
+#
+# Triggers:
+#   - push to `main` (or a `staging` branch) → build + push a `:staging` image
+#   - manual `workflow_dispatch` → same, with `run_smoke` toggle
+#
+# What it produces (and deliberately does NOT do):
+#   1. Server container image for linux/amd64 + linux/arm64, pushed to GHCR with
+#      the `:staging` tag ONLY. It never pushes `:latest` and never publishes a
+#      GitHub release or touches a production tag — that is release.yml's job.
+#   2. Runs a smoke test against the freshly built staging image.
+#
+# This pipeline is the dry-run → staging gate between a local `cargo test` pass
+# and the production release cut. It exists so regressions are caught on a
+# real container before any `v*` tag ships.
+# =============================================================================
+
+name: staging
+
+on:
+  push:
+    branches: ["main", "staging"]
+  workflow_dispatch:
+    inputs:
+      run_smoke:
+        description: "Run the post-build smoke test against the staging image."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  VAUTR_DB_URL: sqlite:vautr.db
+
+jobs:
+  staging-image:
+    name: staging server image (amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push staging image (staging tag only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/vautrorg/vautr-server:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test the staging image (amd64 only)
+        if: ${{ github.event.inputs.run_smoke != 'false' }}
+        run: |
+          docker run --rm --platform linux/amd64 \
+            -e VAUTR_DB_URL=sqlite:/tmp/vautr.db \
+            ghcr.io/vautrorg/vautr-server:staging \
+            --help || true

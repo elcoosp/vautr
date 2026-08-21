@@ -8,6 +8,6 @@
 //! - `error` — `AuthError` (data.md §8.4).
 //! - `session` — bearer token handling after successful login.
 
-pub mod state;
 pub mod error;
 pub mod session;
+pub mod state;
