@@ -7,6 +7,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import java.security.KeyStore
 import uniffi.vautr_ffi.FfiGroupKey
 import uniffi.vautr_ffi.FfiShareBundle
 import uniffi.vautr_ffi.FfiWrappedGroupKey
