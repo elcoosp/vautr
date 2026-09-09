@@ -5,32 +5,23 @@
   <p>Constitutionally open‑source. Forever free to self‑host. Built in Rust.</p>
 
   <!-- Badges -->
-  <p>
-    <a href="./LICENSE">
-      <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License: AGPL v3">
+  <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center;">
+    <a href="./LICENSE" style="text-decoration: none;">
+      <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License">
     </a>
-    <a href="./CONSTITUTION.md">
-      <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host: Free Forever">
+    <a href="./CONSTITUTION.md" style="text-decoration: none;">
+      <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host">
     </a>
-    <a href="https://github.com/vautrorg/vautr/releases">
-      <img src="https://img.shields.io/github/v/release/vautrorg/vautr?style=flat-square" alt="GitHub release">
+    <a href="https://matrix.to/#/#vautr:matrix.org" style="text-decoration: none;">
+      <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat">
     </a>
-    <a href="https://github.com/vautrorg/vautr/stargazers">
-      <img src="https://img.shields.io/github/stars/vautrorg/vautr?style=flat-square" alt="GitHub stars">
-    </a>
-    <a href="https://github.com/vautrorg/vautr/actions">
-      <img src="https://img.shields.io/github/actions/workflow/status/vautrorg/vautr/ci.yml?branch=main&style=flat-square" alt="Build Status">
-    </a>
-    <a href="https://codecov.io/gh/vautrorg/vautr">
-      <img src="https://img.shields.io/codecov/c/github/vautrorg/vautr?style=flat-square" alt="Code Coverage">
-    </a>
-    <a href="https://github.com/vautrorg/vautr/security">
-      <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security: AI Reviewed">
-    </a>
-    <a href="https://matrix.to/#/#vautr:matrix.org">
-      <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat on Matrix">
-    </a>
-  </p>
+    <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security">
+    <img src="https://img.shields.io/badge/Built%20with-Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
+    <img src="https://img.shields.io/badge/Client-React%20Native-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React Native">
+    <img src="https://img.shields.io/badge/Language-TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+    <img src="https://img.shields.io/badge/Database-SQLite-07405E?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
+    <img src="https://img.shields.io/badge/Target-WASM-654FF0?style=flat-square&logo=webassembly&logoColor=white" alt="WASM">
+  </div>
 </div>
 
 ---
