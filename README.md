@@ -6,15 +6,9 @@
 
   <!-- Badges -->
   <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center;">
-    <a href="./LICENSE" style="text-decoration: none;">
       <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License">
-    </a>
-    <a href="./CONSTITUTION.md" style="text-decoration: none;">
       <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host">
-    </a>
-    <a href="https://matrix.to/#/#vautr:matrix.org" style="text-decoration: none;">
       <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat">
-    </a>
     <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security">
     <img src="https://img.shields.io/badge/Built%20with-Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
     <img src="https://img.shields.io/badge/Client-React%20Native-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React Native">
