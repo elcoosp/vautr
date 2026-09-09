@@ -22,6 +22,14 @@
       "package": "com.vautr.mobile",
       "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"]
     },
+    "autolinking": {
+      "android": {
+        "modules": ["@vautr/native"]
+      },
+      "ios": {
+        "modules": ["@vautr/native"]
+      }
+    },
     "plugins": [
       [
         "expo-local-authentication",

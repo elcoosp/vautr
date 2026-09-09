@@ -1,7 +1,10 @@
+Here’s your remade README — with the **Vautr title removed**, **logo enlarged** (width 200), **more badges** (version, stars, downloads, coverage), **flat-square badge style**, and **all emojis stripped** out.
+
+---
+
+```markdown
 <div align="center">
-  <img src="brand/logo.svg" alt="Vautr Logo" width="120"/>
-  
-  <h1>Vautr</h1>
+  <img src="brand/logo.svg" alt="Vautr Logo" width="200"/>
   
   <p><strong>The password manager that belongs to you.</strong></p>
   <p>Constitutionally open‑source. Forever free to self‑host. Built in Rust.</p>
@@ -9,26 +12,35 @@
   <!-- Badges -->
   <p>
     <a href="./LICENSE">
-      <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3">
+      <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License: AGPL v3">
     </a>
     <a href="./CONSTITUTION.md">
-      <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success.svg" alt="Self-Host: Free Forever">
+      <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host: Free Forever">
+    </a>
+    <a href="https://github.com/vautrorg/vautr/releases">
+      <img src="https://img.shields.io/github/v/release/vautrorg/vautr?style=flat-square" alt="GitHub release">
+    </a>
+    <a href="https://github.com/vautrorg/vautr/stargazers">
+      <img src="https://img.shields.io/github/stars/vautrorg/vautr?style=flat-square" alt="GitHub stars">
     </a>
     <a href="https://github.com/vautrorg/vautr/actions">
-      <img src="https://img.shields.io/github/actions/workflow/status/vautrorg/vautr/ci.yml?branch=main" alt="Build Status">
+      <img src="https://img.shields.io/github/actions/workflow/status/vautrorg/vautr/ci.yml?branch=main&style=flat-square" alt="Build Status">
+    </a>
+    <a href="https://codecov.io/gh/vautrorg/vautr">
+      <img src="https://img.shields.io/codecov/c/github/vautrorg/vautr?style=flat-square" alt="Code Coverage">
     </a>
     <a href="https://github.com/vautrorg/vautr/security">
-      <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen.svg" alt="Security: AI Reviewed">
+      <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security: AI Reviewed">
     </a>
     <a href="https://matrix.to/#/#vautr:matrix.org">
-      <img src="https://img.shields.io/badge/Chat-Matrix-purple.svg" alt="Chat on Matrix">
+      <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat on Matrix">
     </a>
   </p>
 </div>
 
 ---
 
-## 🛡️ The Vautr Constitution
+## The Vautr Constitution
 
 Security software requires more than open‑source code – it requires **open governance**.  
 The [**Vautr Constitution**](./CONSTITUTION.md) legally binds the project to its core principles:
@@ -40,7 +52,7 @@ The [**Vautr Constitution**](./CONSTITUTION.md) legally binds the project to its
 
 ---
 
-## 🚀 Why Vautr?
+## Why Vautr?
 
 - **Zero Enshittification** – Structural guarantees prevent PE‑style erosion.  
 - **Rust Core** – Memory‑safe, blazingly fast, and lightweight.  
@@ -51,7 +63,7 @@ The [**Vautr Constitution**](./CONSTITUTION.md) legally binds the project to its
 
 ---
 
-## 📐 Specification‑Driven Development
+## Specification‑Driven Development
 
 Vautr is built from a complete, layered specification suite (see [`docs/spec/`](./docs/spec/)):
 
@@ -67,7 +79,7 @@ Every PR is checked against these specifications. Requirements are traced from v
 
 ---
 
-## 🏗️ Architecture (High‑Level)
+## Architecture (High‑Level)
 
 Vautr uses a **monorepo** with a Rust core (Cargo workspace) and platform‑specific frontends (Turborepo).
 
@@ -107,7 +119,7 @@ See [`docs/spec/architecture.md`](./docs/spec/architecture.md) for all ADRs and 
 
 ---
 
-## 🏠 Self‑Hosting (Quick Start)
+## Self‑Hosting (Quick Start)
 
 Vautr is designed to be yours. Spin up your own instance in seconds using Docker:
 
@@ -125,7 +137,7 @@ Then connect any client (desktop, mobile, web, extension) by pointing it to `htt
 
 ---
 
-## 🧠 AI‑Assisted Development
+## AI‑Assisted Development
 
 Every Pull Request is automatically vetted by AI security review pipelines (PR‑Agent) alongside human maintainers to catch vulnerabilities before merge.  
 We also enforce:
@@ -136,7 +148,7 @@ We also enforce:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions from the community – Rust optimisations, UI improvements, documentation, or bug reports.  
 
@@ -144,7 +156,7 @@ Please read our [**Contributing Guide**](./CONTRIBUTING.md) for details on the c
 
 ---
 
-## ⚖️ License
+## License
 
 Vautr is licensed under the [GNU Affero General Public License v3.0](./LICENSE).  
 
