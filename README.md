@@ -1,8 +1,3 @@
-Here’s your remade README — with the **Vautr title removed**, **logo enlarged** (width 200), **more badges** (version, stars, downloads, coverage), **flat-square badge style**, and **all emojis stripped** out.
-
----
-
-```markdown
 <div align="center">
   <img src="brand/logo.svg" alt="Vautr Logo" width="200"/>
   
