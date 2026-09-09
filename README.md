@@ -19,7 +19,6 @@
     <img src="https://img.shields.io/badge/Built%20with-Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
     <img src="https://img.shields.io/badge/Client-React%20Native-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React Native">
     <img src="https://img.shields.io/badge/Language-TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
-    <img src="https://img.shields.io/badge/Database-SQLite-07405E?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
     <img src="https://img.shields.io/badge/Target-WASM-654FF0?style=flat-square&logo=webassembly&logoColor=white" alt="WASM">
   </div>
 </div>
