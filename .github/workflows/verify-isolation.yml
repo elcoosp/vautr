@@ -177,6 +177,14 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build @vautr/api-contract first: its `types` entry points at
+      # dist/index.d.ts, which every workspace package's typecheck resolves
+      # against (staging is green because its full `pnpm build` emits dist;
+      # this nightly job only typechecks, so without this step
+      # `pnpm typecheck` fails with TS2307 Cannot find module '@vautr/api-contract').
+      - name: Build contract package (dist types for workspace typecheck)
+        run: pnpm --filter @vautr/api-contract build
+
       - name: Typecheck (pnpm typecheck)
         run: pnpm typecheck
 
