@@ -130,8 +130,9 @@ jobs:
         # Desktop client's git-master `gpui` (zed) dependency (uses unstable std
         # features such as std::hint::cold_path). Pinned so the toolchain does
         # not drift under the workspace. See tech-stack.md §4.
-        uses: dtolnay/rust-toolchain@nightly-2026-08-10
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-08-10
           components: rustfmt, clippy
 
       - name: Rust workspace tests
@@ -186,6 +187,21 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Rust toolchain (pinned nightly + wasm target for prepare:wasm)
+        # check-wasm.mjs fails the extension build when the gitignored
+        # wasm-pkg outputs are absent (fresh CI checkout), so build real
+        # crypto WASM from source instead of falling back to the dev mock.
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-08-10
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM artifacts
+        run: pnpm prepare:wasm
+
       - name: Build extension
         run: pnpm --filter @vautr/extension build
 
@@ -210,8 +226,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust nightly + cargo-fuzz
-        uses: dtolnay/rust-toolchain@nightly-2026-08-10
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-08-10
           components: rustfmt
 
       - name: Install cargo-fuzz
@@ -248,8 +265,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly-2026-08-10
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-08-10
           components: rustfmt
 
       - name: Build server

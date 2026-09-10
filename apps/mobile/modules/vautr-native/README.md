@@ -4,7 +4,7 @@ Native secret-overlay component for the React Native mobile client. The plaintex
 secret is rendered by a **native** view (Kotlin `TextView` / SwiftUI `UILabel`) and
 never enters the JS heap — the JS layer only ever holds an opaque `u64` handle
 (surfaced as a `String`). This implements ADR-003's opaque-handle pattern and
-satisfies the `read_secret`-is-not-in-mobile constraint enforced by
+satisfies the desktop-only secret-reveal API is-not-in-mobile constraint enforced by
 `scripts/check-restricted-api.sh`.
 
 ## How it fits together
