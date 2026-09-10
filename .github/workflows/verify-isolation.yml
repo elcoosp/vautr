@@ -138,6 +138,14 @@ jobs:
           toolchain: nightly-2026-08-10
           components: rustfmt, clippy
 
+      - name: Install Linux system libs (desktop gpui deps)
+        # VTR-CI: `cargo test --workspace` builds the desktop client, whose
+        # gpui/font-kit graph links fontconfig via yeslogic-fontconfig-sys.
+        # ubuntu-latest lacks the headers → "Package fontconfig was not found".
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfontconfig1-dev libfreetype6-dev pkg-config
+
       - name: Rust workspace tests
         run: cargo test --workspace
 
@@ -296,12 +304,14 @@ jobs:
       - name: Install Pact standalone verifier
         run: |
           set -uo pipefail
-          VERIFIER_VERSION="1.1.2"
-          ARCH="x86_64-unknown-linux-musl"
-          curl -fsSL "https://github.com/pact-foundation/pact-rust/releases/download/pact_verifier_cli-v${VERIFIER_VERSION}/pact_verifier_cli-${VERIFIER_VERSION}-${ARCH}.gz" -o pact_verifier.gz
+          # VTR-CI: the verifier lives in pact-foundation/pact-reference under
+          # the pact_verifier_cli-vX.Y.Z tag with `pact-verifier-<os>-<arch>.gz`
+          # assets (the old pact-rust URL 404s).
+          VERIFIER_VERSION="1.3.5"
+          curl -fsSL "https://github.com/pact-foundation/pact-reference/releases/download/pact_verifier_cli-v${VERIFIER_VERSION}/pact-verifier-linux-x86_64.gz" -o pact_verifier.gz
           gunzip pact_verifier.gz
-          chmod +x pact_verifier
-          sudo mv pact_verifier /usr/local/bin/pact_verifier
+          chmod +x pact-verifier-linux-x86_64
+          sudo mv pact-verifier-linux-x86_64 /usr/local/bin/pact_verifier
 
       - name: Start server + verify pact
         run: |

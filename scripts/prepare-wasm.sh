@@ -9,12 +9,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "==> Building web client wasm (vautr-wasm --target web)"
-wasm-pack build core/vautr-wasm --target web --out-dir apps/web/wasm-pkg --out-name vautr_wasm
+# NOTE: wasm-pack resolves --out-dir relative to the crate dir, so reach the
+# repo-root wasm-pkg dirs with ../../ (VTR-CI: extension-a11y nightly failed
+# with "Missing prebuilt WASM artifacts" because outputs landed in
+# core/vautr-wasm/apps/... instead).
+wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/web/wasm-pkg --out-name vautr_wasm
 
 echo "==> Building extension popup wasm (vautr-wasm --target web)"
-wasm-pack build core/vautr-wasm --target web --out-dir apps/extension/wasm-pkg --out-name vautr_wasm
+wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/extension/wasm-pkg --out-name vautr_wasm
 
 echo "==> Building extension service-worker crypto wasm (vautr-crypto-wasm --target nodejs)"
-wasm-pack build core/vautr-crypto-wasm --target nodejs --out-dir apps/extension/sw-wasm-pkg-nodejs --out-name vautr_crypto_wasm
+wasm-pack build core/vautr-crypto-wasm --target nodejs --out-dir ../../apps/extension/sw-wasm-pkg-nodejs --out-name vautr_crypto_wasm
 
 echo "==> WASM build complete."
