@@ -18,6 +18,11 @@ wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/web/wasm-pkg -
 echo "==> Building extension popup wasm (vautr-wasm --target web)"
 wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/extension/wasm-pkg --out-name vautr_wasm
 
+echo "==> Building extension popup wasm (vautr-wasm --target nodejs)"
+# Node 16 ESM/CJS build consumed by the Playwright tests (tests/helpers.ts)
+# and the live-e2e probes (wasm-pkg-nodejs/vautr_wasm.js).
+wasm-pack build core/vautr-wasm --target nodejs --out-dir ../../apps/extension/wasm-pkg-nodejs --out-name vautr_wasm
+
 echo "==> Building extension service-worker crypto wasm (vautr-crypto-wasm --target web)"
 # The SW's wasmNodejs.ts imports from sw-wasm-pkg (a --target web build); the
 # nodejs-target pack goes to sw-wasm-pkg-nodejs for the node wrapper / e2e.
