@@ -73,6 +73,9 @@ jobs:
           set -uo pipefail
           if [ -f scripts/check-restricted-api.sh ]; then
             echo "::group::check-restricted-api.sh"
+            # The script builds vautr-wasm for wasm32-unknown-unknown, so the
+            # pinned nightly plus that target must exist before it runs.
+            rustup toolchain install nightly-2026-08-10 --component rustfmt --target wasm32-unknown-unknown --profile minimal 2>/dev/null || true
             bash scripts/check-restricted-api.sh
             echo "::endgroup::"
           else
