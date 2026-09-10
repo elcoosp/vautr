@@ -18,6 +18,11 @@ wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/web/wasm-pkg -
 echo "==> Building extension popup wasm (vautr-wasm --target web)"
 wasm-pack build core/vautr-wasm --target web --out-dir ../../apps/extension/wasm-pkg --out-name vautr_wasm
 
+echo "==> Building extension service-worker crypto wasm (vautr-crypto-wasm --target web)"
+# The SW's wasmNodejs.ts imports from sw-wasm-pkg (a --target web build); the
+# nodejs-target pack goes to sw-wasm-pkg-nodejs for the node wrapper / e2e.
+wasm-pack build core/vautr-crypto-wasm --target web --out-dir ../../apps/extension/sw-wasm-pkg --out-name vautr_crypto_wasm
+
 echo "==> Building extension service-worker crypto wasm (vautr-crypto-wasm --target nodejs)"
 wasm-pack build core/vautr-crypto-wasm --target nodejs --out-dir ../../apps/extension/sw-wasm-pkg-nodejs --out-name vautr_crypto_wasm
 

@@ -10,6 +10,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const required = [
   'apps/web/wasm-pkg/vautr_wasm_bg.wasm',
   'apps/extension/wasm-pkg/vautr_wasm_bg.wasm',
+  'apps/extension/sw-wasm-pkg/vautr_crypto_wasm_bg.wasm',
   'apps/extension/sw-wasm-pkg-nodejs/vautr_crypto_wasm_bg.wasm',
 ];
 
