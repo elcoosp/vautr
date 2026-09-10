@@ -752,7 +752,7 @@ mod tests {
         assert_eq!(items[0]["item_uuid"], item_uuid);
         assert_eq!(items[0]["sender_uuid"], "u1");
         assert_eq!(items[0]["wrapped_sik"], ws);
-        assert_eq!(items[0]["payload"], payload);
+        assert_eq!(items[0]["encrypted_payload"], payload);
 
         // u2 cannot upload a payload for u1's share (not the owner).
         let (status, _) = call(

@@ -333,9 +333,41 @@ jobs:
           # Minimal server config; the verifier only exercises /sync/push-batch.
           # The pact-reference Rust verifier uses --file/--provider-name/
           # --hostname/--port (not the Ruby verifier's --contracts-dir).
-          DATABASE_URL="sqlite::memory:" RUST_LOG=info cargo run -p vautr-server &
+          #
+          # VTR-CI: the push-batch contract carries `Authorization: Bearer
+          # vautr-pact-session-token` (the real SDK always sends its OPAQUE
+          # session token), so the provider needs a seeded user + session to
+          # answer 200 instead of 401. The server reads VAUTR_DB_URL (not
+          # DATABASE_URL) and needs a real file DB so the seeding below can
+          # share it (an in-memory DB would be a separate database per
+          # connection). We poll the file for the `users` table because
+          # migrations run asynchronously at boot.
+          export VAUTR_DB_URL="sqlite:/tmp/vautr-pact.db"
+          rm -f /tmp/vautr-pact.db
+          RUST_LOG=info ./target/debug/vautr-server &
           SERVER_PID=$!
-          sleep 5
+          # Wait for readiness: the schema is migrated once `users` exists.
+          SEEDED=0
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "::error::vautr-server exited during startup"; break
+            fi
+            TABLE=$(sqlite3 /tmp/vautr-pact.db \
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='users'" 2>/dev/null || true)
+            if [ "$TABLE" = "users" ]; then
+              NOW=$(date +%s%3N)
+              sqlite3 /tmp/vautr-pact.db "INSERT INTO users (id, email, kdf_salt, opaque_record, svk_ciphertext_blob, svk_ciphertext_blob_rk, min_enc_key_gen, created_at, updated_at) VALUES ('vautr-pact-user', 'pact@vautr.test', randomblob(32), randomblob(16), randomblob(48), randomblob(48), 1, $NOW, $NOW);"
+              sqlite3 /tmp/vautr-pact.db "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('vautr-pact-session-token', 'vautr-pact-user', $((NOW + 86400000)), $NOW);"
+              SEEDED=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$SEEDED" != "1" ]; then
+            echo "::error::timed out waiting for vautr-server schema (users table)"
+            kill "$SERVER_PID" 2>/dev/null || true
+            exit 1
+          fi
           pact_verifier \
             --file packages/vautr-client-sdk/pacts/vautr-client-sdk-vautr-server.json \
             --provider-name vautr-server \
