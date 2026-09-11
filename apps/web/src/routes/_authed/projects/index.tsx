@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import type { Project } from '@vautr/api-contract';
 import { Skeleton } from 'boneyard-js/react';
-import { FolderKanban, Plus } from 'lucide-react';
+import { FolderKanban, Plus, User, Users } from 'lucide-react';
+import { PermissionBadge, RoleBadge } from '@/components/PermissionBadge';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
@@ -129,8 +130,8 @@ function ProjectsPage() {
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  {p.permission ? <Badge>{p.permission}</Badge> : null}
-                  <span className="text-text-muted">{p.role}</span>
+                  <PermissionBadge permission={p.permission} />
+                  <RoleBadge role={p.role} />
                 </div>
               </CardContent>
             </Card>
@@ -180,8 +181,18 @@ function ProjectsPage() {
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="personal">Personal</SelectItem>
-                    <SelectItem value="shared">Shared</SelectItem>
+                    <SelectItem value="personal">
+                      <span className="flex items-center gap-2">
+                        <User className="size-4" aria-hidden="true" />
+                        Personal
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="shared">
+                      <span className="flex items-center gap-2">
+                        <Users className="size-4" aria-hidden="true" />
+                        Shared
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
