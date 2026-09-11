@@ -16,8 +16,6 @@ use vautr_server::db;
 use vautr_server::handlers::{build_router, AppState};
 use vautr_server::middleware;
 
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -65,23 +63,21 @@ async fn main() {
     };
     tracing::info!("vautr-server listening on :{port} (IPv4-first, VTR-097)");
 
+    // VTR-054 fix: the previous code wrapped the *entire server lifetime*
+    // (not just the drain phase) in a 30s timeout, causing the server to
+    // self-terminate after 30s even when no signal was received. The 30s
+    // bound must apply ONLY to the drain, which starts after a signal.
+    // axum's `with_graceful_shutdown` already implements an unbounded drain
+    // (no internal timeout); we keep that behavior and drop the buggy outer
+    // timeout. If you want to reintroduce a drain cap, use axum's `Handle`
+    // API instead of wrapping the server future.
     let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal());
 
-    // Stop accepting, finish in-flight with a bounded timeout, then tear down.
-    if tokio::time::timeout(SHUTDOWN_TIMEOUT, server)
-        .await
-        .is_err()
-    {
-        tracing::warn!(
-            "graceful shutdown did not drain in {:.0}s; forcing pool close",
-            SHUTDOWN_TIMEOUT.as_secs()
-        );
-    }
-
+    let _ = server.await;
     flush_wal(&pool).await;
     pool.close().await;
     tracing::info!("vautr-server shut down cleanly");
