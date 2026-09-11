@@ -6,9 +6,9 @@
 
   <!-- Badges -->
   <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center;">
-      <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License">
-      <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host">
-      <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat">
+    <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host">
+    <img src="https://img.shields.io/badge/Chat-Matrix-purple?style=flat-square" alt="Chat">
     <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security">
     <img src="https://img.shields.io/badge/Built%20with-Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
     <img src="https://img.shields.io/badge/Client-React%20Native-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React Native">
@@ -22,7 +22,7 @@
 ## Demo
 
 <div align="center">
-  <video src="demos/output/web.mp4" controls width="100%" style="max-width: 800px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></video>
+    https://github.com/user-attachments/assets/f0cf4705-73cb-42f9-abb1-2048322f73b0
   <p><em>Full walkthrough: register → onboarding → vault → projects → MFA → audit → backup.</em></p>
 </div>
 
