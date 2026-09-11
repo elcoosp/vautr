@@ -14,6 +14,7 @@ import { router } from '@/router';
  */
 
 function WelcomeStep() {
+  const { next } = useOnboarding();
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-semibold text-text">Welcome to Vautr</h2>
@@ -21,6 +22,9 @@ function WelcomeStep() {
         Vautr is a zero-knowledge vault: your secrets are encrypted on your device and the server
         never sees them. Let&apos;s set up the essentials in about a minute.
       </p>
+      <Button onClick={() => next()} className="w-auto">
+        Get started
+      </Button>
     </div>
   );
 }
@@ -62,7 +66,7 @@ function CreateVaultStep() {
         />
       </div>
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <Button onClick={onSubmit} disabled={busy} className="w-full">
+      <Button onClick={onSubmit} disabled={busy} className="w-auto">
         {busy ? 'Creating…' : 'Create vault & continue'}
       </Button>
     </div>
@@ -134,7 +138,7 @@ function EmergencyKitStep() {
       <Button
         variant="outline"
         onClick={() => void router.navigate({ to: '/settings' })}
-        className="w-full"
+        className="w-auto"
       >
         Open security settings
       </Button>
@@ -143,7 +147,7 @@ function EmergencyKitStep() {
           sessionStorage.removeItem('vautr:pending-kit');
           next();
         }}
-        className="w-full"
+        className="w-auto"
       >
         Continue
       </Button>
@@ -165,7 +169,7 @@ function AddSecretStep() {
           void router.navigate({ to: '/projects', search: { create: false } });
           next();
         }}
-        className="w-full"
+        className="w-auto"
       >
         Go to my vault
       </Button>
@@ -182,7 +186,7 @@ function DoneStep() {
         That&apos;s the core loop: vault → Emergency Kit → secrets. You can replay this tour anytime
         from Settings.
       </p>
-      <Button onClick={() => next()} className="w-full">
+      <Button onClick={() => next()} className="w-auto">
         Finish
       </Button>
     </div>
