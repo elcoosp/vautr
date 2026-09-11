@@ -21,8 +21,8 @@
 
 ## Demo
 
+https://github.com/user-attachments/assets/f0cf4705-73cb-42f9-abb1-2048322f73b0
 <div align="center">
-    https://github.com/user-attachments/assets/f0cf4705-73cb-42f9-abb1-2048322f73b0
   <p><em>Full walkthrough: register → onboarding → vault → projects → MFA → audit → backup.</em></p>
 </div>
 
