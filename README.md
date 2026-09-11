@@ -9,7 +9,6 @@
     <img src="https://img.shields.io/badge/License-AGPL%20v3-blue?style=flat-square" alt="License">
     <img src="https://img.shields.io/badge/Self‑Host-Free%20Forever-success?style=flat-square" alt="Self-Host">
     <img src="https://img.shields.io/github/actions/workflow/status/elcoosp/vautr/release.yml?style=flat-square&label=build" alt="Build">
-    <img src="https://img.shields.io/github/stars/elcoosp/vautr?style=flat-square" alt="Stars">
     <img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs Welcome">
     <img src="https://img.shields.io/badge/Security-AI%20Reviewed-brightgreen?style=flat-square" alt="Security">
     <img src="https://img.shields.io/badge/Built%20with-Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
