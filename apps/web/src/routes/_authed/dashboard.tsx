@@ -7,6 +7,7 @@ import type {
   Project,
 } from '@vautr/api-contract';
 import { ArrowRight, Bot, Database, FolderKanban, ShieldCheck, Ticket } from 'lucide-react';
+import { PermissionBadge } from '@/components/PermissionBadge';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -110,7 +111,7 @@ function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">{p.type}</Badge>
-                    {p.permission ? <Badge>{p.permission}</Badge> : null}
+                    <PermissionBadge permission={p.permission} />
                     <ArrowRight className="size-4 text-text-muted" aria-hidden="true" />
                   </div>
                 </Link>
