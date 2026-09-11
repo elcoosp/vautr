@@ -7,6 +7,40 @@ import { attachStoreToEventBus, vaultEventBus, vaultStore } from '@vautr/ui-logi
 let client: VautrWebClient | null = null;
 let mlp: VautrMlpClient | null = null;
 let storeAttached = false;
+/**
+ * Restore a previously-authenticated session on page load.
+ *
+ * Called from `main.tsx` on app mount. If a valid session token is in
+ * IndexedDB, this unlocks the vault WITHOUT requiring the user to
+ * re-enter their master password. If the token is missing or invalid,
+ * the vault stays locked and `_authed.tsx` redirects to /login as before.
+ *
+ * Mirrors `VautrWebClient.restoreSession()` (see realClient.ts) and flips
+ * `vaultStore.isLocked` to false on success so the `_authed` layout
+ * doesn't bounce to /login. Also kicks off a background `sync()` to
+ * re-hydrate item metadata from the server — non-blocking, errors
+ * swallowed, items will appear in the vault list as they arrive.
+ *
+ * VTR-FIX session-restore: this closes the page-reload-bounces-to-login
+ * bug. See `apps/web/src/main.tsx` for the orchestration.
+ */
+export async function restoreSession(): Promise<void> {
+  const instance = getClient();
+  const restored = await instance.restoreSession();
+  if (restored) {
+    vaultStore.getState().unlock();
+    // Background metadata sync — non-blocking. Items populate the vault
+    // list as they arrive; the user can navigate immediately.
+    void instance.sync().catch(() => {
+      // Sync failure is non-fatal; individual item ops will surface
+      // their own errors if the server is unreachable.
+    });
+    // Publish our sharing key so others can share items TO us (server-backed
+    // sharing PKI). Same call as in `login()` — fire-and-forget.
+    void ensureSharingKey().catch(() => { });
+    window.dispatchEvent(new CustomEvent('vautr:auth-change'));
+  }
+}
 
 /**
  * Lazy singleton for the real Vautr client, wired into the shared ui-logic
@@ -56,7 +90,7 @@ export async function login(username: string, password: string): Promise<void> {
   // Publish our sharing key so others can share items TO us (server-backed
   // sharing PKI). Without this, incoming shares fail at getRecipientSharingKey.
   // Mirrors the two-party key setup in the server's sharing_e2e.
-  await ensureSharingKey().catch(() => {});
+  await ensureSharingKey().catch(() => { });
   window.dispatchEvent(new CustomEvent('vautr:auth-change'));
 }
 
