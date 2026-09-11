@@ -57,9 +57,6 @@ function OnboardingOverlay({ children }: { children: React.ReactNode }) {
                   Skip
                 </Button>
               ) : null}
-              <Button onClick={() => next()} disabled={!state.canGoNext}>
-                {state.isLastStep ? 'Finish' : 'Next'}
-              </Button>
             </div>
           </CardFooter>
         </Card>
