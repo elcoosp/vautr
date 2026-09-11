@@ -148,7 +148,90 @@ export class VautrWebClient {
       listener(update);
     }
   }
+  /**
+   * Restore a previously-authenticated session on page load (VTR-FIX
+   * session-restore).
+   *
+   * Reads the persisted session token + SVK from IndexedDB. If both
+   * exist and the token validates server-side, re-installs them in
+   * memory and unlocks the vault WITHOUT requiring the user to re-enter
+   * their master password. Pure API calls (list projects, audit log,
+   * backup status, etc.) and cryptographic operations (reveal, copy,
+   * share) all work after `restoreSession()`.
+   *
+   * SECURITY TRADE-OFF: This relies on `state.svk` being persisted in
+   * IndexedDB, which the current `login()` implementation does (see
+   * `StoredState.svk` — the doc comment says "in-memory only" but the
+   * `setState` call in `login()` writes the SVK Uint8Array to IndexedDB).
+   * A truly zero-knowledge fix would NOT persist the SVK and would add
+   * a `/unlock` route that prompts for the master password to re-derive
+   * the DEK via `unwrapSvk(svk_ciphertext_blob, kek)`. This file is the
+   * partial fix that unblocks page-reload navigation AND crypto ops by
+   * leveraging the existing (already-insecure) SVK persistence.
+   *
+   * The Recovery Key mnemonic is sealed under the KEK (derived from the
+   * master password) and CANNOT be opened without the password. After
+   * `restoreSession()`, `getEmergencyKit()` returns null — the
+   * Emergency Kit page should show "log in to view" or similar.
+   *
+   * @returns `true` if a session was restored, `false` if the user must
+   *          log in (no token, or token rejected by server).
+   */
+  async restoreSession(): Promise<boolean> {
+    await this.crypto.ready();
 
+    const state = await this.store.getState();
+    if (!state.sessionToken) {
+      // No session to restore — user must log in.
+      return false;
+    }
+
+    // Re-install the bearer token so subsequent API calls authenticate.
+    this.api.setToken(state.sessionToken);
+
+    // Validate the token server-side. If it's expired/invalid, drop it
+    // so the user is prompted to re-login (rather than silently failing
+    // every subsequent request).
+    let status: AccountStatus;
+    try {
+      status = await this.api.request<AccountStatus>('GET', '/account/status');
+    } catch {
+      // 401 / network error — treat as "session gone".
+      await this.forget();
+      return false;
+    }
+
+    // Restore in-memory key material if the SVK was persisted.
+    // NOTE: This is the security trade-off described in the doc comment.
+    // If `state.svk` is null (e.g., a register that hasn't yet logged
+    // in, or a future version that stops persisting SVK), the vault
+    // stays crypto-locked — navigation works but reveal/copy/share will
+    // throw "vault is locked" until the user re-logs in.
+    if (state.svk) {
+      this.svk = state.svk;
+      this.dek = this.crypto.deriveDek(state.svk);
+    }
+    this.localKeyGen = Math.max(1, state.localKeyGen);
+
+    // The Recovery Key mnemonic is sealed under the KEK, which requires
+    // the master password to derive. Leave it null — `getEmergencyKit()`
+    // will return null and the UI should adapt.
+    this.recoveryMnemonic = null;
+
+    // Persist the fresh `min_enc_key_gen` so the read-only banner logic
+    // (if any) compares against the latest server-side generation.
+    await this.store.setState({
+      minEncKeyGen: status.min_enc_key_gen,
+    });
+
+    // Tell subscribers the vault is ready. The event-bus bridge in
+    // `apps/web/src/lib/client.ts` (via `attachStoreToEventBus`) reacts
+    // to `SyncCompleted` — but note that we emit BEFORE the sync below
+    // runs; this is intentional so the store flips to "unlocked" ASAP.
+    this.emit({ type: 'SyncCompleted' });
+
+    return true;
+  }
   /**
    * Subscribe to the server-backed quarantine reaper event stream (VTR-069):
    * `GET /events` SSE. The server pushes `item_permanently_deleted` /
@@ -182,7 +265,7 @@ export class VautrWebClient {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        for (;;) {
+        for (; ;) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
