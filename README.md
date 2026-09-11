@@ -19,12 +19,21 @@
 
 ---
 
+## Demo
+
+<div align="center">
+  <video src="demos/output/web.mp4" controls width="100%" style="max-width: 800px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></video>
+  <p><em>Full walkthrough: register → onboarding → vault → projects → MFA → audit → backup.</em></p>
+</div>
+
+---
+
 ## The Vautr Constitution
 
 Security software requires more than open‑source code – it requires **open governance**.  
 The [**Vautr Constitution**](./CONSTITUTION.md) legally binds the project to its core principles:
 
-1. **AGPL Forever** – No “source‑available” enterprise forks. All core code stays open.
+1. **AGPL Forever** – No "source‑available" enterprise forks. All core code stays open.
 2. **Self‑Hosting is a Right** – Free and fully featured for individuals and small teams. No artificial paywalls.
 3. **Data Sovereignty** – Standard exports, always. No vendor lock‑in.
 4. **Transparent Pricing** – 90‑day notice for any cloud pricing changes, directly communicated.
@@ -159,7 +168,7 @@ See [`docs/spec/architecture.md`](./docs/spec/architecture.md) and [`docs/archit
 
 ## Zero‑Knowledge Security Model
 
-Vautr’s zero‑knowledge guarantee is structural, not cosmetic:
+Vautr's zero‑knowledge guarantee is structural, not cosmetic:
 
 - **OPAQUE authentication** – The master password is used in a PAKE. The server stores only an OPAQUE registration record.
 - **Local key derivation** – Argon2id derives the Master Key; HKDF derives KEK, SVK, OEK, and DEK.
