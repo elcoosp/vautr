@@ -1,0 +1,573 @@
+{
+  "$schema": "https://raw.githubusercontent.com/paragramagency/recordable/main/recordable.schema.json",
+  "config": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "fps": 30,
+    "headless": false,
+    "typingSpeed": 14,
+    "actionDelay": 400,
+    "trimNavigation": false,
+    "outputDir": "output",
+    "outputName": "vautr-demo",
+    "cursor": true,
+    "zoomDuration": 400
+  },
+  "actions": [
+    {
+      "action": "pause"
+    },
+    {
+      "action": "visit",
+      "url": "http://localhost:5173/register"
+    },
+    {
+      "action": "waitFor",
+      "target": "#username",
+      "state": "visible"
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.3,
+      "origin": "#username"
+    },
+    {
+      "action": "type",
+      "target": "#username",
+      "text": "demo@vautr.test"
+    },
+    {
+      "action": "type",
+      "target": "#master-password",
+      "text": "correct horse battery staple"
+    },
+    {
+      "action": "type",
+      "target": "#confirm-password",
+      "text": "correct horse battery staple"
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "hover",
+      "target": "text:Create vault"
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "click",
+      "target": "text:Create vault"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Dashboard",
+      "state": "visible",
+      "timeout": 60000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "hover",
+      "target": "text:Get started"
+    },
+    {
+      "action": "click",
+      "target": "text:Get started"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Create vault & continue",
+      "state": "visible",
+      "timeout": 10000
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "click",
+      "target": "text:Create vault & continue"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Continue",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "click",
+      "target": "text:Continue"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Go to my vault",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "click",
+      "target": "text:Go to my vault"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Finish",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "click",
+      "target": "text:Finish"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "hover",
+      "target": "text:Vault"
+    },
+    {
+      "action": "click",
+      "target": "text:Vault"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Add item",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:Add item"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "hover",
+      "target": "text:Add item"
+    },
+    {
+      "action": "click",
+      "target": "text:Add item"
+    },
+    {
+      "action": "waitFor",
+      "target": "#new-title",
+      "state": "visible"
+    },
+    {
+      "action": "type",
+      "target": "#new-title",
+      "text": "Acme Bank"
+    },
+    {
+      "action": "type",
+      "target": "#new-username",
+      "text": "jane@example.com"
+    },
+    {
+      "action": "type",
+      "target": "#new-password",
+      "text": "s3cret-password-42!"
+    },
+    {
+      "action": "type",
+      "target": "#new-url",
+      "text": "https://github.com"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "hover",
+      "target": "text:Save item"
+    },
+    {
+      "action": "click",
+      "target": "text:Save item"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Share",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "hover",
+      "target": "text:Copy"
+    },
+    {
+      "action": "click",
+      "target": "text:Copy"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Copied",
+      "state": "visible",
+      "timeout": 5000
+    },
+    {
+      "action": "zoom",
+      "level": 1.3,
+      "origin": "text:Copied"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:Projects"
+    },
+    {
+      "action": "click",
+      "target": "text:Projects"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:New project",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:New project"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "hover",
+      "target": "text:New project"
+    },
+    {
+      "action": "click",
+      "target": "text:New project"
+    },
+    {
+      "action": "waitFor",
+      "target": "#project-name",
+      "state": "visible"
+    },
+    {
+      "action": "type",
+      "target": "#project-name",
+      "text": "Engineering Vault"
+    },
+    {
+      "action": "hover",
+      "target": "text:Create project"
+    },
+    {
+      "action": "click",
+      "target": "text:Create project"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Engineering Vault",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:Settings"
+    },
+    {
+      "action": "click",
+      "target": "text:Settings"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Emergency Kit",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.3,
+      "origin": "text:Emergency Kit"
+    },
+    {
+      "action": "hover",
+      "target": "text:Reveal"
+    },
+    {
+      "action": "click",
+      "target": "text:Reveal"
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "hover",
+      "target": "text:Download"
+    },
+    {
+      "action": "click",
+      "target": "text:Download"
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:MFA & security"
+    },
+    {
+      "action": "click",
+      "target": "text:MFA & security"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Set up authenticator app",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:Set up authenticator app"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "hover",
+      "target": "text:Set up authenticator app"
+    },
+    {
+      "action": "click",
+      "target": "text:Set up authenticator app"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Scan",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:Security log"
+    },
+    {
+      "action": "click",
+      "target": "text:Security log"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Download JSON",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:Download JSON"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "scroll",
+      "target": "bottom"
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:Import / export"
+    },
+    {
+      "action": "click",
+      "target": "text:Import / export"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Export backup",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:Export backup"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "click",
+      "target": "[data-testid='export-backup-button']"
+    },
+    {
+      "action": "wait",
+      "ms": 3000
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Backup created",
+      "state": "visible",
+      "timeout": 15000
+    },
+    {
+      "action": "zoom",
+      "level": 1.3,
+      "origin": "text:Backup created"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "pause"
+    },
+    {
+      "action": "hover",
+      "target": "text:Dashboard"
+    },
+    {
+      "action": "click",
+      "target": "text:Dashboard"
+    },
+    {
+      "action": "waitFor",
+      "target": "text:Recent projects",
+      "state": "visible",
+      "timeout": 30000
+    },
+    {
+      "action": "resume"
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "zoom",
+      "level": 1.2,
+      "origin": "text:Dashboard"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "resetZoom"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    }
+  ]
+}
