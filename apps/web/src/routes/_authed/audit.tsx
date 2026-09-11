@@ -57,7 +57,7 @@ function AuditLogPage() {
             never contains secret values.
           </p>
         </div>
-        <Button onClick={onDownload} disabled={entries.length === 0}>
+        <Button onClick={onDownload}>
           Download JSON
         </Button>
       </div>
