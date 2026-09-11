@@ -14,10 +14,12 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "prepare:wasm": "bash scripts/prepare-wasm.sh",
-    "verify:wasm": "node scripts/check-wasm.mjs"
+    "verify:wasm": "node scripts/check-wasm.mjs",
+    "rec:demo": "recordable demos/vautr-demo.json"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",
+    "recordable": "^0.10.0",
     "typescript": "^5.9.2"
   },
   "pnpm": {
@@ -38,6 +40,9 @@
       "metro-minify-terser": "0.87.0",
       "metro-react-native-babel-preset": "0.87.0",
       "metro-react-native-babel-transformer": "0.87.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "ffmpeg-static"
+    ]
   }
 }
