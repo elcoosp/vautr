@@ -3,13 +3,13 @@ import type { DecryptedOverview } from '@vautr/ui-logic';
 import { useOverviews } from '@vautr/ui-logic';
 import { KeyRound } from 'lucide-react';
 import { useRef } from 'react';
+import { Favicon } from './Favicon';
 
 interface VaultListProps {
   selectedUuid: string | null;
   onSelect: (uuid: string) => void;
 }
 
-/** Virtualized list of overviews. Keyboard navigable (VTR-036). */
 export function VaultList({ selectedUuid, onSelect }: VaultListProps) {
   const overviews = useOverviews();
   const sorted = [...overviews].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -52,6 +52,7 @@ export function VaultList({ selectedUuid, onSelect }: VaultListProps) {
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = sorted[virtualRow.index] as DecryptedOverview;
             const isSelected = item.uuid === selectedUuid;
+            const faviconUrl = item.urls?.[0];
             return (
               <div
                 key={item.uuid}
@@ -76,7 +77,11 @@ export function VaultList({ selectedUuid, onSelect }: VaultListProps) {
                   style={{ height: virtualRow.size - 1 }}
                 >
                   <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">
-                    <KeyRound className="size-4" aria-hidden="true" />
+                    {faviconUrl ? (
+                      <Favicon url={faviconUrl} size={20} />
+                    ) : (
+                      <KeyRound className="size-4" aria-hidden="true" />
+                    )}
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-text">{item.title}</span>
