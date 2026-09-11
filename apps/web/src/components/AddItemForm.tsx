@@ -1,13 +1,13 @@
 import { useState } from 'react';
+import { Favicon } from './Favicon';
 import { addItem, type NewItemInput } from '../lib/client';
+import { evaluatePasswordStrength } from '../lib/passwordStrength';
 
 interface AddItemFormProps {
   onSaved: (uuid: string) => void;
   onCancel: () => void;
 }
 
-/** Inline "add item" form. Persists via the client encrypt path and pushes a
- *  reactive `OverviewUpserted` diff so the list updates immediately. */
 export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
@@ -15,6 +15,8 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const strength = evaluatePasswordStrength(password);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -77,7 +79,7 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
             htmlFor="new-username"
             className="mb-1 block text-xs font-medium uppercase tracking-wide text-text-muted"
           >
-            Username
+            Email or username
           </label>
           <input
             id="new-username"
@@ -105,6 +107,22 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
             className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-text focus:border-accent"
             placeholder="••••••••"
           />
+          {password ? (
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                  <div
+                    className={`h-full transition-all ${strength.score <= 1 ? 'bg-danger' : strength.score <= 3 ? 'bg-danger' : strength.score <= 4 ? 'bg-warn' : 'bg-accent'}`}
+                    style={{ width: `${(strength.score / 7) * 100}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-medium ${strength.color}`}>{strength.label}</span>
+              </div>
+              {strength.suggestions.length > 0 ? (
+                <p className="text-xs text-text-muted">{strength.suggestions[0]}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -114,14 +132,17 @@ export function AddItemForm({ onSaved, onCancel }: AddItemFormProps) {
           >
             Website
           </label>
-          <input
-            id="new-url"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-text focus:border-accent"
-            placeholder="https://example.com"
-          />
+          <div className="flex items-center gap-2">
+            <Favicon url={url} size={20} className="shrink-0" />
+            <input
+              id="new-url"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-text focus:border-accent"
+              placeholder="https://example.com"
+            />
+          </div>
         </div>
 
         {error ? (
