@@ -2,15 +2,19 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import type { Project, ProjectMember, Secret, UserGroup } from '@vautr/api-contract';
 import {
   ArrowLeft,
+  Crown,
   Eye,
   EyeOff,
   KeyRound,
   MoreHorizontal,
+  Pencil,
   Plus,
+  ShieldCheck,
   Trash2,
   UserPlus,
   Users,
 } from 'lucide-react';
+import { PermissionBadge, RoleBadge } from '@/components/PermissionBadge';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
@@ -138,8 +142,8 @@ function ProjectDetailPage() {
             <h1 className="text-2xl font-semibold text-text">{project.name}</h1>
             <div className="mt-1 flex items-center gap-2">
               <Badge variant="secondary">{project.type}</Badge>
-              {project.permission ? <Badge>{project.permission}</Badge> : null}
-              <span className="text-xs text-text-muted">{project.role}</span>
+              <PermissionBadge permission={project.permission} />
+              <RoleBadge role={project.role} />
             </div>
           </div>
         </div>
