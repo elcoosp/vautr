@@ -3951,6 +3951,7 @@ impl DesktopView {
             let selected = self.vault.selected_index == Some(index);
             let title = self.vault.items[index].title.clone();
             let subtitle = self.vault.items[index].subtitle.clone();
+            let favicon_url = self.vault.items[index].urls.first().cloned();
 
             let row = div()
                 .id(SharedString::from(format!("vault-row-{index}")))
@@ -3961,7 +3962,13 @@ impl DesktopView {
                 .rounded_md()
                 .when(selected, |row| row.bg(theme::BORDER))
                 .cursor_pointer()
-                .child(div().text_sm().child(title))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(favicon(favicon_url.as_deref()))
+                        .child(div().text_sm().child(title)),
+                )
                 .child(div().text_xs().text_color(theme::TEXT_DIM).child(subtitle))
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     if this.vault.select_item(index) {
@@ -4066,6 +4073,10 @@ impl DesktopView {
     // ── Projects section ─────────────────────────────────────────────────
 
     fn render_add_item_modal(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let value = self.secret_value_input.read(cx).value().clone();
+        let (strength_score, strength_label, strength_suggestions) =
+            evaluate_password_strength(&value);
+
         div()
             .absolute()
             .inset_0()
@@ -4132,7 +4143,14 @@ impl DesktopView {
                                             .text_color(theme::TEXT)
                                             .child("Password / value"),
                                     )
-                                    .child(Input::new(&self.secret_value_input).w_full()),
+                                    .child(Input::new(&self.secret_value_input).w_full())
+                                    .when(!value.is_empty(), |this| {
+                                        this.child(strength_meter(
+                                            strength_score,
+                                            strength_label,
+                                            &strength_suggestions,
+                                        ))
+                                    }),
                             )
                             .child(
                                 h_flex()
@@ -5093,7 +5111,7 @@ impl DesktopView {
             let name = p.name.clone();
             let kind = p.kind.clone();
             let role = p.role.clone();
-            let perm = p.permission.clone().unwrap_or_else(|| "—".into());
+            let perm = p.permission.clone();
             let description = p.description.clone().unwrap_or_default();
             let row = div()
                 .id(SharedString::from(format!("project-row-{i}")))
@@ -5149,8 +5167,8 @@ impl DesktopView {
                             h_flex()
                                 .gap_2()
                                 .items_center()
-                                .child(scope_pill(&perm))
-                                .child(div().text_xs().text_color(theme::TEXT_DIM).child(role)),
+                                .when_some(perm, |this, perm| this.child(permission_badge(&perm)))
+                                .child(role_badge(&role)),
                         ),
                 )
                 .on_click(cx.listener(move |this, _, _window, cx| {
@@ -5160,11 +5178,25 @@ impl DesktopView {
         }
 
         // Selected project name/type (for the detail panel below the grid).
-        let (proj_name, proj_type) = self
+        let (proj_name, proj_type, proj_role, proj_permission) = self
             .projects
             .selected_project()
-            .map(|p| (p.name.clone(), p.kind.clone()))
-            .unwrap_or_else(|| ("No project selected".into(), String::new()));
+            .map(|p| {
+                (
+                    p.name.clone(),
+                    p.kind.clone(),
+                    p.role.clone(),
+                    p.permission.clone(),
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    "No project selected".into(),
+                    String::new(),
+                    String::new(),
+                    None,
+                )
+            });
 
         // Wrapping card grid (top), matching the web's responsive columns.
         let grid = div()
@@ -5277,7 +5309,16 @@ impl DesktopView {
                                 } else {
                                     format!("Type: {proj_type}")
                                 },
-                            )),
+                            ))
+                            .when_some(proj_permission, |this, perm| {
+                                this.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(role_badge(&proj_role))
+                                        .child(permission_badge(&perm)),
+                                )
+                            }),
                     )
                     .child(
                         h_flex()
@@ -5412,13 +5453,14 @@ impl DesktopView {
                 .border_color(theme::BORDER)
                 .child(
                     v_flex()
-                        .gap_0()
+                        .gap_1()
                         .child(div().text_sm().font_weight(FontWeight::BOLD).child(display))
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme::TEXT_DIM)
-                                .child(format!("{role} · {permission}")),
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(role_badge(&role))
+                                .child(permission_badge(&permission)),
                         ),
                 )
                 .child(perm_controls);
@@ -7896,6 +7938,221 @@ fn scope_pill(scope: &str) -> Div {
         .font_family("ui-monospace")
         .text_color(theme::TEXT_MUTED)
         .child(scope.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// VTR-001 port: permission/role badges, password-strength meter, favicon.
+// These mirror the web components added in the same change (PasswordStrength,
+// PermissionBadge/RoleBadge, Favicon) so desktop stays visually in step with
+// the other clients.
+// ---------------------------------------------------------------------------
+
+/// A small pill with an icon + label, `filled` = tinted background
+/// (permission), otherwise a hairline outline (role).
+fn badge_pill(icon: IconName, label: &str, filled: bool) -> Div {
+    let mut pill = div()
+        .px_2()
+        .py_0p5()
+        .rounded_md()
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
+        .flex()
+        .items_center()
+        .gap_1()
+        .child(Icon::new(icon).size_3())
+        .child(label.to_string());
+    if filled {
+        pill = pill.bg(theme::SURFACE_RAISED).text_color(theme::TEXT_MUTED);
+    } else {
+        pill = pill
+            .border_1()
+            .border_color(theme::BORDER)
+            .text_color(theme::TEXT_MUTED);
+    }
+    pill
+}
+
+/// An "Owner / Admin / Manager / Member" role pill (web `RoleBadge`).
+fn role_badge(role: &str) -> Div {
+    let (label, icon) = match role {
+        "owner" => ("Owner", IconName::Star),
+        "admin" => ("Admin", IconName::CircleCheck),
+        "manager" => ("Manager", IconName::Settings2),
+        "member" => ("Member", IconName::Eye),
+        other => (other, IconName::CircleUser),
+    };
+    badge_pill(icon, label, false)
+}
+
+/// A "Can View / Can Edit / Can Manage" permission pill (web
+/// `PermissionBadge`).
+fn permission_badge(perm: &str) -> Div {
+    let (label, icon) = match perm {
+        "can_view" => ("Can View", IconName::Eye),
+        "can_edit" => ("Can Edit", IconName::Settings2),
+        "can_manage" => ("Can Manage", IconName::CircleCheck),
+        other => (other, IconName::Globe),
+    };
+    badge_pill(icon, label, true)
+}
+
+/// Human label for a 0–7 password-strength score (web `passwordStrength`).
+fn strength_label(score: u8) -> &'static str {
+    match score {
+        0..=1 => "Very weak",
+        2..=3 => "Weak",
+        4 => "Fair",
+        5 => "Good",
+        _ => "Strong",
+    }
+}
+
+fn strength_colors(score: u8) -> (Rgba, Rgba) {
+    if score <= 3 {
+        (theme::DANGER, theme::DANGER_TEXT)
+    } else if score == 4 {
+        (theme::WARN, theme::WARN)
+    } else {
+        (theme::ACCENT, theme::ACCENT)
+    }
+}
+
+/// Evaluate a password with the same 0–7 score / label / suggestions rules as
+/// the web `evaluatePasswordStrength` (VTR-001). Returns (score, label,
+/// suggestions) with everything computed from the password alone.
+fn evaluate_password_strength(password: &str) -> (u8, &'static str, Vec<&'static str>) {
+    if password.is_empty() {
+        return (0, strength_label(0), Vec::new());
+    }
+    let mut score = 0_i8;
+    let mut suggestions: Vec<&'static str> = Vec::new();
+    if password.chars().count() >= 8 {
+        score += 1;
+    } else {
+        suggestions.push("Use at least 8 characters");
+    }
+    if password.chars().count() >= 14 {
+        score += 1;
+    }
+    if password.chars().any(|c| c.is_ascii_lowercase()) {
+        score += 1;
+    } else {
+        suggestions.push("Add lowercase letters");
+    }
+    if password.chars().any(|c| c.is_ascii_uppercase()) {
+        score += 1;
+    } else {
+        suggestions.push("Add uppercase letters");
+    }
+    if password.chars().any(|c| c.is_ascii_digit()) {
+        score += 1;
+    } else {
+        suggestions.push("Add numbers");
+    }
+    if password.chars().any(|c| !c.is_ascii_alphanumeric()) {
+        score += 1;
+    } else {
+        suggestions.push("Add special characters");
+    }
+    if password.chars().count() >= 20 {
+        score += 1;
+    }
+    if password
+        .as_bytes()
+        .windows(3)
+        .any(|w| w[0] == w[1] && w[1] == w[2])
+    {
+        score -= 1;
+    }
+    let lower = password.to_lowercase();
+    const PATTERNS: [&str; 14] = [
+        "0123", "1234", "2345", "3456", "4567", "5678", "6789", "abcd", "bcde", "cdef", "qwerty",
+        "password", "abc123", "iloveyou",
+    ];
+    if PATTERNS.iter().any(|p| lower.contains(p)) {
+        score -= 2;
+        suggestions.push("Avoid common patterns");
+    }
+    let score = score.clamp(0, 7) as u8;
+    (score, strength_label(score), suggestions)
+}
+
+/// A 0–7 strength meter (bar + label + first suggestion), mirroring the web
+/// AddItemForm meter (VTR-001).
+fn strength_meter(score: u8, label: &str, suggestions: &[&str]) -> Div {
+    let (bar, ink) = strength_colors(score);
+    div()
+        .w_full()
+        .mt_1()
+        .child(
+            h_flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .h_1p5()
+                        .flex_1()
+                        .rounded_full()
+                        .bg(theme::SURFACE_RAISED)
+                        .child(
+                            div()
+                                .h_full()
+                                .rounded_full()
+                                .bg(bar)
+                                .w(gpui::Length::Definite(gpui::DefiniteLength::Fraction(
+                                    score as f32 / 7.0,
+                                ))),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(ink)
+                        .child(label.to_string()),
+                ),
+        )
+        .when_some(suggestions.first(), |this, first| {
+            this.child(
+                div()
+                    .text_xs()
+                    .text_color(theme::TEXT_MUTED)
+                    .child((*first).to_string()),
+            )
+        })
+}
+
+/// Extract a bare hostname (or `None`) from a user-supplied URL string.
+fn domain_from_url(url: &str) -> Option<String> {
+    let candidate = if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("https://{url}")
+    };
+    let rest = candidate.split_once("://").map(|(_, rest)| rest)?;
+    let host_port = rest.split(['/', '?', '#']).next()?;
+    let host = host_port.split(':').next()?.trim();
+    if host.is_empty() || host.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(host.to_lowercase())
+}
+
+/// Site favicon for an item's first URL, via the same Google s2 service the web
+/// and extension use; a globe glyph stands in when no domain is available.
+fn favicon(url: Option<&str>) -> Div {
+    let Some(domain) = url.and_then(domain_from_url) else {
+        return div()
+            .size_4()
+            .flex_shrink_0()
+            .text_color(theme::TEXT_DIM)
+            .child(Icon::new(IconName::Globe).size_3());
+    };
+    let src = format!("https://www.google.com/s2/favicons?domain={domain}&sz=32");
+    div()
+        .size_4()
+        .flex_shrink_0()
+        .child(img(src).w_4().h_4().rounded_sm())
 }
 
 /// A small inline callout used by the generator's weak/reused detection card.
