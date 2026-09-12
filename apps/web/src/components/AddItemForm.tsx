@@ -1,7 +1,7 @@
+import { evaluatePasswordStrength } from '@vautr/ui-logic';
 import { useState } from 'react';
-import { Favicon } from './Favicon';
 import { addItem, type NewItemInput } from '../lib/client';
-import { evaluatePasswordStrength } from '../lib/passwordStrength';
+import { Favicon } from './Favicon';
 
 interface AddItemFormProps {
   onSaved: (uuid: string) => void;
