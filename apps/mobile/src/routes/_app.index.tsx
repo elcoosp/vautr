@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { Folder, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { PermissionBadge, RoleBadge } from '../../components/PermissionBadge';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -34,15 +35,13 @@ function ProjectCard({ project, onPress }: { project: Project; onPress: () => vo
               {project.type}
             </Badge>
           </View>
-          {project.description ? (
-            <Text variant="muted" numberOfLines={1}>
-              {project.description}
-            </Text>
-          ) : null}
-          <Text variant="tiny">
-            Role: {project.role}
-            {project.permission ? ` · ${project.permission}` : ''}
+          <Text variant="muted" numberOfLines={1}>
+            {project.description}
           </Text>
+          <View className="flex-row items-center gap-1.5">
+            <RoleBadge role={project.role} />
+            <PermissionBadge permission={project.permission} />
+          </View>
         </View>
         <ThemedIcon icon={Folder} size={18} tone="muted" />
       </Card>
