@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { Folder, KeyRound, Plus, Users } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { PermissionBadge, RoleBadge } from '../../components/PermissionBadge';
 import { SecretOverlay } from '../../components/SecretOverlay';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
@@ -95,9 +96,10 @@ function ProjectDetailScreen() {
           </Avatar>
           <View className="flex-1 gap-1">
             <Text variant="h4">{project.name}</Text>
-            <View className="flex-row gap-2">
+            <View className="flex-row flex-wrap items-center gap-2">
               <Badge variant="outline">{project.type}</Badge>
-              <Badge variant="secondary">{project.permission ?? 'n/a'}</Badge>
+              <RoleBadge role={project.role} />
+              <PermissionBadge permission={project.permission} />
             </View>
             {project.description ? (
               <Text variant="muted" className="mt-1">
@@ -182,8 +184,12 @@ function ProjectDetailScreen() {
                     <TableCell className="flex-[2]">
                       {member.display_name ?? member.user_uuid}
                     </TableCell>
-                    <TableCell className="flex-1">{member.role}</TableCell>
-                    <TableCell className="flex-1">{member.permission}</TableCell>
+                    <TableCell className="flex-1">
+                      <RoleBadge role={member.role} />
+                    </TableCell>
+                    <TableCell className="flex-1">
+                      <PermissionBadge permission={member.permission} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
