@@ -5,7 +5,7 @@
 # automatically recompiles + restarts the server. Builds on the same pinned
 # nightly toolchain as the production Dockerfile.
 
-FROM rust:1.94-bookworm AS dev
+FROM rust:1.98-bookworm AS dev
 
 # cargo-watch provides the hot-reload loop.
 RUN cargo install cargo-watch
