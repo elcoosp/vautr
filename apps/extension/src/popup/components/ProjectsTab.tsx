@@ -3,6 +3,7 @@ import type { VautrMlpClient } from '@vautr/client-sdk';
 import { FolderKanban } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { PermissionBadge, RoleBadge } from '@/components/PermissionBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -117,7 +118,10 @@ export function ProjectsTab({ mlp }: ProjectsTabProps) {
                 {p.description ? (
                   <p className="truncate text-xs text-muted-foreground">{p.description}</p>
                 ) : null}
-                <p className="text-xs text-muted-foreground">Role: {p.role}</p>
+                <div className="flex items-center gap-2">
+                  <RoleBadge role={p.role} />
+                  <PermissionBadge permission={p.permission} />
+                </div>
               </div>
               <Button
                 size="sm"
