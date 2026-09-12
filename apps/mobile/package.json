@@ -22,7 +22,7 @@
     "@rn-primitives/table": "^1.5.2",
     "@rn-primitives/tabs": "^1.5.2",
     "@rn-primitives/toast": "^1.5.2",
-    "@tanstack/react-router": "1.170.25",
+    "@tanstack/react-router": "1.170.35",
     "@vautr/api-contract": "workspace:*",
     "@vautr/client-sdk": "workspace:*",
     "@vautr/ui-logic": "workspace:*",
@@ -50,8 +50,8 @@
     "boneyard-js": "^1.9.0"
   },
   "devDependencies": {
-    "@tanstack/router-cli": "1.167.27",
-    "@tanstack/router-plugin": "1.168.29",
+    "@tanstack/router-cli": "1.167.35",
+    "@tanstack/router-plugin": "1.168.37",
     "@types/react": "^19.2.0",
     "babel-preset-expo": "~57.0.7",
     "tailwindcss": "^3.4.19",
