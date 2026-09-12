@@ -220,7 +220,7 @@ jobs:
         # crypto WASM from source instead of falling back to the dev mock.
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-08-10
+          toolchain: nightly-2026-09-12
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
