@@ -1,9 +1,9 @@
 import type { VautrMlpClient } from '@vautr/client-sdk';
-import { assessPassword, strengthLabel } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
+import { evaluatePasswordStrength } from '@vautr/ui-logic';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
+import { Favicon } from '@/components/Favicon';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -34,7 +34,7 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
   const [addPass, setAddPass] = useState('');
   const [addUrl, setAddUrl] = useState('');
 
-  const assessment = addPass ? assessPassword(addPass) : null;
+  const strength = addPass ? evaluatePasswordStrength(addPass) : null;
 
   async function handleAdd(): Promise<void> {
     if (!addTitle || !addUser || !addPass) {
@@ -151,7 +151,10 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
             return (
               <Card key={item.uuid}>
                 <CardHeader className="space-y-0 py-3">
-                  <CardTitle className="text-sm">{item.title}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Favicon url={item.urls[0]} size={20} className="shrink-0" />
+                    <CardTitle className="text-sm">{item.title}</CardTitle>
+                  </div>
                   <CardDescription className="text-xs">{item.subtitle}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2 py-2">
@@ -195,20 +198,22 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
             <div className="space-y-1">
               <Label>Password</Label>
               <Input type="password" value={addPass} onChange={(e) => setAddPass(e.target.value)} />
-              {assessment ? (
-                <div className="flex items-center gap-2 pt-1">
-                  <Badge
-                    variant={
-                      assessment.score <= 1
-                        ? 'destructive'
-                        : assessment.score === 2
-                          ? 'secondary'
-                          : 'default'
-                    }
-                  >
-                    {strengthLabel(assessment.score)} · {assessment.entropy} bits
-                  </Badge>
-                  <Badge variant="outline">New</Badge>
+              {strength ? (
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                      <div
+                        className={`h-full transition-all ${strength.score <= 1 ? 'bg-danger' : strength.score <= 3 ? 'bg-danger' : strength.score <= 4 ? 'bg-warn' : 'bg-accent'}`}
+                        style={{ width: `${(strength.score / 7) * 100}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-medium ${strength.color}`}>
+                      {strength.label}
+                    </span>
+                  </div>
+                  {strength.suggestions.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">{strength.suggestions[0]}</p>
+                  ) : null}
                 </div>
               ) : null}
             </div>
