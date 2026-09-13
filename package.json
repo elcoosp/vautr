@@ -15,7 +15,7 @@
     "format": "biome format --write .",
     "prepare:wasm": "bash scripts/prepare-wasm.sh",
     "verify:wasm": "node scripts/check-wasm.mjs",
-    "rec:demo": "recordable demos/vautr-demo.json"
+    "rec:demo": "recordable demos/web.json"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

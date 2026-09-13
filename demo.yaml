@@ -1,0 +1,14 @@
+# demo.yaml
+project: vautr
+video: demos/output/web.mp4
+recordable_json: demos/web.json
+script: demos/script.md
+voice: en-US-GuyNeural
+output_dir: vautr_output
+capcut_draft: vautr-demo
+caption_mode: scene # or "sentence" for sub-scene cues
+caption_max_chars: 80 # for sentence mode
+
+# Caption styling
+caption_y: -0.62
+caption_font_size: 5.5

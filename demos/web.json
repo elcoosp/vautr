@@ -147,6 +147,9 @@
       "ms": 1500
     },
     {
+      "action": "pause"
+    },
+    {
       "action": "hover",
       "target": "text:Vault"
     },
@@ -159,6 +162,9 @@
       "target": "text:Add item",
       "state": "visible",
       "timeout": 15000
+    },
+    {
+      "action": "resume"
     },
     {
       "action": "zoom",
