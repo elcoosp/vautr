@@ -35,6 +35,14 @@
   --chart-3: #e0b54a;
   --chart-4: #9a6fd0;
   --chart-5: #e57a6f;
+  --surface-hover: #141c25;
+  --surface-active: #1a2430;
+  --surface-focus-ring: #42b59a33;
+  --sidebar-item-hover: #161d26;
+  --sidebar-item-active: #1a2430;
+  --sidebar-indicator: #42b59a;
+  --skeleton-base: #151c24;
+  --skeleton-shimmer: #1e2830;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;
@@ -68,6 +76,11 @@
   --motion-slow: 200ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --motion-transition-fast: 120ms;
+  --motion-transition-base: 180ms;
+  --motion-transition-slow: 280ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .dark {
@@ -104,6 +117,14 @@
   --chart-3: #e0b54a;
   --chart-4: #9a6fd0;
   --chart-5: #e57a6f;
+  --surface-hover: #141c25;
+  --surface-active: #1a2430;
+  --surface-focus-ring: #42b59a33;
+  --sidebar-item-hover: #161d26;
+  --sidebar-item-active: #1a2430;
+  --sidebar-indicator: #42b59a;
+  --skeleton-base: #151c24;
+  --skeleton-shimmer: #1e2830;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;
@@ -137,6 +158,11 @@
   --motion-slow: 200ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --motion-transition-fast: 120ms;
+  --motion-transition-base: 180ms;
+  --motion-transition-slow: 280ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .light {
@@ -173,6 +199,14 @@
   --chart-3: #b9932a;
   --chart-4: #7d52bf;
   --chart-5: #c45a4f;
+  --surface-hover: #f0f2f5;
+  --surface-active: #e8eaee;
+  --surface-focus-ring: #1f8f7433;
+  --sidebar-item-hover: #e6e9ed;
+  --sidebar-item-active: #dfe3e8;
+  --sidebar-indicator: #1f8f74;
+  --skeleton-base: #eef0f3;
+  --skeleton-shimmer: #f5f6f8;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;
@@ -206,5 +240,10 @@
   --motion-slow: 200ms;
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --motion-transition-fast: 120ms;
+  --motion-transition-base: 180ms;
+  --motion-transition-slow: 280ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 

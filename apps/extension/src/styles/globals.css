@@ -78,6 +78,88 @@
   }
 }
 
+/* ── Vault Ledger motion utilities (shared with web) ─────── */
+
+@layer utilities {
+  .animate-vault-enter {
+    animation: vault-enter 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes vault-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .vault-nav-item {
+    transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+                color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .vault-active-indicator {
+    position: relative;
+  }
+  .vault-active-indicator::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--primary);
+    transform: scaleY(0);
+    transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .vault-active-indicator[data-active="true"]::before {
+    transform: scaleY(1);
+  }
+
+  .vault-btn-press {
+    transition: transform 80ms ease, opacity 150ms ease;
+  }
+  .vault-btn-press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .vault-card-hover {
+    transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .vault-card-hover:hover {
+    border-color: color-mix(in oklch, var(--border), var(--primary) 15%);
+  }
+
+  .animate-shimmer {
+    animation: shimmer 1.8s ease-in-out infinite;
+    background: linear-gradient(
+      90deg,
+      var(--skeleton-base) 25%,
+      var(--skeleton-shimmer) 50%,
+      var(--skeleton-base) 75%
+    );
+    background-size: 200% 100%;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .animate-copy-flash {
+    animation: copy-flash 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes copy-flash {
+    0%   { background-color: color-mix(in oklch, var(--primary), transparent 80%); }
+    100% { background-color: transparent; }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
+
 html,
 body,
 #root {

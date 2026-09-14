@@ -51,4 +51,12 @@ pub const CHART_2: Rgba = c(0x3aa0c8);
 pub const CHART_3: Rgba = c(0xe0b54a);
 pub const CHART_4: Rgba = c(0x9a6fd0);
 pub const CHART_5: Rgba = c(0xe57a6f);
+pub const SURFACE_HOVER: Rgba = c(0x141c25);
+pub const SURFACE_ACTIVE: Rgba = c(0x1a2430);
+pub const SURFACE_FOCUS_RING: Rgba = ca(0x42b59a, 0.200);
+pub const SIDEBAR_ITEM_HOVER: Rgba = c(0x161d26);
+pub const SIDEBAR_ITEM_ACTIVE: Rgba = c(0x1a2430);
+pub const SIDEBAR_INDICATOR: Rgba = c(0x42b59a);
+pub const SKELETON_BASE: Rgba = c(0x151c24);
+pub const SKELETON_SHIMMER: Rgba = c(0x1e2830);
 

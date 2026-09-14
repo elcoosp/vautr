@@ -37,3 +37,11 @@ Source: `tokens.json`. Regenerate with `pnpm --filter @vautr/design-tokens build
 | `color.chart-3` | `#e0b54a` | `#b9932a` |
 | `color.chart-4` | `#9a6fd0` | `#7d52bf` |
 | `color.chart-5` | `#e57a6f` | `#c45a4f` |
+| `color.surface-hover` | `#141c25` | `#f0f2f5` |
+| `color.surface-active` | `#1a2430` | `#e8eaee` |
+| `color.surface-focus-ring` | `#42b59a33` | `#1f8f7433` |
+| `color.sidebar-item-hover` | `#161d26` | `#e6e9ed` |
+| `color.sidebar-item-active` | `#1a2430` | `#dfe3e8` |
+| `color.sidebar-indicator` | `#42b59a` | `#1f8f74` |
+| `color.skeleton-base` | `#151c24` | `#eef0f3` |
+| `color.skeleton-shimmer` | `#1e2830` | `#f5f6f8` |

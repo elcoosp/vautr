@@ -33,6 +33,14 @@ export const tokens = {
     "chart-3": {"dark":"#e0b54a","light":"#b9932a"},
     "chart-4": {"dark":"#9a6fd0","light":"#7d52bf"},
     "chart-5": {"dark":"#e57a6f","light":"#c45a4f"},
+    "surface-hover": {"dark":"#141c25","light":"#f0f2f5"},
+    "surface-active": {"dark":"#1a2430","light":"#e8eaee"},
+    "surface-focus-ring": {"dark":"#42b59a33","light":"#1f8f7433"},
+    "sidebar-item-hover": {"dark":"#161d26","light":"#e6e9ed"},
+    "sidebar-item-active": {"dark":"#1a2430","light":"#dfe3e8"},
+    "sidebar-indicator": {"dark":"#42b59a","light":"#1f8f74"},
+    "skeleton-base": {"dark":"#151c24","light":"#eef0f3"},
+    "skeleton-shimmer": {"dark":"#1e2830","light":"#f5f6f8"},
   },
   radius: {
     "sm": "0.375rem",
@@ -73,6 +81,11 @@ export const tokens = {
     "duration-slow": "200ms",
     "easing-standard": [0.4,0,0.2,1],
     "easing-emphasized": [0.2,0,0,1],
+    "duration-transition-fast": "120ms",
+    "duration-transition-base": "180ms",
+    "duration-transition-slow": "280ms",
+    "easing-out-expo": [0.16,1,0.3,1],
+    "easing-out-quart": [0.25,1,0.5,1],
   },
 };
 export type Tokens = typeof tokens;

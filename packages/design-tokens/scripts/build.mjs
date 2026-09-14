@@ -84,6 +84,14 @@ const CSS_VAR = {
   'color.chart-3': '--chart-3',
   'color.chart-4': '--chart-4',
   'color.chart-5': '--chart-5',
+  'color.surface-hover': '--surface-hover',
+  'color.surface-active': '--surface-active',
+  'color.surface-focus-ring': '--surface-focus-ring',
+  'color.sidebar-item-hover': '--sidebar-item-hover',
+  'color.sidebar-item-active': '--sidebar-item-active',
+  'color.sidebar-indicator': '--sidebar-indicator',
+  'color.skeleton-base': '--skeleton-base',
+  'color.skeleton-shimmer': '--skeleton-shimmer',
 };
 
 function buildCss() {
