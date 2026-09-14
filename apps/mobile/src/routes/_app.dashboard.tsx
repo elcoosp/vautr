@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { FolderKanban, KeyRound, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Avatar } from '../../components/ui/avatar';
 import { Badge } from '../../components/ui/badge';
@@ -89,7 +90,7 @@ function DashboardScreen() {
   ];
 
   return (
-    <View className="gap-5">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-5">
       <View className="gap-0.5">
         <Text variant="h2">Dashboard</Text>
         <Text variant="muted">Your vault at a glance.</Text>
@@ -127,6 +128,6 @@ function DashboardScreen() {
       <Button variant="outline" onPress={() => router.navigate({ to: '/generator' })}>
         <ButtonText>Generate a password</ButtonText>
       </Button>
-    </View>
+    </Animated.View>
   );
 }

@@ -9,6 +9,7 @@ import {
 import { RefreshCw } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Switch, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
@@ -72,7 +73,7 @@ function GeneratorScreen() {
   };
 
   return (
-    <View className="gap-5">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-5">
       <View className="gap-0.5">
         <Text variant="h2">Generator</Text>
         <Text variant="muted">Create a strong, unique password.</Text>
@@ -129,6 +130,6 @@ function GeneratorScreen() {
         />
         <Text variant="tiny">Detect whether a generated password is reused or common.</Text>
       </Card>
-    </View>
+    </Animated.View>
   );
 }

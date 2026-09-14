@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Clipboard, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Separator } from '../../components/ui/separator';
@@ -21,7 +22,7 @@ function SettingsScreen() {
   const kit = services.auth.getEmergencyKit();
 
   return (
-    <View className="gap-4">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-4">
       <Text variant="h3">Settings</Text>
 
       <Card className="gap-2 p-4">
@@ -94,6 +95,6 @@ function SettingsScreen() {
       </Card>
 
       <Separator />
-    </View>
+    </Animated.View>
   );
 }

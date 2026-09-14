@@ -3,6 +3,7 @@ import type { AuditEntry } from '@vautr/api-contract';
 import { ScrollText } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Card } from '../../components/ui/card';
 import { EmptyState } from '../../components/ui/empty-state';
@@ -38,7 +39,7 @@ function AuditLogScreen() {
   }, [load]);
 
   return (
-    <View className="gap-4">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-4">
       <View className="flex-row items-center gap-2">
         <ThemedIcon icon={ScrollText} size={20} tone="primary" />
         <Text variant="h3">Security log</Text>
@@ -89,6 +90,6 @@ function AuditLogScreen() {
           ))}
         </ScrollView>
       )}
-    </View>
+    </Animated.View>
   );
 }

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Button, ButtonText } from '../../components/ui/button';
@@ -90,7 +91,7 @@ function MfaScreen() {
   };
 
   return (
-    <View className="gap-4">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-4">
       <Text variant="h3">Multi-factor authentication</Text>
 
       <Card className="p-4 gap-3">
@@ -143,6 +144,6 @@ function MfaScreen() {
           <ButtonText>{busy ? 'Enrolling…' : 'Set up TOTP authenticator'}</ButtonText>
         </Button>
       )}
-    </View>
+    </Animated.View>
   );
 }

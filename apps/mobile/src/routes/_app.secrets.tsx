@@ -3,6 +3,7 @@ import { getMobileClient } from '@vautr/client-sdk/mobile';
 import { KeyRound } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SecretOverlay } from '../../components/SecretOverlay';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Avatar, AvatarFallbackText } from '../../components/ui/avatar';
@@ -94,7 +95,7 @@ function SecretsScreen() {
   );
 
   return (
-    <View className="gap-5">
+    <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-5">
       <View className="flex-row items-center justify-between">
         <View className="gap-0.5">
           <Text variant="h2">Secrets</Text>
@@ -153,6 +154,6 @@ function SecretsScreen() {
           ))}
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
