@@ -70,7 +70,7 @@ export function VaultList({ selectedUuid, onSelect }: VaultListProps) {
                   role="option"
                   aria-selected={isSelected}
                   data-uuid={item.uuid}
-                  data-active={isSelected ? 'true' : undefined}
+                  data-status={isSelected ? 'active' : undefined}
                   onClick={() => onSelect(item.uuid)}
                   className={`vault-nav-item vault-active-indicator flex w-full items-center gap-3 border-b border-border px-4 text-left transition-colors focus-visible:outline focus-visible:outline-accent ${
                     isSelected
