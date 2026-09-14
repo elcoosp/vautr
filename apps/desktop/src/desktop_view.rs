@@ -3770,7 +3770,7 @@ impl DesktopView {
                 .px_3()
                 .py_2()
                 .rounded_md()
-                .when(active, |d| d.bg(theme::SURFACE_RAISED))
+                .when(active, |d| d.bg(theme::SIDEBAR_ITEM_ACTIVE))
                 .text_color(ink)
                 .cursor_pointer()
                 .child(Icon::new(icon).size_4().text_color(ink))

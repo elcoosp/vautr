@@ -75,7 +75,7 @@ pub fn loading_state(caption: impl Into<SharedString>) -> impl IntoElement {
 
 /// A single skeleton placeholder row (shimmer-less bar) for list skeletons.
 pub fn skeleton_row() -> impl IntoElement {
-    div().h_5().w_full().rounded_md().bg(theme::SURFACE_RAISED)
+    div().h_5().w_full().rounded_md().bg(theme::SKELETON_BASE)
 }
 
 /// A vertical stack of `count` skeleton rows, for skeleton-loading lists.
