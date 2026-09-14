@@ -29,6 +29,12 @@
     --border: 226 14% 21%;
     --input: 226 14% 18%;
     --ring: 166 47% 48%;
+    --surface-hover: 212 30% 11%;
+    --surface-active: 213 30% 15%;
+    --sidebar-item-hover: 214 27% 12%;
+    --sidebar-item-active: 213 30% 15%;
+    --skeleton-base: 212 26% 11%;
+    --skeleton-shimmer: 207 23% 15%;
     --radius: 0.75rem;
   }
 
@@ -52,5 +58,11 @@
     --border: 226 14% 88%;
     --input: 226 14% 88%;
     --ring: 169 100% 23%;
+    --surface-hover: 216 20% 95%;
+    --surface-active: 220 15% 92%;
+    --sidebar-item-hover: 214 16% 92%;
+    --sidebar-item-active: 213 16% 89%;
+    --skeleton-base: 216 17% 94%;
+    --skeleton-shimmer: 220 18% 97%;
   }
 }

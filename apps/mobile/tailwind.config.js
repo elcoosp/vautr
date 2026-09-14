@@ -39,6 +39,12 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        'surface-hover': 'hsl(var(--surface-hover))',
+        'surface-active': 'hsl(var(--surface-active))',
+        'sidebar-item-hover': 'hsl(var(--sidebar-item-hover))',
+        'sidebar-item-active': 'hsl(var(--sidebar-item-active))',
+        'skeleton-base': 'hsl(var(--skeleton-base))',
+        'skeleton-shimmer': 'hsl(var(--skeleton-shimmer))',
       },
       borderRadius: {
         lg: 'var(--radius)',
