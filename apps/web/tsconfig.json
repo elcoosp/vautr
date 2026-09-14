@@ -12,7 +12,7 @@
       "@vautr/ui-logic": ["../../packages/ui-logic/src/index.ts"],
       "@vautr/client-sdk": ["../../packages/vautr-client-sdk/src/index.ts"],
       "@vautr/client-sdk/real": ["../../packages/vautr-client-sdk/src/realClient.ts"],
-      "vautr-wasm": ["./src/lib/mockWasm.ts"]
+      "vautr-wasm": ["./src/lib/wasm.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

@@ -189,7 +189,7 @@ input[type="range"]::-moz-range-track {
     transform: scaleY(0);
     transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .vault-active-indicator[data-active="true"]::before {
+  .vault-active-indicator[data-status="active"]::before {
     transform: scaleY(1);
   }
 
