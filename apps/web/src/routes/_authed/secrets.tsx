@@ -183,13 +183,19 @@ function SecretsManagerPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => void onReveal(secret.uuid)}
+                        className="vault-btn-press"
                       >
                         {copied[secret.uuid] ? (
-                          <EyeOff className="mr-1 size-4" aria-hidden="true" />
+                          <span className="animate-copy-flash inline-flex items-center">
+                            <EyeOff className="mr-1 size-4" aria-hidden="true" />
+                            Copied
+                          </span>
                         ) : (
-                          <Eye className="mr-1 size-4" aria-hidden="true" />
+                          <>
+                            <Eye className="mr-1 size-4" aria-hidden="true" />
+                            Reveal
+                          </>
                         )}
-                        {copied[secret.uuid] ? 'Copied' : 'Reveal'}
                       </Button>
                     </TableCell>
                   </TableRow>

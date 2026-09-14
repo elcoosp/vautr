@@ -48,15 +48,15 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/40">
-        <Icon className="h-6 w-6 text-muted-foreground" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 ring-1 ring-accent/20">
+        <Icon className="h-5 w-5 text-accent" />
       </div>
       <div className="space-y-1">
         <p className="text-base font-semibold text-foreground">{title}</p>
         {description ? <p className="text-sm text-text-muted">{description}</p> : null}
       </div>
       {action ? (
-        <Button variant="outline" className="mt-2" onClick={action.onClick}>
+        <Button variant="outline" className="vault-btn-press mt-2" onClick={action.onClick}>
           {action.label}
         </Button>
       ) : null}

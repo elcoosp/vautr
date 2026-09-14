@@ -32,7 +32,7 @@ export function VaultView() {
             }}
             data-tour="add-secret"
             aria-label="Add item"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
+            className="vault-btn-press inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
           >
             <Plus className="size-4" aria-hidden="true" />
             Add item
@@ -41,7 +41,7 @@ export function VaultView() {
             type="button"
             onClick={onLock}
             aria-label="Lock vault"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
+            className="vault-btn-press inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-text-muted hover:bg-surface-raised hover:text-text"
           >
             <Lock className="size-4" aria-hidden="true" />
             Lock

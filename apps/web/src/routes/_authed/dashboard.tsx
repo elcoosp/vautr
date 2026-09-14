@@ -103,7 +103,7 @@ function DashboardPage() {
                   key={p.uuid}
                   to="/projects/$uuid"
                   params={{ uuid: p.uuid }}
-                  className="flex items-center justify-between rounded-md border border-border bg-surface-raised px-4 py-3 transition-colors hover:bg-border/40"
+                  className="vault-card-hover vault-btn-press flex items-center justify-between rounded-md border border-border bg-surface-raised px-4 py-3 transition-colors hover:bg-border/40"
                 >
                   <div className="flex items-center gap-3">
                     <FolderKanban className="size-4 text-accent" aria-hidden="true" />
@@ -134,7 +134,21 @@ function DashboardPage() {
           </Card>
         </>
       ) : (
-        !error && <p className="text-sm text-text-muted">Loading…</p>
+        !error && (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                  <div className="h-3 w-20 animate-shimmer rounded" />
+                  <div className="size-8 rounded-lg animate-shimmer" />
+                </CardHeader>
+                <CardContent>
+                  <div className="h-8 w-12 animate-shimmer rounded" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -152,14 +166,16 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <Card>
+    <Card className="vault-card-hover">
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <CardDescription>{label}</CardDescription>
-        <Icon className="size-4 text-accent" aria-hidden="true" />
+        <span className="grid size-8 place-items-center rounded-lg bg-accent/15">
+          <Icon className="size-4 text-accent" aria-hidden="true" />
+        </span>
       </CardHeader>
       <CardContent>
-        <CardTitle className="text-3xl">{value}</CardTitle>
-        {hint ? <Badge className="mt-1">{hint}</Badge> : null}
+        <div className="text-3xl font-semibold tracking-tight text-text">{value}</div>
+        {hint ? <Badge className="mt-1.5" variant="secondary">{hint}</Badge> : null}
       </CardContent>
     </Card>
   );

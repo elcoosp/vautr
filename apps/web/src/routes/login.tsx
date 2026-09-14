@@ -45,47 +45,56 @@ function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg p-6">
-      <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-8">
-        <div className="mb-6 flex items-center gap-3">
-          <img src="/logo.svg" alt="Vautr" className="size-20 rounded-lg" />
-          <h1 className="text-2xl font-semibold text-text">Vautr</h1>
+      <div className="animate-vault-enter w-full max-w-sm space-y-8">
+        {/* Brand header */}
+        <div className="space-y-2 text-center">
+          <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-surface ring-1 ring-border">
+            <img src="/logo.svg" alt="Vautr" className="size-10" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-text">Vautr</h1>
+          <p className="text-sm text-text-muted">Zero-knowledge vault</p>
         </div>
-        <p className="mb-6 text-sm text-text-muted">Unlock your vault to continue.</p>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              type="text"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="you@example.com"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="master-password">Master password</Label>
-            <Input
-              id="master-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-          {error ? (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? 'Unlocking…' : 'Unlock vault'}
-          </Button>
-        </form>
-        <p className="mt-4 text-center text-xs text-text-muted">
+
+        {/* Form card */}
+        <div className="rounded-xl border border-border bg-surface p-6">
+          <p className="mb-5 text-sm text-text-muted">Unlock your vault to continue.</p>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="master-password">Master password</Label>
+              <Input
+                id="master-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your master password"
+              />
+            </div>
+            {error ? (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            ) : null}
+            <Button type="submit" className="vault-btn-press w-full" disabled={busy}>
+              {busy ? 'Unlocking…' : 'Unlock vault'}
+            </Button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-text-muted">
           New here?{' '}
-          <Link to="/register" className="text-accent underline">
+          <Link to="/register" className="text-accent underline-offset-2 hover:underline">
             Register an account
           </Link>
         </p>

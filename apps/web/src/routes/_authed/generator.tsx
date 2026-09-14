@@ -71,10 +71,10 @@ function GeneratorPage() {
                 className="font-mono"
                 aria-label="Generated password"
               />
-              <Button variant="outline" size="icon" onClick={copy} aria-label="Copy password">
+              <Button variant="outline" size="icon" onClick={copy} aria-label="Copy password" className="vault-btn-press">
                 <Copy className="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="outline" size="icon" onClick={regenerate} aria-label="Regenerate">
+              <Button variant="outline" size="icon" onClick={regenerate} aria-label="Regenerate" className="vault-btn-press">
                 <RefreshCw className="size-4" aria-hidden="true" />
               </Button>
             </div>
@@ -168,12 +168,12 @@ function GeneratorPage() {
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-border">
                 <div
-                  className={`h-full ${scoreColors[analysis.score] ?? 'bg-border'}`}
+                  className={`h-full transition-all duration-500 ease-out ${scoreColors[analysis.score] ?? 'bg-border'}`}
                   style={{ width: `${Math.min(100, analysis.entropyBits)}%` }}
                 />
               </div>
               {analysis.isReused ? (
-                <p className="mt-2 text-sm font-medium text-warn">⚠ Reused password detected.</p>
+                <p className="mt-2 text-sm font-medium text-warn">Reused password detected.</p>
               ) : null}
               {analysis.isCommon ? (
                 <p className="mt-1 text-sm font-medium text-danger">

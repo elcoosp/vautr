@@ -29,6 +29,7 @@
   --color-accent-ink: var(--primary-foreground);
   --color-danger: var(--destructive);
   --color-warn: var(--warning);
+  --color-success: var(--success);
 }
 
 @theme inline {
