@@ -4,6 +4,7 @@ import {
   generatePassword,
   strengthLabel,
 } from '@vautr/client-sdk';
+import { Check, Copy } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -83,10 +84,20 @@ export function GeneratorTab() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={!password} onClick={() => void copy()}>
-              {copied ? 'Copied ✓' : 'Copy'}
+            <Button size="sm" variant="outline" disabled={!password} onClick={() => void copy()} className="vault-btn-press" aria-label="Copy generated password">
+              {copied ? (
+                <>
+                  <Check className="size-3.5" aria-hidden="true" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3.5" aria-hidden="true" />
+                  Copy
+                </>
+              )}
             </Button>
-            <Button size="sm" variant="ghost" disabled={!password} onClick={() => setPassword('')}>
+            <Button size="sm" variant="ghost" disabled={!password} onClick={() => setPassword('')} className="vault-btn-press">
               Clear
             </Button>
           </div>

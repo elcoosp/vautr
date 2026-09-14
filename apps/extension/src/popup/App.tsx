@@ -166,7 +166,7 @@ export function App() {
           <span className="text-base font-semibold">Vautr</span>
           {username ? <span className="text-xs text-muted-foreground">{username}</span> : null}
         </div>
-        <Button size="sm" variant="outline" onClick={() => void handleLock()}>
+        <Button size="sm" variant="outline" onClick={() => void handleLock()} className="vault-btn-press">
           Lock
         </Button>
       </header>
@@ -178,7 +178,7 @@ export function App() {
               key={t.id}
               value={t.id}
               data-tour={TOUR_ANCHORS[t.id]}
-              className="flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px]"
+              className="vault-nav-item flex flex-col items-center gap-0.5 px-2 py-1.5 text-[10px]"
             >
               <t.icon className="size-4" aria-hidden="true" />
               {t.label}

@@ -26,7 +26,7 @@ export function DashboardTab() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         {stats.map((s) => (
-          <Card key={s.label}>
+          <Card key={s.label} className="vault-card-hover">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">{s.label}</CardTitle>
             </CardHeader>

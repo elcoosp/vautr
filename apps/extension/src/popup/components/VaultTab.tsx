@@ -1,6 +1,7 @@
 import type { VautrMlpClient } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { evaluatePasswordStrength } from '@vautr/ui-logic';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Favicon } from '@/components/Favicon';
@@ -136,8 +137,9 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
             {items.length} saved login{items.length === 1 ? '' : 's'}
           </p>
         </div>
-        <Button size="sm" data-tour="add-secret" onClick={() => setShowAdd(true)}>
-          + Add
+        <Button size="sm" data-tour="add-secret" onClick={() => setShowAdd(true)} className="vault-btn-press">
+          <Plus className="size-3.5" aria-hidden="true" />
+          Add
         </Button>
       </div>
 
@@ -149,7 +151,7 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
         <div className="space-y-2">
           {items.map((item) => {
             return (
-              <Card key={item.uuid}>
+              <Card key={item.uuid} className="vault-card-hover">
                 <CardHeader className="space-y-0 py-3">
                   <div className="flex items-center gap-2">
                     <Favicon url={item.urls[0]} size={20} className="shrink-0" />
@@ -163,13 +165,24 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
                       size="sm"
                       variant="outline"
                       onClick={() => void handleAutofill(item.uuid, item.title)}
+                      className="vault-btn-press"
                     >
                       Autofill
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => void handleCopy(item)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleCopy(item)}
+                      className="vault-btn-press"
+                    >
                       Copy
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => void handleShare(item)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleShare(item)}
+                      className="vault-btn-press"
+                    >
                       Share
                     </Button>
                   </div>
@@ -203,7 +216,7 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
                       <div
-                        className={`h-full transition-all ${strength.score <= 1 ? 'bg-danger' : strength.score <= 3 ? 'bg-danger' : strength.score <= 4 ? 'bg-warn' : 'bg-accent'}`}
+                        className={`h-full transition-all duration-500 ease-out ${strength.score <= 1 ? 'bg-danger' : strength.score <= 3 ? 'bg-danger' : strength.score <= 4 ? 'bg-warn' : 'bg-accent'}`}
                         style={{ width: `${(strength.score / 7) * 100}%` }}
                       />
                     </div>
