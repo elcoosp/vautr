@@ -43,8 +43,8 @@ export function EmptyState({
     <View
       className={`flex-1 items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-10 ${className ?? ''}`}
     >
-      <View className="items-center justify-center rounded-full bg-muted/40 p-3">
-        <ThemedIcon icon={icon} size={24} tone="muted" />
+      <View className="items-center justify-center rounded-xl bg-primary/10 p-3 ring-1 ring-primary/20">
+        <ThemedIcon icon={icon} size={22} tone="primary" />
       </View>
       <Text variant="h4" className="text-center">
         {title}
