@@ -37,7 +37,7 @@ export async function restoreSession(): Promise<void> {
     });
     // Publish our sharing key so others can share items TO us (server-backed
     // sharing PKI). Same call as in `login()` — fire-and-forget.
-    void ensureSharingKey().catch(() => { });
+    void ensureSharingKey().catch(() => {});
     window.dispatchEvent(new CustomEvent('vautr:auth-change'));
   }
 }
@@ -90,7 +90,7 @@ export async function login(username: string, password: string): Promise<void> {
   // Publish our sharing key so others can share items TO us (server-backed
   // sharing PKI). Without this, incoming shares fail at getRecipientSharingKey.
   // Mirrors the two-party key setup in the server's sharing_e2e.
-  await ensureSharingKey().catch(() => { });
+  await ensureSharingKey().catch(() => {});
   window.dispatchEvent(new CustomEvent('vautr:auth-change'));
 }
 

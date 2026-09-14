@@ -14,10 +14,10 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { PermissionBadge, RoleBadge } from '@/components/PermissionBadge';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/EmptyState';
+import { PermissionBadge, RoleBadge } from '@/components/PermissionBadge';
 import {
   AlertDialog,
   AlertDialogAction,

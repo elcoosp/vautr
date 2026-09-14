@@ -1,5 +1,5 @@
-import { usePopupStore } from '@/popup/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { usePopupStore } from '@/popup/store';
 
 /**
  * Extension dashboard — parity with the web/desktop/mobile dashboards.
@@ -20,9 +20,7 @@ export function DashboardTab() {
     <div className="space-y-4 p-4">
       <div>
         <h2 className="text-lg font-semibold">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">
-          Local snapshot of your synced vault.
-        </p>
+        <p className="text-sm text-muted-foreground">Local snapshot of your synced vault.</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {stats.map((s) => (

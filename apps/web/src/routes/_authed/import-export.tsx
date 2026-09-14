@@ -126,7 +126,11 @@ function ImportExportPage() {
               />
               Include secret values
             </label>
-            <Button data-testid="export-backup-button" onClick={() => void onExport()} disabled={busy !== null}>
+            <Button
+              data-testid="export-backup-button"
+              onClick={() => void onExport()}
+              disabled={busy !== null}
+            >
               {busy === 'export' ? 'Exporting…' : 'Export backup'}
             </Button>
           </CardContent>

@@ -85,11 +85,10 @@ function SecretsScreen() {
   const visibleEntries = useMemo(
     () =>
       q === '' || !entries
-        ? entries ?? []
+        ? (entries ?? [])
         : entries.filter(
             ({ project, secret }) =>
-              secret.key.toLowerCase().includes(q) ||
-              project.name.toLowerCase().includes(q),
+              secret.key.toLowerCase().includes(q) || project.name.toLowerCase().includes(q),
           ),
     [q, entries],
   );

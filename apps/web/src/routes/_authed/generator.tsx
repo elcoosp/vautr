@@ -71,10 +71,22 @@ function GeneratorPage() {
                 className="font-mono"
                 aria-label="Generated password"
               />
-              <Button variant="outline" size="icon" onClick={copy} aria-label="Copy password" className="vault-btn-press">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={copy}
+                aria-label="Copy password"
+                className="vault-btn-press"
+              >
                 <Copy className="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="outline" size="icon" onClick={regenerate} aria-label="Regenerate" className="vault-btn-press">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={regenerate}
+                aria-label="Regenerate"
+                className="vault-btn-press"
+              >
                 <RefreshCw className="size-4" aria-hidden="true" />
               </Button>
             </div>

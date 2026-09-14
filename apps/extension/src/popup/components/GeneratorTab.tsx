@@ -84,7 +84,14 @@ export function GeneratorTab() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={!password} onClick={() => void copy()} className="vault-btn-press" aria-label="Copy generated password">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!password}
+              onClick={() => void copy()}
+              className="vault-btn-press"
+              aria-label="Copy generated password"
+            >
               {copied ? (
                 <>
                   <Check className="size-3.5" aria-hidden="true" />
@@ -97,7 +104,13 @@ export function GeneratorTab() {
                 </>
               )}
             </Button>
-            <Button size="sm" variant="ghost" disabled={!password} onClick={() => setPassword('')} className="vault-btn-press">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!password}
+              onClick={() => setPassword('')}
+              className="vault-btn-press"
+            >
               Clear
             </Button>
           </div>

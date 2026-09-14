@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Globe } from 'lucide-react';
+import { useState } from 'react';
 
 interface FaviconProps {
   url?: string;
@@ -20,9 +20,7 @@ export function Favicon({ url, size = 16, className = '' }: FaviconProps) {
   const [errored, setErrored] = useState(false);
   const domain = url ? domainFromUrl(url) : null;
   if (!domain || errored) {
-    return (
-      <Globe className={`size-${size} text-text-muted ${className}`} aria-hidden="true" />
-    );
+    return <Globe className={`size-${size} text-text-muted ${className}`} aria-hidden="true" />;
   }
   return (
     <img

@@ -166,7 +166,12 @@ export function App() {
           <span className="text-base font-semibold">Vautr</span>
           {username ? <span className="text-xs text-muted-foreground">{username}</span> : null}
         </div>
-        <Button size="sm" variant="outline" onClick={() => void handleLock()} className="vault-btn-press">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void handleLock()}
+          className="vault-btn-press"
+        >
           Lock
         </Button>
       </header>

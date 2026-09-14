@@ -57,9 +57,7 @@ function AuditLogPage() {
             never contains secret values.
           </p>
         </div>
-        <Button onClick={onDownload}>
-          Download JSON
-        </Button>
+        <Button onClick={onDownload}>Download JSON</Button>
       </div>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}

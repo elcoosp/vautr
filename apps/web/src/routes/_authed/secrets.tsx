@@ -2,7 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import type { Project, Secret } from '@vautr/api-contract';
 import { Skeleton } from 'boneyard-js/react';
 import { Eye, EyeOff, KeyRound, Lock } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/table';
 import { performAction, release, reveal } from '@/lib/client';
 import { MlpApiError, mlp } from '@/lib/mlp';
-import { useMemo } from 'react';
 
 export const Route = createFileRoute('/_authed/secrets')({
   component: SecretsManagerPage,
@@ -68,8 +67,7 @@ function SecretsManagerPage() {
         ? rows
         : rows.filter(
             ({ project, secret }) =>
-              project.name.toLowerCase().includes(q) ||
-              secret.key.toLowerCase().includes(q),
+              project.name.toLowerCase().includes(q) || secret.key.toLowerCase().includes(q),
           ),
     [rows, q],
   );
@@ -148,9 +146,7 @@ function SecretsManagerPage() {
               }
             />
           ) : visibleRows.length === 0 ? (
-            <p className="text-sm text-text-muted">
-              No secrets match “{query}”.
-            </p>
+            <p className="text-sm text-text-muted">No secrets match “{query}”.</p>
           ) : (
             <Table>
               <TableHeader>

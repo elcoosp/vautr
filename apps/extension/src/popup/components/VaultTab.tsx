@@ -137,7 +137,12 @@ export function VaultTab({ client, mlp }: VaultTabProps) {
             {items.length} saved login{items.length === 1 ? '' : 's'}
           </p>
         </div>
-        <Button size="sm" data-tour="add-secret" onClick={() => setShowAdd(true)} className="vault-btn-press">
+        <Button
+          size="sm"
+          data-tour="add-secret"
+          onClick={() => setShowAdd(true)}
+          className="vault-btn-press"
+        >
           <Plus className="size-3.5" aria-hidden="true" />
           Add
         </Button>

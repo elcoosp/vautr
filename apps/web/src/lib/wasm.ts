@@ -60,18 +60,10 @@ export const {
   ) => string;
   accept_share: (incomingJson: string, recipientSecretB64: string) => Uint8Array;
   create_sharing_group: (name: string, adminUuid: string) => string;
-  add_group_member: (
-    groupJson: string,
-    memberUuid: string,
-    memberPublicB64: string,
-  ) => string;
+  add_group_member: (groupJson: string, memberUuid: string, memberPublicB64: string) => string;
   unwrap_group_key: (inboxJson: string, recipientSecretB64: string) => string;
   encrypt_group_item: (groupJson: string, itemUuid: string, plaintext: Uint8Array) => string;
-  decrypt_group_item: (
-    groupJson: string,
-    itemUuid: string,
-    ciphertextB64: string,
-  ) => Uint8Array;
+  decrypt_group_item: (groupJson: string, itemUuid: string, ciphertextB64: string) => Uint8Array;
 } = raw as any;
 
 function ensureBigInt(v: number): bigint {

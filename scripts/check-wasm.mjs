@@ -3,8 +3,8 @@
 // The clients must ship real crypto; a missing .wasm means the throwing dev
 // shim would be the effective path. Run via the `verify:wasm` npm script.
 import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const required = [

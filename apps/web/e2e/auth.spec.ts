@@ -32,14 +32,26 @@ async function registerViaUi(page: Page, username: string): Promise<void> {
 
 async function dismissOnboarding(page: Page): Promise<void> {
   const overlay = page.locator('div.fixed.inset-0');
-  await page.getByText('Welcome to Vautr').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+  await page
+    .getByText('Welcome to Vautr')
+    .waitFor({ state: 'visible', timeout: 15_000 })
+    .catch(() => {});
   for (let i = 0; i < 12; i++) {
-    if (!(await overlay.first().isVisible().catch(() => false))) return;
+    if (
+      !(await overlay
+        .first()
+        .isVisible()
+        .catch(() => false))
+    )
+      return;
     const target = overlay
       .getByRole('button')
       .filter({ hasText: /create vault & continue|continue|go to my vault|finish|skip|next/i })
       .first();
-    const clicked = await target.click({ timeout: 3_000 }).then(() => true).catch(() => false);
+    const clicked = await target
+      .click({ timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
     if (!clicked) return;
     await page.waitForTimeout(600);
   }
@@ -93,7 +105,9 @@ test('auth lifecycle: unlock decrypts, lock/logout re-locks, re-login works, key
 
   // 3. Log out (locks the vault + forgets the session token).
   await page.getByRole('button', { name: /log out/i }).click();
-  await expect(page.getByRole('button', { name: /unlock vault/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /unlock vault/i })).toBeVisible({
+    timeout: 15_000,
+  });
 
   // 4. Log back in with the SAME credentials → reaches the dashboard (unlock works).
   await page.getByLabel('Username').fill(username);

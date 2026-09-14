@@ -265,7 +265,7 @@ export class VautrWebClient {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        for (; ;) {
+        for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });

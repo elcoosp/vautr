@@ -1,5 +1,5 @@
-import { type BrowserContext, type Page, expect, test } from '@playwright/test';
 import { DatabaseSync } from 'node:sqlite';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 
 /**
  * Web Shares e2e (VTR-104 / ADR-007): a zero-knowledge 1:1 item share, driven
@@ -32,7 +32,9 @@ async function registerViaUi(page: Page, username: string): Promise<void> {
   await page.goto(`${ORIGIN}/register`);
   await page.getByLabel('Username').fill(username);
   await page.getByLabel('Master password', { exact: true }).fill('correct-horse-battery-staple');
-  await page.getByLabel('Confirm master password', { exact: true }).fill('correct-horse-battery-staple');
+  await page
+    .getByLabel('Confirm master password', { exact: true })
+    .fill('correct-horse-battery-staple');
   await page.getByRole('button', { name: /create vault/i }).click();
   await page.waitForURL('**/dashboard', { timeout: 30_000 });
   await dismissOnboarding(page);
@@ -46,12 +48,21 @@ async function dismissOnboarding(page: Page): Promise<void> {
     .waitFor({ state: 'visible', timeout: 15_000 })
     .catch(() => {});
   for (let i = 0; i < 12; i++) {
-    if (!(await overlay.first().isVisible().catch(() => false))) return;
+    if (
+      !(await overlay
+        .first()
+        .isVisible()
+        .catch(() => false))
+    )
+      return;
     const target = overlay
       .getByRole('button')
       .filter({ hasText: /create vault & continue|continue|go to my vault|finish|skip|next/i })
       .first();
-    const clicked = await target.click({ timeout: 3_000 }).then(() => true).catch(() => false);
+    const clicked = await target
+      .click({ timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
     if (!clicked) return;
     await page.waitForTimeout(600);
   }
@@ -97,7 +108,8 @@ test('sender shares a secret; recipient accepts & decrypts it', async ({ browser
   sender.on('pageerror', (e) => console.log('SENDER_PAGEERR:', e.message));
   sender.on('response', (r) => {
     const u = r.url();
-    if (u.includes('/api/')) console.log('SENDER_RESP:', r.status(), u.replace('http://localhost:5173', ''));
+    if (u.includes('/api/'))
+      console.log('SENDER_RESP:', r.status(), u.replace('http://localhost:5173', ''));
   });
   await registerViaUi(sender, senderEmail);
 
@@ -109,7 +121,12 @@ test('sender shares a secret; recipient accepts & decrypts it', async ({ browser
     const u = r.url();
     if (u.includes('/api/')) {
       const t = await r.text().catch(() => '');
-      console.log('RECIP_RESP:', r.status(), u.replace('http://localhost:5173', ''), t.slice(0, 200));
+      console.log(
+        'RECIP_RESP:',
+        r.status(),
+        u.replace('http://localhost:5173', ''),
+        t.slice(0, 200),
+      );
     }
   });
   await registerViaUi(recip, recipEmail);

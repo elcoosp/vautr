@@ -7,8 +7,8 @@ import type {
   Project,
 } from '@vautr/api-contract';
 import { ArrowRight, Bot, Database, FolderKanban, ShieldCheck, Ticket } from 'lucide-react';
-import { PermissionBadge } from '@/components/PermissionBadge';
 import { useEffect, useState } from 'react';
+import { PermissionBadge } from '@/components/PermissionBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,7 +175,11 @@ function StatCard({
       </CardHeader>
       <CardContent>
         <div className="text-3xl font-semibold tracking-tight text-text">{value}</div>
-        {hint ? <Badge className="mt-1.5" variant="secondary">{hint}</Badge> : null}
+        {hint ? (
+          <Badge className="mt-1.5" variant="secondary">
+            {hint}
+          </Badge>
+        ) : null}
       </CardContent>
     </Card>
   );

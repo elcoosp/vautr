@@ -73,7 +73,9 @@ export function VaultList({ selectedUuid, onSelect }: VaultListProps) {
                   data-active={isSelected ? 'true' : undefined}
                   onClick={() => onSelect(item.uuid)}
                   className={`vault-nav-item vault-active-indicator flex w-full items-center gap-3 border-b border-border px-4 text-left transition-colors focus-visible:outline focus-visible:outline-accent ${
-                    isSelected ? 'bg-[var(--sidebar-item-active)] text-text' : 'bg-surface text-text-muted hover:bg-[var(--sidebar-item-hover)] hover:text-text'
+                    isSelected
+                      ? 'bg-[var(--sidebar-item-active)] text-text'
+                      : 'bg-surface text-text-muted hover:bg-[var(--sidebar-item-hover)] hover:text-text'
                   }`}
                   style={{ height: virtualRow.size - 1 }}
                 >

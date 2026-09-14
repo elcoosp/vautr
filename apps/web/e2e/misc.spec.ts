@@ -31,14 +31,26 @@ async function registerViaUi(page: Page, username: string): Promise<void> {
 
 async function dismissOnboarding(page: Page): Promise<void> {
   const overlay = page.locator('div.fixed.inset-0');
-  await page.getByText('Welcome to Vautr').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+  await page
+    .getByText('Welcome to Vautr')
+    .waitFor({ state: 'visible', timeout: 15_000 })
+    .catch(() => {});
   for (let i = 0; i < 12; i++) {
-    if (!(await overlay.first().isVisible().catch(() => false))) return;
+    if (
+      !(await overlay
+        .first()
+        .isVisible()
+        .catch(() => false))
+    )
+      return;
     const target = overlay
       .getByRole('button')
       .filter({ hasText: /create vault & continue|continue|go to my vault|finish|skip|next/i })
       .first();
-    const clicked = await target.click({ timeout: 3_000 }).then(() => true).catch(() => false);
+    const clicked = await target
+      .click({ timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
     if (!clicked) return;
     await page.waitForTimeout(600);
   }
@@ -59,7 +71,10 @@ test('machine account create + backup export/import paths', async ({ page }) => 
   await page.getByRole('button', { name: /new machine account/i }).click();
   await page.getByLabel('Name').fill(maName);
   // Pick a scope so the account is not created with an empty scope set.
-  await page.getByLabel('secrets:read').check().catch(() => {});
+  await page
+    .getByLabel('secrets:read')
+    .check()
+    .catch(() => {});
   await page.getByRole('button', { name: /^create$/i }).click();
 
   // The new account appears in the table (active by default).
