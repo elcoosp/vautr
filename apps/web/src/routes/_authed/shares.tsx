@@ -14,7 +14,7 @@ function SharesPage() {
   const [tab, setTab] = useState<SharesTab>('inbox');
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="animate-vault-enter space-y-6 p-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold text-text">
           <Share2 className="size-5 text-accent" aria-hidden="true" />

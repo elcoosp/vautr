@@ -168,7 +168,7 @@ function MfaPage() {
   if (error && !status) return <p className="p-6 text-sm text-danger">{error}</p>;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="animate-vault-enter space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold text-text">MFA &amp; security</h1>
         <p className="text-sm text-text-muted">
