@@ -15,7 +15,8 @@ use crate::project_transport::{ProjectSecretSummary, ProjectSummary};
 pub struct HttpTransport {
     client: reqwest::Client,
     base: String,
-    token: Arc<tokio::sync::Mutex<String>>,
+    // VTRFIX-BUG-H13: std RwLock — critical section is a String clone.
+    token: Arc<std::sync::RwLock<String>>,
 }
 
 impl HttpTransport {
@@ -25,21 +26,24 @@ impl HttpTransport {
         Self {
             client: reqwest::Client::new(),
             base: base_url.into().trim_end_matches('/').to_string(),
-            token: Arc::new(tokio::sync::Mutex::new(token.into())),
+            token: Arc::new(std::sync::RwLock::new(token.into())),
         }
     }
 
     /// Replace the bearer token (e.g. after a re-auth).
     pub fn set_token(&self, token: impl Into<String>) {
-        // Synchronous: the caller's async context awaits the surrounding op.
-        if let Ok(mut g) = self.token.try_lock() {
-            *g = token.into();
-        }
+        // VTRFIX-BUG-H13: std RwLock — the critical section is a String clone,
+        // so blocking is correct and no write can be dropped under contention.
+        let mut g = self.token.write().unwrap_or_else(|e| e.into_inner());
+        *g = token.into();
     }
 
-    /// Read the current token (best-effort; falls back to empty on contention).
+    /// Read the current token. Never returns "" after a successful set_token.
     fn auth(&self) -> String {
-        self.token.try_lock().map(|g| g.clone()).unwrap_or_default()
+        self.token
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
