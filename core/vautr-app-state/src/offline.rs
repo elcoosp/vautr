@@ -48,7 +48,29 @@ impl OfflineQueue {
         self.len() == 0
     }
 
-    /// Drain the queue FIFO (used by `flush_offline_queue`).
+    /// VTRFIX-BUG-C07: snapshot the queue without removing anything. The
+    /// caller removes entries one-by-one via `pop_front_if` after each
+    /// mutation has been successfully applied, so a crash mid-flush cannot
+    /// silently destroy the queue.
+    pub fn peek_all(&self) -> Vec<QueuedMutation> {
+        let g = self.queue.lock().unwrap();
+        g.iter().cloned().collect()
+    }
+
+    /// Remove and return the front entry if it matches `predicate`. Used by
+    /// the flush loop to advance the queue only after a successful apply.
+    pub fn pop_front_if<F: FnOnce(&QueuedMutation) -> bool>(&self, predicate: F) -> Option<QueuedMutation> {
+        let mut g = self.queue.lock().unwrap();
+        if let Some(front) = g.front() {
+            if predicate(front) {
+                return g.pop_front();
+            }
+        }
+        None
+    }
+
+    /// Drop and return the whole queue (kept for backwards compat; prefer
+    /// peek_all + pop_front_if in new code).
     pub fn drain(&self) -> Vec<QueuedMutation> {
         let mut g = self.queue.lock().unwrap();
         g.drain(..).collect()

@@ -1601,23 +1601,50 @@ impl VautrClient {
     }
 
     /// Re-apply queued offline mutations locally, then push them to the server.
+    ///
+    /// VTRFIX-BUG-C07: never drain the queue before applying. Each mutation is
+    /// peeked, applied, and only removed on success. A locked vault or worker
+    /// failure leaves the rest of the queue intact for the next flush.
     pub async fn flush_offline_queue(&self) -> Result<usize, String> {
-        let mutations = self.offline.drain();
-        let count = mutations.len();
+        let mutations = self.offline.peek_all();
+        if mutations.is_empty() {
+            return Ok(0);
+        }
+        let mut applied = 0usize;
+        let mut deferred = 0usize;
         for m in mutations {
-            match m {
+            let result = match &m {
                 QueuedMutation::Save { item, payload } => {
-                    let _ = self.save_item(item, payload).await;
+                    self.save_item(item.clone(), payload.clone()).await
                 }
-                QueuedMutation::Delete { uuid } => {
-                    let _ = self.delete_item(uuid).await;
+                QueuedMutation::Delete { uuid } => self.delete_item(*uuid).await,
+            };
+            match result {
+                crate::worker::TaskOutcome::Committed(_) => {
+                    // Drop the applied entry from the queue.
+                    let _ = self.offline.pop_front_if(|head| match (head, &m) {
+                        (QueuedMutation::Save { item: a, .. },
+                         QueuedMutation::Save { item: b, .. }) => a.overview.uuid == b.overview.uuid,
+                        (QueuedMutation::Delete { uuid: a },
+                         QueuedMutation::Delete { uuid: b }) => a == b,
+                        _ => false,
+                    });
+                    applied += 1;
+                }
+                _ => {
+                    deferred += 1;
                 }
             }
+            if self.is_locked() {
+                // No point continuing; the rest stays queued.
+                break;
+            }
         }
-        if count > 0 {
+        if applied > 0 {
             self.push_local_changes().await?;
         }
-        Ok(count)
+        let _ = (applied, deferred);
+        Ok(applied)
     }
 
     // === Safety Reaper hooks -----------------------------------------------
