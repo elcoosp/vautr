@@ -32,9 +32,47 @@ pub struct BackupRun {
 }
 
 impl Repository {
-    /// Return the persisted backup encryption key, generating + storing a fresh
-    /// 32-byte random key on first use. The key seals/opens all archives.
+    /// Return the backup encryption key that seals all archives.
+    ///
+    /// VTRFIX-SEC-M16: prefer `VAUTR_BACKUP_KEY` (base64 of 32 bytes) so the
+    /// key that protects the archives is NOT stored in the same SQLite file
+    /// the archives snapshot. Falls back to the DB row for dev/test, gated
+    /// behind `VAUTR_ALLOW_DB_BACKUP_KEY=1` so a production deployment does
+    /// not silently rely on the in-DB key.
     pub async fn get_or_create_backup_key(&self) -> Result<[u8; 32], sqlx::Error> {
+        // 1. Env-provided key wins.
+        if let Ok(b64) = std::env::var("VAUTR_BACKUP_KEY") {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(b64.trim())
+                .map_err(|e| sqlx::Error::Protocol(format!("VAUTR_BACKUP_KEY base64: {e}")))?;
+            if bytes.len() != 32 {
+                return Err(sqlx::Error::Protocol(
+                    "VAUTR_BACKUP_KEY must decode to exactly 32 bytes".into(),
+                ));
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            return Ok(key);
+        }
+
+        // 2. DB fallback. Allowed in dev/test; refuse in production unless the
+        //    operator explicitly opts in.
+        let prod = std::env::var("VAUTR_ENV")
+            .map(|v| matches!(v.as_str(), "prod" | "production"))
+            .unwrap_or(false);
+        let allow_db = std::env::var("VAUTR_ALLOW_DB_BACKUP_KEY")
+            .ok()
+            .as_deref()
+            == Some("1");
+        if prod && !allow_db {
+            return Err(sqlx::Error::Protocol(
+                "VAUTR_BACKUP_KEY not set: refusing to derive the backup key from the \
+                 database it protects (set VAUTR_ALLOW_DB_BACKUP_KEY=1 to override)"
+                    .into(),
+            ));
+        }
+
         let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT key FROM backup_key WHERE id = 1")
             .fetch_optional(&self.pool)
             .await?;
