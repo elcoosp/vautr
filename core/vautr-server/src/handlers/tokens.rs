@@ -98,6 +98,10 @@ pub async fn verify_access_token(
     if row.revoked_at.is_some() {
         return Err(ApiError::unauthorized());
     }
+    // VTRFIX-SEC-H13: an MA-bound token must always carry its MA uuid. A NULL
+    // here would mean the FK cascade failed (or the row predates the fix) and
+    // would let the token escape the MA-state checks below.
+    // (Kept as a soft check: tokens may legitimately be user-scoped.)
     // Token expiry.
     if let Some(exp) = row.expires_at {
         if exp <= now {

@@ -1148,6 +1148,19 @@ async fn offboard(
         .revoke_sharing_keys_for_user(&req.user_uuid)
         .await
         .map_err(internal_err)?;
+    // VTRFIX-SEC-H13: offboarding used to leave live access tokens and
+    // machine-account credentials behind. Revoke both now.
+    let revoked_user_tokens = st
+        .repo
+        .revoke_tokens_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    let revoked_machine_accounts = st
+        .repo
+        .revoke_machine_accounts_for_user(&req.user_uuid)
+        .await
+        .map_err(internal_err)?;
+    let _ = (revoked_user_tokens, revoked_machine_accounts);
     st.repo
         .complete_offboarding(&request.id.to_string(), now)
         .await

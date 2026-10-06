@@ -283,3 +283,26 @@ impl Repository {
         Ok(row.map(|r| r.0))
     }
 }
+
+impl Repository {
+    /// VTRFIX-SEC-H13: delete every access token owned by `owner_user_id`.
+    pub async fn revoke_tokens_for_user(&self, owner_user_id: &str) -> Result<u64, sqlx::Error> {
+        let res = sqlx::query("DELETE FROM access_tokens WHERE owner_user_id = ?")
+            .bind(owner_user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// VTRFIX-SEC-H13: delete every machine account owned by `owner_user_id`.
+    pub async fn revoke_machine_accounts_for_user(
+        &self,
+        owner_user_id: &str,
+    ) -> Result<u64, sqlx::Error> {
+        let res = sqlx::query("DELETE FROM machine_accounts WHERE owner_user_id = ?")
+            .bind(owner_user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
+}
