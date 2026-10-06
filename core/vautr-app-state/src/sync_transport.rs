@@ -245,12 +245,24 @@ impl Transport for HttpTransport {
         Box::pin(async move {
             let req_items: Vec<PushItem> = items
                 .into_iter()
-                .map(|(uuid, target_version, enc_key_gen, payload)| PushItem {
-                    uuid: uuid.to_string(),
-                    target_version,
-                    enc_key_gen,
-                    payload: payload.map(|p| B64.encode(&p)),
-                    deleted_date: None,
+                .map(|(uuid, target_version, enc_key_gen, payload)| {
+                    // VTRFIX-BUG-C04: `payload: None` from the caller means
+                    // "this is a delete" — send the server's tombstone shape
+                    // (deleted_date set, payload cleared). Previously we sent
+                    // `deleted_date: None` and the delete was silently lost,
+                    // so the item resurrected on the next pull.
+                    let is_delete = payload.is_none();
+                    PushItem {
+                        uuid: uuid.to_string(),
+                        target_version,
+                        enc_key_gen,
+                        payload: payload.map(|p| B64.encode(&p)),
+                        deleted_date: if is_delete {
+                            Some(now_ms_for_tombstone())
+                        } else {
+                            None
+                        },
+                    }
                 })
                 .collect();
             let resp = client
@@ -450,4 +462,12 @@ struct ProjectsListResp {
 #[derive(serde::Deserialize)]
 struct SecretListResp {
     secrets: Vec<ProjectSecretSummary>,
+}
+
+/// Millisecond epoch — used to timestamp tombstones (VTRFIX-BUG-C04).
+pub(crate) fn now_ms_for_tombstone() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
