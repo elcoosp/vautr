@@ -48,6 +48,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mfa/totp/issue", post(issue_totp))
         .route("/mfa/totp/verify", post(verify_totp))
         .route("/mfa/totp/verify-login", post(verify_login_totp))
+        // VTRFIX-SEC-H11: recovery-code completion for a pending login.
+        .route("/mfa/recovery/verify-login", post(verify_login_recovery))
         .route("/mfa/policy", get(policy_get))
         .route("/mfa/policy", put(policy_put))
 }
@@ -154,6 +156,35 @@ fn percent_encode(s: &str) -> String {
 fn totp_verifier(secret: &[u8]) -> Result<TOTP, ApiError> {
     TOTP::new(Algorithm::SHA1, 6, TOTP_SKEW, 30, secret.to_vec())
         .map_err(|e| internal(format!("invalid totp secret: {e}")))
+}
+
+
+/// VTRFIX-SEC-H11: verify a TOTP code against a secret while enforcing the
+/// replay cache. Returns the matched time step on success.
+///
+/// We compute the code for each candidate step in the skew window manually
+/// (rather than `check_current`) so we know *which* step matched and can
+/// refuse re-use.
+fn verify_totp_with_step(
+    secret: &[u8],
+    code: &str,
+) -> Result<Option<i64>, ApiError> {
+    let totp = totp_verifier(secret)?;
+    let step_seconds = totp.step;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let current_step = (now / step_seconds) as i64;
+    for delta in -(TOTP_SKEW as i64)..=(TOTP_SKEW as i64) {
+        let step = current_step + delta;
+        let candidate_time = (step as u64) * step_seconds;
+        match totp.generate(candidate_time) {
+            candidate if candidate == code => return Ok(Some(step)),
+            _ => continue,
+        }
+    }
+    Ok(None)
 }
 
 /// Generate a random recovery code of the form "XXXX-XXXX".
@@ -493,10 +524,29 @@ pub(crate) async fn verify_login_totp(
             )
         })?
         .0;
-    let totp = totp_verifier(&secret)?;
-    if !totp.check_current(&req.code).map_err(internal)? {
+    // VTRFIX-SEC-H11: lockout + replay cache.
+    let now_ts = now_ms();
+    let (_, lock_until) = st
+        .repo
+        .totp_lock_state(&user_id)
+        .await
+        .map_err(internal)?;
+    if lock_until > now_ts {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "totp_locked",
+            "too many failed codes; try again later",
+        ));
+    }
+
+    let step = verify_totp_with_step(&secret, &req.code)?;
+    let Some(step) = step else {
         st.repo
             .bump_pending_mfa_attempts(&hash)
+            .await
+            .map_err(internal)?;
+        st.repo
+            .register_totp_failure(&user_id, now_ts)
             .await
             .map_err(internal)?;
         return Err(ApiError::new(
@@ -504,7 +554,29 @@ pub(crate) async fn verify_login_totp(
             "invalid_totp_code",
             "invalid one-time code",
         ));
+    };
+
+    // Replay: reject a step that was already used.
+    if st
+        .repo
+        .totp_step_used(&user_id, step)
+        .await
+        .map_err(internal)?
+    {
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "totp_replay",
+            "this one-time code has already been used",
+        ));
     }
+    st.repo
+        .mark_totp_step_used(&user_id, step, now_ts)
+        .await
+        .map_err(internal)?;
+    st.repo
+        .clear_totp_failures(&user_id)
+        .await
+        .map_err(internal)?;
 
     // Single-use: delete before minting.
     st.repo.delete_pending_mfa(&hash).await.map_err(internal)?;
@@ -537,6 +609,89 @@ pub(crate) async fn verify_login_totp(
     }))
 }
 
+
+
+/// Request body for `POST /mfa/recovery/verify-login` (VTRFIX-SEC-H11).
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct RecoveryVerifyLoginReq {
+    pending_token: String,
+    recovery_code: String,
+}
+
+/// Complete a pending login using a single-use recovery code.
+pub(crate) async fn verify_login_recovery(
+    State(st): State<AppState>,
+    Json(req): Json<RecoveryVerifyLoginReq>,
+) -> Result<Json<super::auth::LoginFinishResp>, ApiError> {
+    let hash = super::auth::sha256_hex(req.pending_token.as_bytes());
+    let row = st
+        .repo
+        .get_pending_mfa(&hash)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "invalid_pending_token",
+                "pending MFA token is invalid or expired",
+            )
+        })?;
+    let (user_id, expires_at, attempts) = row;
+    if now_ms() > expires_at || attempts >= 5 {
+        let _ = st.repo.delete_pending_mfa(&hash).await;
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid_pending_token",
+            "pending MFA token is invalid or expired",
+        ));
+    }
+
+    let ok = st
+        .repo
+        .redeem_recovery_code(&user_id, &req.recovery_code)
+        .await
+        .map_err(internal)?;
+    if !ok {
+        st.repo
+            .bump_pending_mfa_attempts(&hash)
+            .await
+            .map_err(internal)?;
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid_recovery_code",
+            "invalid or already-used recovery code",
+        ));
+    }
+
+    st.repo.delete_pending_mfa(&hash).await.map_err(internal)?;
+
+    let token = format!("vtr-session-{}", uuid::Uuid::new_v4().simple());
+    let session_expires_at = now_ms() + 86_400_000;
+    st.repo
+        .store_session(&token, &user_id, session_expires_at)
+        .await
+        .map_err(internal)?;
+
+    let _ = st
+        .repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "mfa_recovery_verify_login",
+            "mfa",
+            None,
+            None,
+            None,
+            now_ms(),
+        )
+        .await;
+
+    Ok(Json(super::auth::LoginFinishResp {
+        session_token: Some(token),
+        expires_at: Some(session_expires_at),
+        mfa_required: None,
+    }))
+}
 /// GET /mfa/policy — the organization MFA + password policy.
 pub(crate) async fn policy_get(
     State(st): State<AppState>,
