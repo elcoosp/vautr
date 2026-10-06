@@ -194,7 +194,10 @@ impl Repository {
 
     // --- Recovery codes ---
 
-    /// Store the freshly-issued one-time recovery codes for a user.
+    /// Store the freshly-issued one-time recovery codes for a user (hashed).
+    ///
+    /// VTRFIX-SEC-H11: only the SHA-256 hash is persisted. The plaintext codes
+    /// are shown to the user exactly once, at enrollment.
     pub async fn insert_recovery_codes(
         &self,
         user_id: &str,
@@ -202,17 +205,18 @@ impl Repository {
         now: i64,
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
-        // First enrollment only: replace any previously issued (unused) codes.
         sqlx::query("DELETE FROM mfa_recovery_codes WHERE user_id = ? AND used = 0")
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
         for code in codes {
+            let hash = recovery_code_hash(code);
             sqlx::query(
-                "INSERT INTO mfa_recovery_codes (user_id, code, used, created_at) VALUES (?, ?, 0, ?)",
+                "INSERT INTO mfa_recovery_codes (user_id, code_hash, used, created_at) \
+                 VALUES (?, ?, 0, ?)",
             )
             .bind(user_id)
-            .bind(code)
+            .bind(&hash)
             .bind(now)
             .execute(&mut *tx)
             .await?;
@@ -221,31 +225,32 @@ impl Repository {
         Ok(())
     }
 
-    /// Atomically redeem a recovery code. Returns true if the code existed,
-    /// was unused, and is now marked used.
+    /// Atomically redeem a recovery code (hashed lookup). Returns true if the
+    /// code existed, was unused, and is now marked used.
     pub async fn redeem_recovery_code(
         &self,
         user_id: &str,
         code: &str,
     ) -> Result<bool, sqlx::Error> {
+        let hash = recovery_code_hash(code);
         let res = sqlx::query(
             "UPDATE mfa_recovery_codes SET used = 1 \
-             WHERE user_id = ? AND code = ? AND used = 0",
+             WHERE user_id = ? AND code_hash = ? AND used = 0",
         )
         .bind(user_id)
-        .bind(code)
+        .bind(&hash)
         .execute(&self.pool)
         .await?;
         Ok(res.rows_affected() > 0)
     }
 
-    /// List all recovery codes for a user (with used flag).
+    /// List all recovery codes for a user (hash + used flag).
     pub async fn list_recovery_codes(
         &self,
         user_id: &str,
     ) -> Result<Vec<RecoveryCodeRow>, sqlx::Error> {
         let rows: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT code, used FROM mfa_recovery_codes WHERE user_id = ? ORDER BY created_at ASC",
+            "SELECT code_hash, used FROM mfa_recovery_codes WHERE user_id = ? ORDER BY created_at ASC",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -489,5 +494,93 @@ impl Repository {
             .execute(&self.pool)
             .await?;
         Ok(res.rows_affected())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VTRFIX-SEC-H11 helpers
+// ---------------------------------------------------------------------------
+
+/// SHA-256 hex of a recovery code, normalised to upper-case.
+pub fn recovery_code_hash(code: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(code.trim().to_ascii_uppercase().as_bytes());
+    h.finalize().iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+impl Repository {
+    /// True if `step` has already been consumed by this user.
+    pub async fn totp_step_used(&self, user_id: &str, step: i64) -> Result<bool, sqlx::Error> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM totp_used_steps WHERE user_id = ? AND time_step = ? LIMIT 1",
+        )
+        .bind(user_id)
+        .bind(step)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
+    /// Mark `step` as used (idempotent). Also prunes steps older than 24h.
+    pub async fn mark_totp_step_used(
+        &self,
+        user_id: &str,
+        step: i64,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO totp_used_steps (user_id, time_step, used_at) VALUES (?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(step)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        // Opportunistic prune (>1 day old).
+        let _ = sqlx::query("DELETE FROM totp_used_steps WHERE used_at < ?")
+            .bind(now - 86_400_000)
+            .execute(&self.pool)
+            .await;
+        Ok(())
+    }
+
+    /// Current `(fail_count, lock_until)` for the account.
+    pub async fn totp_lock_state(&self, user_id: &str) -> Result<(i64, i64), sqlx::Error> {
+        let row: Option<(i64, i64)> =
+            sqlx::query_as("SELECT totp_fail_count, totp_lock_until FROM users WHERE id = ?")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.unwrap_or((0, 0)))
+    }
+
+    /// Record one failed TOTP attempt. After 5 failures, lock for 15 min.
+    pub async fn register_totp_failure(
+        &self,
+        user_id: &str,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE users SET \
+               totp_fail_count = totp_fail_count + 1, \
+               totp_lock_until = CASE WHEN totp_fail_count + 1 >= 5 \
+                                     THEN ? ELSE totp_lock_until END \
+             WHERE id = ?",
+        )
+        .bind(now + 15 * 60_000)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Clear the failure counter after a success.
+    pub async fn clear_totp_failures(&self, user_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE users SET totp_fail_count = 0, totp_lock_until = 0 WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }
