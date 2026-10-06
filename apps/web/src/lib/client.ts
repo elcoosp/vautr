@@ -94,6 +94,26 @@ export async function login(username: string, password: string): Promise<void> {
   window.dispatchEvent(new CustomEvent('vautr:auth-change'));
 }
 
+/**
+ * Complete a login that paused for TOTP (VTRFIX-SEC-C03).
+ * The SDK `login()` throws `MfaRequiredError` when the server withholds
+ * the session; the UI calls this method to submit the code.
+ */
+export async function completeLoginWithTotp(
+  pendingToken: string,
+  code: string,
+  username: string,
+  password: string,
+): Promise<void> {
+  const instance = getClient();
+  await instance.completeLoginWithTotp(pendingToken, code, username, password);
+  localStorage.setItem('vautr:username', username);
+  vaultStore.getState().unlock();
+  await instance.sync();
+  await ensureSharingKey().catch(() => {});
+  window.dispatchEvent(new CustomEvent('vautr:auth-change'));
+}
+
 /** Lock the client (clear in-memory keys) and the store. */
 export async function lock(): Promise<void> {
   await getClient().lock();
