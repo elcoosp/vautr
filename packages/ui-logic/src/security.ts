@@ -276,3 +276,18 @@ export async function totpCode(otpauth: string, step = 30): Promise<string> {
   const code = bin % 1_000_000;
   return String(code).padStart(6, '0');
 }
+
+/**
+ * VTRFIX-SEC-H14: only allow http(s) URLs from vault data through to an href.
+ * Returns `null` for `javascript:`, `data:`, `file:`, or anything unparseable.
+ */
+export function safeExternalUrl(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString();
+    return null;
+  } catch {
+    return null;
+  }
+}

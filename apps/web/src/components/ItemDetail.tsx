@@ -1,4 +1,4 @@
-import { useOverview } from '@vautr/ui-logic';
+import { useOverview, safeExternalUrl} from '@vautr/ui-logic';
 import { ArrowLeft, Copy, Eye, EyeOff, Share2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -227,7 +227,7 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
               </dt>
               <dd>
                 <a
-                  href={overview.urls[0]}
+                  href={safeExternalUrl(overview.urls[0]) ?? '#'}
                   className="text-accent underline"
                   rel="noreferrer"
                   target="_blank"
