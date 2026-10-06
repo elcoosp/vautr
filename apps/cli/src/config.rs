@@ -95,13 +95,23 @@ impl Config {
     }
 
     /// Persist the configuration to disk, creating parent directories.
+    ///
+    /// VTRFIX-SEC-H15: the config file holds the session token and project
+    /// encryption keys, so it must be 0600 on unix and written atomically
+    /// (temp + rename) so a crash cannot leave a half-written file that drops
+    /// the only copy of those keys.
     pub fn save(&self) -> CliResult<()> {
         let path = Self::config_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            }
         }
         let text = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, text)?;
+        write_private_atomic(&path, text.as_bytes())?;
         Ok(())
     }
 
@@ -179,4 +189,32 @@ mod tests {
             None => std::env::remove_var("VAUTR_CONFIG"),
         }
     }
+}
+
+/// VTRFIX-SEC-H15: write `bytes` to `path` with mode 0600 (unix) using an
+/// atomic temp+rename so a crash cannot corrupt the config.
+fn write_private_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    // Best-effort: enforce 0600 on the final file even if the FS ignored mode
+    // on the temp (NFS / certain containers).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
