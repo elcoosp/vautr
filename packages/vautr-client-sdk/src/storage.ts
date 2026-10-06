@@ -139,12 +139,21 @@ export class IndexedDbStore {
   }
 
   async setState(patch: Partial<StoredState>): Promise<void> {
+    // VTRFIX-BUG-H06: the read-modify-write is now performed inside a single
+    // readwrite transaction. Concurrent callers (e.g. sync completion racing
+    // a token refresh) could previously clobber each other's patches, losing
+    // the cursor or the session token.
     const db = await this.db();
-    const current = await this.getState();
-    const next: StoredState = { ...current, ...patch };
-    const tx = db.transaction(STATE_STORE, 'readwrite');
-    await idbRequest(tx.objectStore(STATE_STORE).put(next, 'root'));
     return new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_STORE, 'readwrite');
+      const store = tx.objectStore(STATE_STORE);
+      const getReq = store.get('root');
+      getReq.onsuccess = () => {
+        const current = { ...EMPTY_STATE, ...((getReq.result ?? {}) as Partial<StoredState>) };
+        const next: StoredState = { ...current, ...patch };
+        store.put(next, 'root');
+      };
+      getReq.onerror = () => reject(getReq.error ?? new Error('state read failed'));
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error('state write failed'));
     });
