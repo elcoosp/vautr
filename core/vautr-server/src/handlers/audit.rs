@@ -65,14 +65,31 @@ async fn list_audit(
     auth: Bearer,
     Query(q): Query<AuditQuery>,
 ) -> Result<Json<Vec<AuditEntry>>, ApiError> {
-    // Require a valid session. A dedicated admin-role gate is a follow-up;
-    // the endpoint is metadata-only and never exposes payloads.
-    auth_user(&st.repo, &auth.0).await?;
+    // VTRFIX-SEC-H04: this endpoint used to return the entire multi-tenant
+    // audit log (incl. IPs) to any authenticated user. Non-admin callers now
+    // see only their own events and no IP addresses.
+    let caller_id = auth_user(&st.repo, &auth.0).await?;
+    let is_admin = st
+        .repo
+        .user_is_org_admin(&caller_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+
     let limit = q.limit.clamp(1, 1000) as i64;
     let offset = q.offset as i64;
+
+    let forced_user_id;
+    let (user_id_filter, actor_filter, ip_visible) = if is_admin {
+        (q.user_id.as_deref(), q.actor.as_deref(), true)
+    } else {
+        // Force the caller's own scope; ignore any user_id/actor override.
+        forced_user_id = caller_id.clone();
+        (Some(forced_user_id.as_str()), None, false)
+    };
+
     let filter = AuditFilter {
-        user_id: q.user_id.as_deref(),
-        actor: q.actor.as_deref(),
+        user_id: user_id_filter,
+        actor: actor_filter,
         event_type: q.event_type.as_deref(),
         resource_type: q.resource_type.as_deref(),
         resource_id: q.resource_id.as_deref(),
@@ -96,7 +113,7 @@ async fn list_audit(
                 event_type: r.event_type,
                 resource_type: r.resource_type,
                 resource_id: r.resource_id,
-                ip_address: r.ip_address,
+                ip_address: if ip_visible { r.ip_address } else { None },
             })
             .collect(),
     ))
