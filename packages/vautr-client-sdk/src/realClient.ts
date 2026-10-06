@@ -103,6 +103,32 @@ interface ActiveSecret {
 
 const HANDLE_TTL_MS = 60_000;
 
+
+/** Wire shape of POST /auth/login/finish and /mfa/totp/verify-login (VTRFIX-SEC-C03). */
+interface LoginFinishResponse {
+  session_token?: string;
+  expires_at?: number;
+  mfa_required?: {
+    pending_token: string;
+    methods: string[];
+    expires_at: number;
+  };
+}
+
+/** Thrown by `login()` when the server demands a second factor. */
+export class MfaRequiredError extends Error {
+  readonly pendingToken: string;
+  readonly methods: string[];
+  readonly expiresAt: number;
+  constructor(pendingToken: string, methods: string[], expiresAt: number) {
+    super('mfa_required');
+    this.name = 'MfaRequiredError';
+    this.pendingToken = pendingToken;
+    this.methods = methods;
+    this.expiresAt = expiresAt;
+  }
+}
+
 export class VautrWebClient {
   private readonly api: ApiClient;
   private readonly crypto: AsyncCryptoAdapter;
@@ -406,16 +432,65 @@ export class VautrWebClient {
       password,
       username,
     );
-    const finishResp = await this.api.request<{ session_token: string }>(
+    const finishResp = await this.api.request<LoginFinishResponse>(
       'POST',
       '/auth/login/finish',
       { username, login_finish: toBase64(finish.upload) },
     );
 
+    // VTRFIX-SEC-C03: when a TOTP secret is configured, the server withholds
+    // the session and returns a `mfa_required` challenge. We surface it to the
+    // caller (as a typed error) rather than silently continuing. The caller
+    // must call `completeLoginWithTotp(pendingToken, code, password)` to
+    // finish. No key material is derived until that call succeeds.
+    if (finishResp.mfa_required) {
+      const ch = finishResp.mfa_required;
+      throw new MfaRequiredError(ch.pending_token, ch.methods, ch.expires_at);
+    }
+    if (!finishResp.session_token) {
+      throw new Error('login/finish returned neither session_token nor mfa_required');
+    }
+
     const token = finishResp.session_token;
     this.api.setToken(token);
 
-    // Recover the SVK (api.md §5) and derive the DEK.
+    await this.finishLoginWithPassword(username, password, token);
+  }
+
+  /**
+   * Complete a login that paused for TOTP (VTRFIX-SEC-C03).
+   *
+   * The caller re-supplies the master password so the client can unwrap the
+   * SVK once the server confirms the second factor. This is a single
+   * round-trip; the password is not persisted between the two calls.
+   */
+  async completeLoginWithTotp(
+    pendingToken: string,
+    code: string,
+    username: string,
+    password: string,
+  ): Promise<void> {
+    const resp = await this.api.request<LoginFinishResponse>(
+      'POST',
+      '/mfa/totp/verify-login',
+      { pending_token: pendingToken, code },
+    );
+    if (!resp.session_token) {
+      throw new Error('mfa/totp/verify-login returned no session_token');
+    }
+    this.api.setToken(resp.session_token);
+    await this.finishLoginWithPassword(username, password, resp.session_token);
+  }
+
+  /**
+   * Shared tail of login flows: fetch account status, unwrap SVK, persist.
+   * (Factored out so the TOTP path and the password-only path stay identical.)
+   */
+  private async finishLoginWithPassword(
+    username: string,
+    password: string,
+    token: string,
+  ): Promise<void> {
     const status = await this.api.request<AccountStatus>('GET', '/account/status');
     const state = await this.store.getState();
     const kdfSalt = state.kdfSalt ? fromBase64(state.kdfSalt) : null;
@@ -427,8 +502,6 @@ export class VautrWebClient {
     const svk = this.crypto.unwrapSvk(fromBase64(status.svk_ciphertext_blob), kek);
     const dek = this.crypto.deriveDek(svk);
 
-    // Open the KEK-sealed Recovery Key mnemonic so the Emergency Kit can be
-    // shown (ZK: mnemonic is opened locally, never sent anywhere).
     const sealed = state.recoveryMnemonicEnc ? fromBase64(state.recoveryMnemonicEnc) : null;
     const mnemonic = sealed
       ? new TextDecoder().decode(this.crypto.openMnemonic(kek, sealed))
