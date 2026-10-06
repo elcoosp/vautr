@@ -156,6 +156,19 @@ mod tests {
         repo.audit_log(Some("u1"), "rotate_key", Some("u1"), None, now)
             .await
             .unwrap();
+        // VTRFIX-SEC-H04: /audit now scopes to the caller unless they are an
+        // org admin. Make u1 an Owner so the admin-path test still passes.
+        let org_id = "org-default";
+        sqlx::query("INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)")
+            .bind(org_id)
+            .bind("Default")
+            .bind(now)
+            .execute(repo.pool())
+            .await
+            .unwrap();
+        repo.set_org_member(org_id, "u1", vautr_domain::OrgRole::Owner, now)
+            .await
+            .unwrap();
         AppState::new(repo)
     }
 
