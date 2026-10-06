@@ -28,18 +28,32 @@ export async function restoreSession(): Promise<void> {
   const instance = getClient();
   const restored = await instance.restoreSession();
   if (restored) {
-    vaultStore.getState().unlock();
-    // Background metadata sync — non-blocking. Items populate the vault
-    // list as they arrive; the user can navigate immediately.
+    // VTRFIX-SEC-C02: the SDK no longer persists the raw SVK, so a restored
+    // session is AUTENTICATED but LOCKED. We deliberately do NOT call
+    // `vaultStore.unlock()` here — the user must supply the master password
+    // via `login()` (or `unlockWithPassword` below) to derive the SVK.
+    //
+    // We still kick off a background metadata sync so item titles/URLs are
+    // available the moment the user unlocks.
     void instance.sync().catch(() => {
       // Sync failure is non-fatal; individual item ops will surface
       // their own errors if the server is unreachable.
     });
-    // Publish our sharing key so others can share items TO us (server-backed
-    // sharing PKI). Same call as in `login()` — fire-and-forget.
-    void ensureSharingKey().catch(() => {});
-    window.dispatchEvent(new CustomEvent('vautr:auth-change'));
   }
+}
+
+/**
+ * Unlock an already-authenticated session with the master password
+ * (VTRFIX-SEC-C02). Used by the UnlockScreen when a session token is
+ * already present in IndexedDB but the store is still locked.
+ */
+export async function unlockWithPassword(password: string): Promise<void> {
+  const instance = getClient();
+  await instance.unlockWithPassword(password);
+  vaultStore.getState().unlock();
+  await instance.sync();
+  await ensureSharingKey().catch(() => {});
+  window.dispatchEvent(new CustomEvent('vautr:auth-change'));
 }
 
 /**
