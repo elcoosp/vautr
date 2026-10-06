@@ -313,3 +313,20 @@ pub async fn reencrypt_item_txn(
         .await?;
     Ok(())
 }
+
+/// VTRFIX-BUG-H05: persist the RK-wrapped SVK blob locally so a future
+/// recovery round-trip can produce the correct upload even if the previous
+/// one was interrupted. Stored as `sync_meta` row id = 2 so the id = 1
+/// (MP-wrapped) row is untouched.
+pub async fn store_svk_rk_blob(db: &DatabaseConnection, blob: &[u8]) -> Result<(), DbErr> {
+    // SQLite hex blob literal — avoids needing a Statement/StatementBuilder
+    // dance across sea-orm versions.
+    let hex: String = blob.iter().map(|b| format!("{:02x}", b)).collect();
+    let sql = format!(
+        "INSERT INTO sync_meta (id, sync_cursor, min_enc_key_gen, svk_ciphertext_blob) \
+         VALUES (2, 0, 0, X'{hex}') \
+         ON CONFLICT(id) DO UPDATE SET svk_ciphertext_blob = excluded.svk_ciphertext_blob"
+    );
+    db.execute_unprepared(&sql).await?;
+    Ok(())
+}

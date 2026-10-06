@@ -1502,11 +1502,16 @@ impl VautrClient {
     /// SVK for the new RK, and clear the gate. The new MP-wrapped blob is
     /// persisted locally; the server round-trip is driven by the caller through
     /// the recovery endpoints using `recovery_sign_challenge`.
+    /// VTRFIX-BUG-H05: returns `(new_recovery_mnemonic, wrapped_mp_blob,
+    /// wrapped_rk_blob)`. The caller MUST upload `wrapped_rk_blob` to the
+    /// server (POST /account/recover/complete) so the new RK can unwrap the
+    /// SVK on a future recovery — the previous version computed this blob and
+    /// silently dropped it, leaving the displayed mnemonic useless.
     pub async fn complete_recovery(
         &self,
         new_mp: Zeroizing<String>,
         kdf_salt: &[u8; 32],
-    ) -> Result<String, String> {
+    ) -> Result<(String, Vec<u8>, Vec<u8>), String> {
         if !self.recovery_pending() {
             return Err("no pending recovery".into());
         }
@@ -1530,19 +1535,27 @@ impl VautrClient {
             .map_err(|e| format!("decode rk: {e}"))?;
         let kek_rk =
             vautr_crypto::recovery::derive_kek_rk(&mnemonic).map_err(|e| format!("kek_rk: {e}"))?;
-        let _wrapped_rk = vautr_crypto::recovery::wrap_svk_with_rk(&svk, &kek_rk, &user_id)
+        let wrapped_rk = vautr_crypto::recovery::wrap_svk_with_rk(&svk, &kek_rk, &user_id)
             .map_err(|e| format!("wrap rk: {e}"))?;
         let creds = crate::recovery::derive_recovery_credentials(&new_rk)
             .ok_or_else(|| "derive creds".to_string())?;
 
-        // Persist the new MP-wrapped SVK locally and clear the gate.
+        // VTRFIX-BUG-H05: persist BOTH wrapped blobs. Local storage keeps the
+        // MP-wrapped one so `unlock_with_password` still works after restart;
+        // the RK-wrapped blob is returned to the caller and MUST be uploaded
+        // to the server (see the doc comment on the fn signature).
         vautr_db::txn::store_svk_blob(&self.db, &wrapped_mp)
             .await
             .map_err(|e| format!("store svk: {e}"))?;
+        // Best-effort: store the RK-wrapped blob side-by-side so the local
+        // client can still recover if the server upload is delayed.
+        vautr_db::txn::store_svk_rk_blob(&self.db, &wrapped_rk)
+            .await
+            .map_err(|e| format!("store svk rk: {e}"))?;
         *self.recovery_creds.lock().await = Some(creds);
         self.recovery_pending.store(false, Ordering::SeqCst);
         self.bus.publish(VaultStateUpdate::RecoveryCompleted);
-        Ok(new_rk)
+        Ok((new_rk, wrapped_mp, wrapped_rk))
     }
 
     // === Export (VTR-058) --------------------------------------------------
