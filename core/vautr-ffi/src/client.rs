@@ -419,6 +419,41 @@ impl MobileClient {
                 .json()
                 .await
                 .map_err(|e| FfiError::Core(format!("login/finish decode: {e}")))?;
+
+            // VTRFIX-SEC-C03: server withholds the session when a TOTP secret is
+            // configured. Return a structured "pending MFA" envelope; the caller
+            // must invoke `complete_login_totp` with the pending token + code.
+            if let Some(mfa) = finish_resp.get("mfa_required") {
+                let pending_token = mfa
+                    .get("pending_token")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| FfiError::Core("mfa_required without pending_token".into()))?
+                    .to_string();
+                let methods: Vec<String> = mfa
+                    .get("methods")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let expires_at = mfa
+                    .get("expires_at")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                return Ok(serde_json::json!({
+                    "recovery_mnemonic": recovery_mnemonic,
+                    "session_token": serde_json::Value::Null,
+                    "mfa_required": {
+                        "pending_token": pending_token,
+                        "methods": methods,
+                        "expires_at": expires_at,
+                    },
+                })
+                .to_string());
+            }
+
             let token = finish_resp
                 .get("session_token")
                 .and_then(|v| v.as_str())
@@ -461,6 +496,84 @@ impl MobileClient {
             self.connect_sync(server_url, token.clone(), Uuid::nil().to_string())?;
 
             // Return the recovery mnemonic (Emergency Kit) + the session token as JSON.
+            Ok(serde_json::json!({
+                "recovery_mnemonic": recovery_mnemonic,
+                "session_token": token,
+            })
+            .to_string())
+        })
+    }
+
+    /// Complete a login that paused for TOTP (VTRFIX-SEC-C03).
+    ///
+    /// The caller passes the pending token returned by `login()` and a fresh
+    /// 6-digit code. On success a full session is minted, the SVK is unwrapped
+    /// locally, and the sync transport is connected.
+    pub fn complete_login_totp(
+        &self,
+        server_url: String,
+        username: String,
+        password: String,
+        pending_token: String,
+        code: String,
+    ) -> Result<String, FfiError> {
+        block_on_ffi(async move {
+            let account = self.load_local_account()?;
+            let kdf_salt_b64 = account.kdf_salt_b64.clone();
+            let recovery_mnemonic = account.recovery_mnemonic.clone();
+            let base = format!("{}/mfa/totp", server_url.trim_end_matches('/'));
+
+            let resp: serde_json::Value = reqwest::Client::new()
+                .post(format!("{base}/verify-login"))
+                .json(&serde_json::json!({
+                    "pending_token": pending_token,
+                    "code": code,
+                }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("verify-login request: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("verify-login decode: {e}")))?;
+
+            let token = resp
+                .get("session_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("verify-login missing session_token".into()))?
+                .to_string();
+
+            let status: serde_json::Value = reqwest::Client::new()
+                .get(format!(
+                    "{}/account/status",
+                    server_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("account/status request: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("account/status decode: {e}")))?;
+            let wrapped_svk_b64 = status
+                .get("svk_ciphertext_blob")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing svk_ciphertext_blob".into()))?
+                .to_string();
+            let min_enc_key_gen = status
+                .get("min_enc_key_gen")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as u64;
+
+            self.unlock_with_password(
+                password,
+                kdf_salt_b64,
+                wrapped_svk_b64,
+                Uuid::nil().to_string(),
+                min_enc_key_gen,
+            )?;
+
+            self.connect_sync(server_url, token.clone(), Uuid::nil().to_string())?;
+
             Ok(serde_json::json!({
                 "recovery_mnemonic": recovery_mnemonic,
                 "session_token": token,
