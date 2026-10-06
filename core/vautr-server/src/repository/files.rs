@@ -82,7 +82,19 @@ impl Repository {
             .bind(file_uuid)
             .execute(&self.pool)
             .await?;
-        for i in 0..total_chunks {
+        // VTRFIX-SEC-H08: cap the loop for defense in depth (the handler also
+        // enforces MAX_CHUNKS, but this helper must not blow up if called
+        // directly from tests or future code paths).
+        let capped = total_chunks.clamp(0, 512);
+        if capped < total_chunks {
+            return Err(sqlx::Error::Protocol(
+                "total_chunks exceeds 512".into(),
+            ));
+        }
+        // Chunk inserts stay as individual statements (SQLite handles 512 rows
+        // easily within the enclosing caller's transaction). The previous
+        // implementation ran an unbounded loop; this is now capped.
+        for i in 0..capped {
             sqlx::query(
                 "INSERT INTO file_chunks (file_uuid, chunk_index, status) VALUES (?, ?, 'pending')",
             )
@@ -173,5 +185,19 @@ impl Repository {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+}
+
+impl Repository {
+    /// VTRFIX-SEC-H08: sum of `total_size` for every manifest owned by
+    /// `user_id`. Used to enforce the per-account file quota.
+    pub async fn sum_file_bytes_owned_by(&self, user_id: &str) -> Result<i64, sqlx::Error> {
+        let total: Option<i64> = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(total_size), 0) FROM file_manifests WHERE owner_user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(total.unwrap_or(0))
     }
 }

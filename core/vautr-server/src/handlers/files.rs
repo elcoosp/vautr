@@ -88,6 +88,55 @@ async fn upload_initiate(
     let user_id = auth_user(&st.repo, &auth.0).await?;
     let uuid = file_uuid.to_string();
 
+    // VTRFIX-SEC-H08: hard caps so a malicious client cannot allocate a
+    // multi-billion-element Vec or a monstrous chunk-row loop.
+    const MAX_CHUNKS: u32 = 512;
+    const MAX_CHUNK_SIZE: u32 = 8 * 1024 * 1024;
+    const MAX_FILE_SIZE: u64 = 256 * 1024 * 1024;
+    if req.total_chunks == 0 || req.total_chunks > MAX_CHUNKS {
+        return Err(ApiError::bad_request(
+            "invalid_chunks",
+            "total_chunks must be in 1..=512",
+        ));
+    }
+    if req.chunk_size == 0 || req.chunk_size > MAX_CHUNK_SIZE {
+        return Err(ApiError::bad_request(
+            "invalid_chunk_size",
+            "chunk_size must be in 1..=8MiB",
+        ));
+    }
+    let computed_size = req.chunk_size as u64 * (req.total_chunks as u64);
+    if computed_size > MAX_FILE_SIZE {
+        return Err(ApiError::bad_request(
+            "invalid_file_size",
+            "chunk_size * total_chunks exceeds 256 MiB",
+        ));
+    }
+    if req.total_size > MAX_FILE_SIZE {
+        return Err(ApiError::bad_request(
+            "invalid_file_size",
+            "total_size exceeds 256 MiB",
+        ));
+    }
+
+    // Quota: reject when this upload would exceed the per-user quota.
+    let quota: u64 = std::env::var("VAUTR_FILE_QUOTA_BYTES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1024 * 1024 * 1024);
+    let used = st
+        .repo
+        .sum_file_bytes_owned_by(&user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if used.saturating_add(req.total_size as i64) > quota as i64 {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "quota_exceeded",
+            "file quota exceeded for this account",
+        ));
+    }
+
     // Re-initiation of an already-realized file is a protocol violation: the
     // manifest should only be synced after commit (§4.1 step 5).
     if let Some(existing) = st
