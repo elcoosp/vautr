@@ -23,10 +23,28 @@ pub fn wrap_svk_with_rk(
 }
 
 /// Unwrap the SVK from its RK-wrapped blob (emergency recovery, REQ-RECOVERY-01/02).
+///
+/// # Panics
+/// This is the historical, non-fallible API. A wrong mnemonic or tampered
+/// blob is an *expected* error path, not a bug: callers must use
+/// [`try_unwrap_svk_with_rk`] instead. Kept only for signatures that cannot
+/// yet propagate a `Result`.
+#[deprecated(note = "use try_unwrap_svk_with_rk; a wrong mnemonic must not panic (VTRFIX-SEC-H02)")]
 pub fn unwrap_svk_with_rk(
     wrapped_svk_rk: &[u8],
     kek_rk: &Zeroizing<[u8; 32]>,
     server_user_id: &Uuid,
 ) -> Zeroizing<[u8; 32]> {
-    recovery::unwrap_svk_with_rk(wrapped_svk_rk, kek_rk, server_user_id).expect("svk rk unwrap")
+    try_unwrap_svk_with_rk(wrapped_svk_rk, kek_rk, server_user_id)
+        .expect("svk rk unwrap (unexpected — this path should use try_unwrap_svk_with_rk)")
+}
+
+/// VTRFIX-SEC-H02: fallible unwrap. Returns `Err` on a wrong mnemonic, wrong
+/// server_user_id, tampered ciphertext, or a malformed blob.
+pub fn try_unwrap_svk_with_rk(
+    wrapped_svk_rk: &[u8],
+    kek_rk: &Zeroizing<[u8; 32]>,
+    server_user_id: &Uuid,
+) -> Result<Zeroizing<[u8; 32]>, vautr_crypto::error::CryptoError> {
+    recovery::unwrap_svk_with_rk(wrapped_svk_rk, kek_rk, server_user_id)
 }
