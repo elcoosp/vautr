@@ -152,3 +152,26 @@ impl Repository {
         Ok(out)
     }
 }
+
+impl Repository {
+    /// VTRFIX-SEC-H07: like `tombstoned_items`, but returns the owning
+    /// `(user_id, uuid)` per row so the reaper can route each tombstone to
+    /// the correct per-user channel.
+    pub async fn tombstoned_items_with_owner(
+        &self,
+    ) -> Result<Vec<(String, Uuid)>, sqlx::Error> {
+        let rows = sqlx::query("SELECT uuid, user_id FROM items WHERE deleted_date IS NOT NULL")
+            .fetch_all(&self.pool)
+            .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            use sqlx::Row;
+            let uuid_str: String = row.try_get("uuid")?;
+            let user_id: String = row.try_get("user_id")?;
+            if let Ok(uuid) = Uuid::parse_str(&uuid_str) {
+                out.push((user_id, uuid));
+            }
+        }
+        Ok(out)
+    }
+}

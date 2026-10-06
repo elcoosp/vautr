@@ -78,7 +78,8 @@ pub(crate) async fn item_put(
         // A put that cleared a prior tombstone is a successful write; notify
         // clients so they re-sync to fetch the now-readable payload.
         UpsertOutcome::Recovered => {
-            let _ = st.event_tx.send(crate::handlers::events::VaultEvent::ItemRecovered {
+            st.events.publish(crate::handlers::events::VaultEvent::ItemRecovered {
+                user_id: user_id.clone(),
                 uuid: uuid.parse().unwrap_or_default(),
             });
             let row = st
@@ -143,8 +144,9 @@ pub(crate) async fn item_delete(
     {
         UpsertOutcome::Updated => {
             // Tombstone: proactively notify clients (VTR meets reaper, VTR-069).
-            let _ = st.event_tx.send(
+            st.events.publish(
                 crate::handlers::events::VaultEvent::ItemPermanentlyDeleted {
+                    user_id: user_id.clone(),
                     uuid: uuid.parse().unwrap_or_default(),
                 },
             );

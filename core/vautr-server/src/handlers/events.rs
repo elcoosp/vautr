@@ -33,15 +33,27 @@ use super::{auth_user, ApiError, AppState, Bearer};
 ///
 /// Mirrors `vautr_sync::quarantine::ReaperEvent` semantics so web/extension can
 /// reuse the desktop reaper's event handling.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+/// VTRFIX-SEC-H07: every event carries the `user_id` it belongs to so a
+/// per-user channel can route it without exposing other tenants' item UUIDs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum VaultEvent {
     /// A previously quarantined/toxic item became valid; the client should
     /// re-sync to fetch its now-readable payload.
-    ItemRecovered { uuid: Uuid },
+    ItemRecovered { user_id: String, uuid: Uuid },
     /// A toxic item was permanently deleted server-side; the client should drop
     /// any stale toxic indicator.
-    ItemPermanentlyDeleted { uuid: Uuid },
+    ItemPermanentlyDeleted { user_id: String, uuid: Uuid },
+}
+
+impl VaultEvent {
+    /// The user this event belongs to.
+    pub fn user_id(&self) -> &str {
+        match self {
+            VaultEvent::ItemRecovered { user_id, .. } => user_id,
+            VaultEvent::ItemPermanentlyDeleted { user_id, .. } => user_id,
+        }
+    }
 }
 
 impl VaultEvent {
@@ -55,7 +67,41 @@ impl VaultEvent {
 /// slow, but the reaper task re-emits tombstone events so nothing is lost.
 pub const EVENT_CHANNEL_CAPACITY: usize = 256;
 
-/// Build a fresh broadcast channel for vault events.
+/// VTRFIX-SEC-H07: per-user SSE broadcast bus. Each entry is a channel scoped
+/// to a single user id so `/events` never receives another tenant's uuids.
+#[derive(Clone, Default)]
+pub struct UserEventBus {
+    channels: Arc<dashmap::DashMap<String, broadcast::Sender<VaultEvent>>>,
+}
+
+impl UserEventBus {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sender for `user_id`, creating the channel on first use.
+    pub fn sender_for(&self, user_id: &str) -> broadcast::Sender<VaultEvent> {
+        self.channels
+            .entry(user_id.to_string())
+            .or_insert_with(|| broadcast::channel(EVENT_CHANNEL_CAPACITY).0)
+            .clone()
+    }
+
+    /// Subscribe to `user_id`'s channel (creating it if needed).
+    pub fn subscribe(&self, user_id: &str) -> broadcast::Receiver<VaultEvent> {
+        self.sender_for(user_id).subscribe()
+    }
+
+    /// Publish an event onto its own user's channel (no-op if no subscriber).
+    pub fn publish(&self, ev: VaultEvent) {
+        let user_id = ev.user_id().to_string();
+        let tx = self.sender_for(&user_id);
+        let _ = tx.send(ev);
+    }
+}
+
+/// Legacy single-channel helper — kept for tests that only check VaultEvent
+/// serialization. Prefer `UserEventBus` in the server runtime.
 pub fn event_channel() -> broadcast::Sender<VaultEvent> {
     broadcast::channel(EVENT_CHANNEL_CAPACITY).0
 }
@@ -69,9 +115,10 @@ pub(crate) async fn events_stream(
     State(st): State<AppState>,
     auth: Bearer,
 ) -> Result<Response, ApiError> {
-    let _user_id = auth_user(&st.repo, &auth.0).await?;
-
-    let rx = st.event_tx.subscribe();
+    // VTRFIX-SEC-H07: authenticate, then subscribe to *this user's* channel
+    // only. The previous global broadcast leaked every tenant's item UUIDs.
+    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let rx = st.events.subscribe(&user_id);
     let hello = Event::default().data("{\"type\":\"hello\"}");
 
     // Build an SSE stream: an initial `hello` frame, then each broadcast event.
@@ -106,15 +153,15 @@ pub const REAPER_TICK: Duration = Duration::from_secs(30);
 /// fires once per process lifetime (newly-appearing tombstones still fire).
 pub fn spawn_reaper(
     repo: Arc<crate::repository::Repository>,
-    tx: broadcast::Sender<VaultEvent>,
+    bus: UserEventBus,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(REAPER_TICK);
-        let seen: Arc<tokio::sync::Mutex<std::collections::HashSet<Uuid>>> =
+        let seen: Arc<tokio::sync::Mutex<std::collections::HashSet<(String, Uuid)>>> =
             Arc::new(tokio::sync::Mutex::new(std::collections::HashSet::new()));
         loop {
             interval.tick().await;
-            let tombstoned = match repo.tombstoned_items().await {
+            let tombstoned = match repo.tombstoned_items_with_owner().await {
                 Ok(rows) => rows,
                 Err(e) => {
                     tracing::warn!(error = %e, "reaper: tombstone scan failed");
@@ -122,9 +169,9 @@ pub fn spawn_reaper(
                 }
             };
             let mut guard = seen.lock().await;
-            for uuid in tombstoned {
-                if guard.insert(uuid) {
-                    let _ = tx.send(VaultEvent::ItemPermanentlyDeleted { uuid });
+            for (user_id, uuid) in tombstoned {
+                if guard.insert((user_id.clone(), uuid)) {
+                    bus.publish(VaultEvent::ItemPermanentlyDeleted { user_id, uuid });
                 }
             }
         }
@@ -177,7 +224,7 @@ mod tests {
     #[test]
     fn vault_event_sse_data_shape() {
         let id = Uuid::new_v4();
-        let ev = VaultEvent::ItemPermanentlyDeleted { uuid: id };
+        let ev = VaultEvent::ItemPermanentlyDeleted { user_id: "u1".into(), uuid: id };
         let json = ev.to_sse_data();
         assert!(json.contains("\"type\":\"item_permanently_deleted\""));
         assert!(json.contains(&id.to_string()));
@@ -193,11 +240,11 @@ mod tests {
             vec![Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()]
         );
         for u in tombstoned {
-            let _ = tx.send(VaultEvent::ItemPermanentlyDeleted { uuid: u });
+            let _ = tx.send(VaultEvent::ItemPermanentlyDeleted { user_id: "u1".into(), uuid: u });
         }
         let got = rx.recv().await.unwrap();
         match got {
-            VaultEvent::ItemPermanentlyDeleted { uuid } => {
+            VaultEvent::ItemPermanentlyDeleted { uuid, .. } => {
                 assert_eq!(
                     uuid,
                     Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()

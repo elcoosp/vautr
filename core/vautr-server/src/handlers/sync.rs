@@ -296,10 +296,8 @@ pub(crate) async fn sync_push_batch(
             // A push that cleared a prior tombstone is a successful write; also
             // notify clients so they re-sync to fetch the recovered payload.
             UpsertOutcome::Recovered => {
-                let _ = st.event_tx.send(
-                    crate::handlers::events::VaultEvent::ItemRecovered {
-                        uuid: item.uuid.parse().unwrap_or_default(),
-                    },
+                st.events.publish(
+                    crate::handlers::events::VaultEvent::ItemRecovered { user_id: user_id.clone(), uuid: item.uuid.parse().unwrap_or_default() },
                 );
                 let row = st
                     .repo

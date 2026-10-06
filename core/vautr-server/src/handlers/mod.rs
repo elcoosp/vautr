@@ -49,9 +49,9 @@ pub mod webauthn;
 #[derive(Clone)]
 pub struct AppState {
     pub repo: Arc<Repository>,
-    /// Broadcast channel for proactive vault events (VTR-069): tombstone /
-    /// recovery events the server pushes to web/extension clients over SSE.
-    pub event_tx: tokio::sync::broadcast::Sender<crate::handlers::events::VaultEvent>,
+    /// VTRFIX-SEC-H07: per-user SSE bus. Replaces the old global broadcast
+    /// channel that leaked every tenant's item UUIDs to `/events`.
+    pub events: crate::handlers::events::UserEventBus,
     /// WebAuthn (FIDO2) second-factor service (VTR-052). Present only when the
     /// `webauthn` feature is compiled in.
     #[cfg(feature = "webauthn")]
@@ -62,7 +62,7 @@ impl AppState {
     pub fn new(repo: Arc<Repository>) -> Self {
         Self {
             repo,
-            event_tx: crate::handlers::events::event_channel(),
+            events: crate::handlers::events::UserEventBus::new(),
             #[cfg(feature = "webauthn")]
             webauthn: Arc::new(webauthn::WebauthnService::new()),
         }
