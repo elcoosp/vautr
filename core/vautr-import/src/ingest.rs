@@ -61,11 +61,20 @@ pub async fn ingest(
         .map_err(|e| ImportFailure::Pipeline(format!("begin txn: {e}")))?;
 
     let result = async {
-        if !overviews.is_empty() {
-            item_overview::Entity::insert_many(overviews).exec(&txn).await?;
+        // VTRFIX-BUG-C08: SQLite caps bound variables (often at 999). A single
+        // `insert_many` over the whole vault failed with "too many SQL
+        // variables" for large imports. 80 rows * ~10 cols = 800 binds, safely
+        // under the old 999 limit.
+        const CHUNK: usize = 80;
+        for chunk in overviews.chunks(CHUNK) {
+            item_overview::Entity::insert_many(chunk.to_vec())
+                .exec(&txn)
+                .await?;
         }
-        if !payloads.is_empty() {
-            item_payload::Entity::insert_many(payloads).exec(&txn).await?;
+        for chunk in payloads.chunks(CHUNK) {
+            item_payload::Entity::insert_many(chunk.to_vec())
+                .exec(&txn)
+                .await?;
         }
         Ok::<(), sea_orm::DbErr>(())
     }
