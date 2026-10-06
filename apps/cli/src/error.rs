@@ -61,6 +61,9 @@ pub enum CliError {
     /// No password was provided.
     #[error("no password provided (set VAUTR_PASSWORD or pass via stdin)")]
     NoPassword,
+    /// VTRFIX-SEC-H18: a secret name is unsafe for env injection.
+    #[error("invalid secret name '{0}': not a portable env var, or on the unsafe list")]
+    InvalidSecretName(String),
 }
 
 /// Convenience alias for CLI results.
