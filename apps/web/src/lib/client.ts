@@ -191,3 +191,7 @@ export const revokeGroupItem = (groupId: string, itemUuid: string): Promise<void
   getClient().revokeGroupItem(getMlp(), groupId, itemUuid);
 export const getGroupKey = (groupId: string): Promise<string | null> =>
   getClient().getGroupKey(getMlp(), groupId);
+// VTRFIX-SEC-C03: TOTP challenge surface for the login UI.
+export {
+  MfaRequiredError,
+} from '@vautr/client-sdk';
