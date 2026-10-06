@@ -54,7 +54,7 @@ impl Transport for MockTransport {
                     deleted,
                 })
                 .collect();
-            Ok((100, overviews))
+            Ok((100, overviews, false))
         })
     }
 

@@ -71,7 +71,7 @@ impl Transport for RoundTripTransport {
                     deleted: false,
                 })
                 .collect();
-            Ok((g.min_gen, overviews))
+            Ok((g.min_gen, overviews, false))
         })
     }
 
