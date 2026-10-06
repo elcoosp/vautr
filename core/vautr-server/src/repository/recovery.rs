@@ -168,3 +168,63 @@ impl Repository {
         Ok(())
     }
 }
+
+impl Repository {
+    /// VTRFIX-SEC-H09: persist the single-use recovery challenge nonce for a user.
+    pub async fn store_recovery_challenge(
+        &self,
+        user_id: &str,
+        nonce: &[u8],
+        expires_at: i64,
+        now: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO recovery_challenges (user_id, nonce, expires_at, created_at) \
+             VALUES (?, ?, ?, ?) \
+             ON CONFLICT(user_id) DO UPDATE \
+               SET nonce = excluded.nonce, expires_at = excluded.expires_at, created_at = excluded.created_at",
+        )
+        .bind(user_id)
+        .bind(nonce)
+        .bind(expires_at)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// VTRFIX-SEC-H09: read the pending nonce for a user (if any).
+    pub async fn get_recovery_challenge(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<(Vec<u8>, i64)>, sqlx::Error> {
+        let row: Option<(Vec<u8>, i64)> =
+            sqlx::query_as("SELECT nonce, expires_at FROM recovery_challenges WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row)
+    }
+
+    /// VTRFIX-SEC-H09: single-use consumption of the challenge.
+    pub async fn delete_recovery_challenge(&self, user_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM recovery_challenges WHERE user_id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// VTRFIX-SEC-H10: is the account currently suspended (reclaim grace)?
+    pub async fn user_is_suspended(&self, user_id: &str, now: i64) -> Result<bool, sqlx::Error> {
+        let row: Option<(Option<i64>,)> =
+            sqlx::query_as("SELECT suspended_until FROM users WHERE id = ?")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row
+            .and_then(|r| r.0)
+            .map(|until| until > now)
+            .unwrap_or(false))
+    }
+}

@@ -42,6 +42,13 @@ pub fn routes() -> Router<AppState> {
 // Request / response types
 // ---------------------------------------------------------------------------
 
+/// VTRFIX-SEC-H09: challenge now requires the account email so the nonce can
+/// be bound to a specific user and persisted for single-use verification.
+#[derive(Deserialize)]
+pub(crate) struct ChallengeReq {
+    email: String,
+}
+
 #[derive(Serialize)]
 pub(crate) struct ChallengeResp {
     nonce: String, // base64
@@ -50,8 +57,11 @@ pub(crate) struct ChallengeResp {
 #[derive(Deserialize)]
 pub(crate) struct VerifyReq {
     email: String,
-    nonce: String,     // base64
-    signature: String, // base64 (Ed25519 over `nonce`)
+    /// VTRFIX-SEC-H09: optional echo of the challenge nonce; if provided it
+    /// must match the stored one. If omitted, the stored nonce is used.
+    #[serde(default)]
+    nonce: Option<String>,
+    signature: String, // base64 (Ed25519 over the stored nonce)
 }
 #[derive(Serialize)]
 pub(crate) struct VerifyResp {
@@ -72,6 +82,9 @@ pub(crate) struct CompleteReq {
 #[derive(Deserialize)]
 pub(crate) struct ReclaimReq {
     email: String,
+    /// VTRFIX-SEC-H10: base64 Ed25519 signature over the challenge nonce for
+    /// the same email. Obtained from /account/recover/challenge.
+    signature: String,
 }
 #[derive(Deserialize)]
 pub(crate) struct ReclaimConfirmReq {
@@ -88,9 +101,29 @@ pub(crate) struct StatusResp {
 
 /// Issue a fresh, server-side random nonce for the RK proof-of-possession gate.
 pub(crate) async fn recover_challenge(
-    State(_st): State<AppState>,
+    State(st): State<AppState>,
+    Json(req): Json<ChallengeReq>,
 ) -> Result<Json<ChallengeResp>, ApiError> {
-    let nonce = uuid::Uuid::new_v4().as_bytes().to_vec();
+    // VTRFIX-SEC-H09: persist the nonce per user (single-use, 5-min TTL).
+    // Return the same shape for unknown emails to avoid enumeration.
+    const CHALLENGE_TTL_MS: i64 = 5 * 60 * 1000;
+    let nonce = {
+        let mut n = [0u8; 32];
+        use rand::RngCore;
+        rand::rngs::OsRng.fill_bytes(&mut n);
+        n.to_vec()
+    };
+    if let Some(user) = st
+        .repo
+        .get_user_by_email(&req.email)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    {
+        st.repo
+            .store_recovery_challenge(&user.id, &nonce, now_ms() + CHALLENGE_TTL_MS, now_ms())
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
+    }
     Ok(Json(ChallengeResp { nonce: b64(&nonce) }))
 }
 
@@ -125,7 +158,29 @@ pub(crate) async fn recover_verify(
             "malformed recovery key",
         ));
     }
-    let nonce = decode_b64(&req.nonce)?;
+    // VTRFIX-SEC-H09: verify against the STORED nonce (single-use).
+    let (stored_nonce, expires_at) = st
+        .repo
+        .get_recovery_challenge(&user.id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .ok_or_else(|| {
+            ApiError::bad_request("no_challenge", "call /account/recover/challenge first")
+        })?;
+    if now_ms() > expires_at {
+        let _ = st.repo.delete_recovery_challenge(&user.id).await;
+        return Err(ApiError::bad_request(
+            "challenge_expired",
+            "challenge expired; request a new one",
+        ));
+    }
+    // Optional echo: if supplied, must match the stored nonce.
+    if let Some(echo) = req.nonce.as_deref() {
+        if decode_b64(echo)? != stored_nonce {
+            return Err(ApiError::unauthorized());
+        }
+    }
+    let nonce = stored_nonce.clone();
     let sig_bytes = decode_b64(&req.signature)?;
     if sig_bytes.len() != 64 {
         return Err(ApiError::bad_request(
@@ -151,6 +206,13 @@ pub(crate) async fn recover_verify(
     if verifying_key.verify_strict(&nonce, &signature).is_err() {
         return Err(ApiError::unauthorized());
     }
+
+    // VTRFIX-SEC-H09: single-use — consume the challenge NOW, before
+    // minting the recovery token, so a replayed (nonce, sig) fails.
+    st.repo
+        .delete_recovery_challenge(&user.id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
 
     let token = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
@@ -227,14 +289,72 @@ pub(crate) async fn reclaim(
     State(st): State<AppState>,
     Json(req): Json<ReclaimReq>,
 ) -> Result<Json<StatusResp>, ApiError> {
+    // VTRFIX-SEC-H10: reclaim must not be triggerable by an unauthenticated
+    // attacker who merely knows the email. Require proof of RK possession
+    // (a valid Ed25519 signature over the server-issued challenge nonce).
+    // Respond uniformly to avoid account enumeration.
     let Some(user) = st
         .repo
         .get_user_by_email(&req.email)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     else {
-        return Err(ApiError::bad_request("not_found", "unknown user"));
+        // Unknown email: same 202 shape, no state change.
+        return Ok(Json(StatusResp {
+            status: "verification_required".into(),
+        }));
     };
+
+    let proof_ok = (|| async {
+        let Some(pk_bytes) = st
+            .repo
+            .get_rk_public_key(&user.id)
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?
+        else {
+            return Ok::<bool, ApiError>(false);
+        };
+        if pk_bytes.len() != 32 {
+            return Ok(false);
+        }
+        let Some((nonce, expires_at)) = st
+            .repo
+            .get_recovery_challenge(&user.id)
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?
+        else {
+            return Ok(false);
+        };
+        if now_ms() > expires_at {
+            let _ = st.repo.delete_recovery_challenge(&user.id).await;
+            return Ok(false);
+        }
+        let sig_bytes = decode_b64(&req.signature)?;
+        if sig_bytes.len() != 64 {
+            return Ok(false);
+        }
+        let mut pk_arr = [0u8; 32];
+        pk_arr.copy_from_slice(&pk_bytes);
+        let Ok(vk) = VerifyingKey::from_bytes(&pk_arr) else {
+            return Ok(false);
+        };
+        let Ok(sig) = Signature::from_slice(&sig_bytes) else {
+            return Ok(false);
+        };
+        Ok(vk.verify_strict(&nonce, &sig).is_ok())
+    })()
+    .await?;
+
+    if !proof_ok {
+        // Same response shape as success — no state change, no enumeration.
+        return Ok(Json(StatusResp {
+            status: "verification_required".into(),
+        }));
+    }
+
+    // Consume the challenge.
+    let _ = st.repo.delete_recovery_challenge(&user.id).await;
+
     let token = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
     st.repo

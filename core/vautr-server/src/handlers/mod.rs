@@ -265,8 +265,22 @@ pub(crate) async fn auth_user(repo: &Repository, token: &str) -> Result<String, 
     else {
         return Err(ApiError::unauthorized());
     };
-    if expires_at < now_ms() {
+    let now = now_ms();
+    if expires_at < now {
         return Err(ApiError::unauthorized());
+    }
+    // VTRFIX-SEC-H10: enforce the reclaim suspension window — while suspended,
+    // the account cannot authenticate.
+    let suspended = repo
+        .user_is_suspended(&user_id, now)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if suspended {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "account_suspended",
+            "account is suspended pending reclaim",
+        ));
     }
     Ok(user_id)
 }
