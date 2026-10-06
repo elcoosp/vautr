@@ -111,11 +111,12 @@ impl Repository {
         sqlx::query("PRAGMA foreign_keys = OFF")
             .execute(&mut *conn)
             .await?;
+        // VTRFIX-SEC-H06: never overwrite the owner on conflict. The trigger
+        // in migration 0018 enforces this at the DB layer too.
         let res = sqlx::query(
             "INSERT INTO shares (item_uuid, owner_user_id, recipient_user_id, wrapped_sik, ephemeral_public_key, created_at) \
              VALUES (?, ?, ?, ?, ?, ?) \
              ON CONFLICT(item_uuid, recipient_user_id) DO UPDATE SET \
-               owner_user_id = excluded.owner_user_id, \
                wrapped_sik = excluded.wrapped_sik, \
                ephemeral_public_key = excluded.ephemeral_public_key",
         )
@@ -158,6 +159,48 @@ impl Repository {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.is_some())
+    }
+
+
+    /// VTRFIX-SEC-H06: return the owning user for an item UUID, or `None`.
+    ///
+    /// Ownership is not stored on `items` (which only has uuid+user_id and is
+    /// not unique on uuid). It is expressed through one of:
+    ///   * `secrets.created_by` — for project secrets;
+    ///   * `project_items.added_by` — for project-scoped items;
+    ///   * `items.user_id` — for user-owned (unscoped) items (last resort,
+    ///     matching the item UUID + the row that holds the payload).
+    /// The first source that yields a row wins.
+    pub async fn item_owner(&self, uuid: &str) -> Result<Option<String>, sqlx::Error> {
+        // 1. Secrets.
+        let from_secret: Option<(String,)> =
+            sqlx::query_as("SELECT created_by FROM secrets WHERE uuid = ? LIMIT 1")
+                .bind(uuid)
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some((owner,)) = from_secret {
+            return Ok(Some(owner));
+        }
+        // 2. Project-scoped items.
+        let from_project: Option<(String,)> =
+            sqlx::query_as("SELECT added_by FROM project_items WHERE item_uuid = ? LIMIT 1")
+                .bind(uuid)
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some((owner,)) = from_project {
+            return Ok(Some(owner));
+        }
+        // 3. User-scoped item: if exactly one user holds this uuid, treat them
+        //    as the owner. If multiple users hold the uuid, refuse (ambiguous).
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT user_id FROM items WHERE uuid = ?")
+                .bind(uuid)
+                .fetch_all(&self.pool)
+                .await?;
+        match rows.as_slice() {
+            [single] => Ok(Some(single.0.clone())),
+            _ => Ok(None),
+        }
     }
 
     /// Delete a share the caller owns (revocation, §5).

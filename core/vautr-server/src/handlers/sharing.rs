@@ -224,6 +224,24 @@ async fn create_share(
     Json(req): Json<CreateShareReq>,
 ) -> Result<Json<ShareInfoResp>, ApiError> {
     let sender = auth_user(&st.repo, &auth.0).await?;
+
+    // VTRFIX-SEC-H06: verify the caller owns the item before creating a share.
+    // Previously any authenticated user could name themselves "owner" of any
+    // item UUID and receive the wrapped SIK.
+    let owned = st
+        .repo
+        .item_owner(&req.item_uuid)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .is_some_and(|owner| owner == sender);
+    if !owned {
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "not_item_owner",
+            "you do not own this item",
+        ));
+    }
+
     let wrapped_sik = decode_b64(&req.wrapped_sik)?;
     let ephemeral_pk = decode_b64(&req.ephemeral_public_key)?;
     st.repo
