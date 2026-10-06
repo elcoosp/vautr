@@ -195,3 +195,6 @@ Implemented in `vautr-crypto::recovery` (`derive_kek_rk`, `wrap_svk_with_rk`, `u
 1.  **All Keys (MK, KEK, SVK, OEK, DEK):** Must be held in `Zeroizing<[u8; 32]>`.
 2.  **`mlock` (Memory Locking):** The `VautrClient` must invoke `mlock()` on the pages holding the `DashMap<SecretHandle, ActiveSecret>`. This prevents the OS from paging decrypted secrets to the SSD/HDD swap file.
 3.  **RAII Enforcement:** The `ActiveSecret` struct explicitly overwrites the inner `DecryptedSecret` bytes on `Drop`.
+
+<!-- VTRFIX SEC-C01 -->
+> **Note:** OPAQUE server setup is provisioned out-of-band via `VAUTR_OPAQUE_SETUP_FILE`; the DB contains only per-user OPAQUE records.

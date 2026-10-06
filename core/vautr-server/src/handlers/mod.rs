@@ -191,20 +191,57 @@ pub(crate) fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Load the persisted OPAQUE server setup, generating + storing it on first use.
+/// Load the OPAQUE server setup.
+///
+/// # Provisioning priority
+/// 1. `VAUTR_OPAQUE_SETUP_FILE` env var → read raw bytes from that path.
+/// 2. Legacy `server_config` DB row (`SETUP_KEY`) → read bytes.
+/// 3. Neither present:
+///    - if `VAUTR_ALLOW_DB_OPRF=1` (dev / single-process only), generate a
+///      fresh setup and persist it (best-effort; not race-free).
+///    - else, fail closed with an operator-facing error.
+///
+/// The returned bytes contain the OPRF private key. Callers must not log,
+/// serialize, or send them anywhere except into `opaque::server_setup_from_bytes`.
 pub(crate) async fn server_setup(repo: &Repository) -> Result<Vec<u8>, ApiError> {
+    if let Ok(path) = std::env::var("VAUTR_OPAQUE_SETUP_FILE") {
+        let bytes = std::fs::read(&path).map_err(|e| {
+            ApiError::internal(&format!("VAUTR_OPAQUE_SETUP_FILE read failed: {e}"))
+        })?;
+        let _ = opaque::server_setup_from_bytes(&bytes)
+            .map_err(|_| ApiError::internal("VAUTR_OPAQUE_SETUP_FILE: corrupt OPAQUE setup"))?;
+        return Ok(bytes);
+    }
+
     if let Some(bytes) = repo
         .get_config(SETUP_KEY)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     {
+        let _ = opaque::server_setup_from_bytes(&bytes)
+            .map_err(|_| ApiError::internal("stored OPAQUE setup is corrupt"))?;
         return Ok(bytes);
     }
-    let pk = opaque::server_setup_public_key().map_err(|e| ApiError::internal(&e.to_string()))?;
-    repo.set_config(SETUP_KEY, &pk)
+
+    if std::env::var("VAUTR_ALLOW_DB_OPRF").ok().as_deref() != Some("1") {
+        return Err(ApiError::internal(
+            "no OPAQUE server setup available: set VAUTR_OPAQUE_SETUP_FILE to a provisioned \
+             file (recommended), or set VAUTR_ALLOW_DB_OPRF=1 to allow DB-stored generation \
+             (dev only — the DB row contains the OPRF private key)",
+        ));
+    }
+
+    let fresh = opaque::generate_server_setup().map_err(|e| ApiError::internal(&e.to_string()))?;
+    repo.set_config(SETUP_KEY, fresh.as_slice())
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(pk)
+    // Re-read: another process may have won the race.
+    let stored = repo
+        .get_config(SETUP_KEY)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .ok_or_else(|| ApiError::internal("OPAQUE setup disappeared after write"))?;
+    Ok(stored)
 }
 
 /// Extract + validate a bearer session, returning the user id.

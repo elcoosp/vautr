@@ -132,3 +132,6 @@ We strongly recommend maintaining a secure, offline copy of your Master Password
 *   **Audits:** The cryptographic primitives and core architecture design are intended for independent, public security audits prior to the v1.0 general availability release.
 
 **Conclusion:** Vautr is built on the premise that trust is verifiable, not assumed. By keeping the server dumb and the client smart, we ensure your digital identity remains exclusively yours.
+
+<!-- VTRFIX SEC-C01 -->
+> **Note:** The OPAQUE server setup (containing the OPRF private key) is provisioned out-of-band via `VAUTR_OPAQUE_SETUP_FILE` and is NOT stored in the user DB. Losing it requires re-enrollment.

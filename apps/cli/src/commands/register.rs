@@ -55,7 +55,7 @@ pub async fn run(cfg: &mut Config, username: &str) -> CliResult<()> {
 
     // The server ignores the exact server public key on register/finish, so we
     // pass a freshly generated one (matches the wire contract).
-    let server_pk = vautr_crypto::opaque::server_setup_public_key()
+    let server_pk = vautr_crypto::opaque::generate_server_setup()
         .map_err(|e| CliError::Crypto(e.to_string()))?;
 
     api.register_finish(

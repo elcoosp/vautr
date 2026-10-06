@@ -19,6 +19,7 @@ use opaque_ke::{
     ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters, ServerRegistration,
     ServerSetup,
 };
+use zeroize::Zeroizing;
 use rand::rngs::OsRng;
 use sha2::Sha512;
 
@@ -34,16 +35,29 @@ impl CipherSuite for VautrSuite {
 
 // --- Server setup (the OPAQUE server long-term keypair, published as public key) ---
 
-/// Generate the server OPAQUE setup; returns its serializable public key bytes
-/// (`server_config.opaque_server_public_key`). Stored once per server instance.
-/// The corresponding `ServerSetup::deserialize` is used to reload it at runtime.
-pub fn server_setup_public_key() -> Result<Vec<u8>> {
+/// Generate the server OPAQUE setup.
+///
+/// # Security
+/// The serialized form **CONTAINS THE OPRF PRIVATE KEY**. It is a server
+/// secret and must NEVER be persisted alongside user records (which is what
+/// the historic `generate_server_setup` name incorrectly implied), served
+/// to clients, or included in DB backups. Provision it out-of-band via
+/// `VAUTR_OPAQUE_SETUP_FILE` (see `core/vautr-server/src/handlers/mod.rs`).
+/// Losing it requires re-enrollment of every user.
+pub fn generate_server_setup() -> Result<Zeroizing<Vec<u8>>> {
     let setup = ServerSetup::<VautrSuite>::new(&mut OsRng);
-    Ok(setup.serialize().to_vec())
+    Ok(Zeroizing::new(setup.serialize().to_vec()))
+}
+
+/// Reconstruct a [`ServerSetup`] from bytes produced by
+/// [`generate_server_setup`]. Fails closed on tampered/truncated input.
+pub fn server_setup_from_bytes(bytes: &[u8]) -> Result<ServerSetup<VautrSuite>> {
+    ServerSetup::<VautrSuite>::deserialize(bytes)
+        .map_err(|e| CryptoError::AuthError(e.to_string()))
 }
 
 fn load_server_setup(bytes: &[u8]) -> Result<ServerSetup<VautrSuite>> {
-    ServerSetup::<VautrSuite>::deserialize(bytes).map_err(|e| CryptoError::AuthError(e.to_string()))
+    server_setup_from_bytes(bytes)
 }
 
 // --- Registration (client start → server start → client finish → server finish) ---
@@ -60,7 +74,7 @@ pub fn client_register_start(password: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     ))
 }
 
-/// Server registration start. `server_setup` = bytes from [`server_setup_public_key`].
+/// Server registration start. `server_setup` = bytes from [`generate_server_setup`].
 /// Returns `registration_response_bytes`.
 pub fn server_register_start(
     server_setup: &[u8],
@@ -203,7 +217,7 @@ mod tests {
         let pw = b"correct horse battery staple";
         let user = b"alice@example.com";
 
-        let setup = server_setup_public_key().unwrap();
+        let setup = generate_server_setup().unwrap();
 
         // registration
         let (creq, cstate) = client_register_start(pw).unwrap();
@@ -229,7 +243,7 @@ mod tests {
         let pw = b"right password";
         let wrong = b"wrong password";
         let user = b"bob@example.com";
-        let setup = server_setup_public_key().unwrap();
+        let setup = generate_server_setup().unwrap();
 
         let (creq, cstate) = client_register_start(pw).unwrap();
         let sresp = server_register_start(&setup, &creq, user).unwrap();

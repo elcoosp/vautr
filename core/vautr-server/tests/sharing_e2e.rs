@@ -153,7 +153,7 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
     let (upload, _export) =
         opaque::client_register_finish(&cstate, &sresp, password, username.as_bytes())
             .expect("reg finish");
-    let server_pk = opaque::server_setup_public_key().expect("setup pk");
+    let server_pk = opaque::generate_server_setup().expect("setup pk");
     let (status, resp) = http(
         addr,
         "POST",

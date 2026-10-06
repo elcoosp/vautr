@@ -401,7 +401,7 @@ mod tests {
         let user = "gate@example.com";
 
         // Server setup (mirrors what vautr-server generates/persists).
-        let setup = opaque::server_setup_public_key().unwrap();
+        let setup = opaque::generate_server_setup().unwrap();
 
         // Registration via the exposed state-machine wrappers.
         let (reg_msg, reg_state) = opaque_register_start(password).unwrap();
@@ -456,7 +456,7 @@ mod tests {
         let password = "right";
         let wrong = "wrong";
         let user = "bad@example.com";
-        let setup = opaque::server_setup_public_key().unwrap();
+        let setup = opaque::generate_server_setup().unwrap();
 
         let (reg_msg, reg_state) = opaque_register_start(password).unwrap();
         let reg_resp = opaque::server_register_start(&setup, &reg_msg, user.as_bytes()).unwrap();
