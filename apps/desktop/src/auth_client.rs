@@ -68,9 +68,12 @@ struct LoginStartResp {
 
 #[derive(Deserialize)]
 struct LoginFinishResp {
-    session_token: String,
+    session_token: Option<String>,
     #[allow(dead_code)]
     expires_at: i64,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mfa_required: Option<MfaWire>,
 }
 
 #[derive(Deserialize)]
@@ -94,12 +97,16 @@ pub struct RegisterResult {
 
 /// Material produced by a successful login.
 pub struct LoginResult {
-    /// Bearer session token for authenticated API calls.
-    pub session_token: String,
+    /// Bearer session token for authenticated API calls. `None` when
+    /// `mfa_required` is set (VTRFIX-SEC-C03).
+    pub session_token: Option<String>,
     /// MP-wrapped SVK blob (base64-decoded from `/account/status`).
     pub wrapped_svk: Vec<u8>,
     /// Server's minimum encryption-key generation.
     pub min_enc_key_gen: u64,
+
+    /// `Some(_)` when TOTP must be verified before a session is usable.
+    pub mfa_required: Option<MfaChallenge>,
 }
 
 /// The real OPAQUE auth client for the Vautr server.
@@ -235,7 +242,23 @@ impl AuthClient {
         .await
         .map_err(|e| format!("login/finish: {e}"))?;
 
-        let token = finish_resp.session_token;
+        // VTRFIX-SEC-C03: TOTP challenge — the server withholds the session
+        // and returns `mfa_required`. The UI must call `complete_login_totp`.
+        if let Some(mfa) = &finish_resp.mfa_required {
+            return Ok(LoginResult {
+                session_token: None,
+                wrapped_svk: Vec::new(),
+                min_enc_key_gen: 0,
+                mfa_required: Some(MfaChallenge {
+                    pending_token: mfa.pending_token.clone(),
+                    methods: mfa.methods.clone(),
+                    expires_at: mfa.expires_at,
+                }),
+            });
+        }
+        let token = finish_resp
+            .session_token
+            .ok_or_else(|| "login/finish: missing session_token".to_string())?;
 
         // ── Fetch wrapped SVK (api.md §5) ──────────────────────────────
         let status: AccountStatusResp = send_json(
@@ -254,9 +277,63 @@ impl AuthClient {
             .map_err(|e| format!("account/status svk b64 decode: {e}"))?;
 
         Ok(LoginResult {
-            session_token: token,
+            session_token: Some(token),
             wrapped_svk,
             min_enc_key_gen: status.min_enc_key_gen as u64,
+            mfa_required: None,
+        })
+    }
+
+    /// Complete a login that paused for TOTP (VTRFIX-SEC-C03).
+    pub async fn complete_login_totp(
+        &self,
+        username: &str,
+        password: &str,
+        pending_token: &str,
+        code: &str,
+        kdf_salt: &[u8],
+    ) -> Result<LoginResult, String> {
+        let _ = (username, password, kdf_salt); // retained for signature symmetry
+        #[derive(serde::Deserialize)]
+        struct LoginFinishResp2 {
+            session_token: Option<String>,
+        }
+        let finish_resp: LoginFinishResp2 = send_json(
+            self.client
+                .post(format!("{}/mfa/totp/verify-login", self.base_url))
+                .json(&serde_json::json!({
+                    "pending_token": pending_token,
+                    "code": code,
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("verify-login request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("verify-login: {e}"))?;
+        let token = finish_resp
+            .session_token
+            .ok_or_else(|| "verify-login: missing session_token".to_string())?;
+
+        let status: AccountStatusResp = send_json(
+            self.client
+                .get(format!("{}/account/status", self.base_url))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .map_err(|e| format!("account/status request: {e}"))?,
+        )
+        .await
+        .map_err(|e| format!("account/status: {e}"))?;
+        let wrapped_svk = B64
+            .decode(&status.svk_ciphertext_blob)
+            .map_err(|e| format!("account/status svk b64 decode: {e}"))?;
+
+        Ok(LoginResult {
+            session_token: Some(token),
+            wrapped_svk,
+            min_enc_key_gen: status.min_enc_key_gen as u64,
+            mfa_required: None,
         })
     }
 }
@@ -282,8 +359,26 @@ mod tests {
         assert!(!reg.recovery_mnemonic.is_empty());
 
         let login = client.login(&user, pw, &reg.kdf_salt).await.expect("login");
-        assert!(!login.session_token.is_empty());
+        assert!(login.session_token.is_some());
         assert!(!login.wrapped_svk.is_empty());
         assert!(login.min_enc_key_gen >= 1);
     }
+}
+
+/// UI-facing TOTP challenge (VTRFIX-SEC-C03).
+#[derive(Debug, Clone)]
+pub struct MfaChallenge {
+    pub pending_token: String,
+    pub methods: Vec<String>,
+    pub expires_at: i64,
+}
+
+/// Wire shape of the server's `mfa_required` payload.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct MfaWire {
+    pending_token: String,
+    #[serde(default)]
+    methods: Vec<String>,
+    #[serde(default)]
+    expires_at: i64,
 }

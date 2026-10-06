@@ -738,6 +738,18 @@ impl DesktopView {
                             return;
                         }
                     };
+                    if login.mfa_required.is_some() {
+                        this.update(cx, |this, cx| {
+                            this.login_state = FormState::Error(
+                                "Registered, but a second factor is required to log in. \
+                                 Use the web or CLI client to complete TOTP verification."
+                                    .into(),
+                            );
+                            cx.notify();
+                        })
+                        .ok();
+                        return;
+                    }
                     this.update(cx, |this, cx| {
                         this.recovery_mnemonic = Some(reg.recovery_mnemonic.clone());
                     })
@@ -794,6 +806,18 @@ impl DesktopView {
                     return;
                 }
             };
+            if login.mfa_required.is_some() {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(
+                        "A second factor is required for this account. \
+                         Use the web or CLI client to complete TOTP verification."
+                            .into(),
+                    );
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
 
             // Hand off to the shared post-authentication setup: builds the
             // VautrClient + session token, derives the vault keys, unlocks the
@@ -943,7 +967,20 @@ impl DesktopView {
         cx: &mut AsyncApp,
     ) {
         let db_path = state::db_path();
-        let client = match state::build_client(&db_path, &server_url, &login.session_token).await {
+        let session_token = match login.session_token.as_ref() {
+            Some(t) => t.clone(),
+            None => {
+                this.update(cx, |this, cx| {
+                    this.login_state = FormState::Error(
+                        "Login incomplete: second factor is required (use the web or CLI client)."
+                            .into(),
+                    );
+                    cx.notify();
+                });
+                return;
+            }
+        };
+        let client = match state::build_client(&db_path, &server_url, &session_token).await {
             Ok(c) => c,
             Err(e) => {
                 this.update(cx, |this, cx| {
@@ -1049,10 +1086,10 @@ impl DesktopView {
         this.update(cx, |this, cx| {
             this.client = Some(client);
             this.dek = Some(dek);
-            this.token = Some(login.session_token.clone());
+            this.token = Some(session_token.clone());
             this.recovery_mnemonic = sealed_mnemonic;
             let _ = state::save_session(&state::PersistedSession {
-                token: login.session_token.clone(),
+                token: session_token.clone(),
                 wrapped_svk_b64: B64.encode(&login.wrapped_svk),
                 min_enc_key_gen: login.min_enc_key_gen,
             });
