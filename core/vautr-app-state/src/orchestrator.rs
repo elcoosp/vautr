@@ -576,6 +576,7 @@ impl VautrClient {
         let cmd = DeleteCommand {
             uuid,
             sync_epoch: self.epoch.capture(),
+            local_enc_key_gen: self.current_key_gen(),
         };
         self.worker.delete(cmd).await
     }

@@ -23,11 +23,14 @@ pub struct SaveCommand {
     pub sync_epoch: u64,
 }
 
-/// A delete command: uuid + the epoch it was issued under.
+/// A delete command: uuid + the epoch it was issued under, plus the caller's
+/// current `enc_key_gen` (VTRFIX-BUG-C05 — without this the epoch gate compared
+/// gen 0 against `min_enc_key_gen >= 1` and always rejected the write).
 #[derive(Clone, Debug)]
 pub struct DeleteCommand {
     pub uuid: Uuid,
     pub sync_epoch: u64,
+    pub local_enc_key_gen: u64,
 }
 
 /// Outcome of a committed task.
@@ -210,8 +213,8 @@ impl PersistenceWorker {
     }
 
     async fn commit_delete(&self, cmd: &DeleteCommand) -> Result<(), String> {
-        // Epoch gate with gen 0 (delete is key-family independent here).
-        self.verify_epoch(cmd.sync_epoch, 0)?;
+        // VTRFIX-BUG-C05: use the caller's real local key generation.
+        self.verify_epoch(cmd.sync_epoch, cmd.local_enc_key_gen)?;
         let txn = self
             .db
             .begin()
