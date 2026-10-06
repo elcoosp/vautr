@@ -167,8 +167,16 @@ async fn run_pipeline(
             }
         };
 
+        // VTRFIX-BUG-H12: dedup within this file too — insert the translated
+        // key into `existing` so a second occurrence of the same (title, url)
+        // is rejected as a duplicate rather than creating two items.
+        let dedup_key_pre = (
+            parse_result.item.title.trim().to_string(),
+            parse_result.item.url.clone().unwrap_or_default(),
+        );
         match translate(parse_result.item, existing, parse_result.line_number) {
             Ok(TranslatedItem { domain, source_id: _ }) => {
+                existing.insert(dedup_key_pre);
                 let size = plaintext_size(&domain);
                 chunk_bytes += size;
                 chunk.push(domain);

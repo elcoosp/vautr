@@ -35,8 +35,16 @@ pub fn parse_stream(
             let de = serde_json::Deserializer::from_reader(reader);
             let stream = de.into_iter::<Value>();
             let mut records: VecDeque<Result<ParseRecord, String>> = VecDeque::new();
-            // `stream` is the serde_json::StreamDeserializer.
-            for value in stream.flatten() {
+            // VTRFIX-BUG-H11: propagate stream errors instead of `.flatten()`
+            // silently dropping the offending line and reporting success.
+            for value in stream {
+                let value = match value {
+                    Ok(v) => v,
+                    Err(e) => {
+                        records.push_back(Err(format!("line {}: {e}", e.line())));
+                        continue;
+                    }
+                };
                 let items = value.get("items").and_then(|v| v.as_array());
                 let items = match items {
                     Some(a) => a,
@@ -74,21 +82,32 @@ impl CsvIter {
         }
     }
 
-    fn field(&self, rec: &csv::StringRecord, keys: &[&str]) -> Option<String> {
+    /// VTRFIX-BUG-H10: look up a CSV cell and preserve it verbatim. Only
+    /// presentation fields (title/url) are trimmed later by the caller.
+    fn field_raw(&self, rec: &csv::StringRecord, keys: &[&str]) -> Option<String> {
         let idx = keys
             .iter()
             .find_map(|k| self.headers.iter().position(|h| h == *k))?;
         rec.get(idx)
-            .map(|s| s.trim().to_string())
+            .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
     }
 
+    /// Look up a CSV cell and trim surrounding whitespace (presentation only).
+    fn field_trim(&self, rec: &csv::StringRecord, keys: &[&str]) -> Option<String> {
+        self.field_raw(rec, keys).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
     fn map_record(&mut self, rec: &csv::StringRecord) -> ParseRecord {
-        let title = self.field(rec, &["name", "title"]).unwrap_or_default();
-        let url = self.field(rec, &["url", "uri", "login_uri"]);
-        let username = self.field(rec, &["username", "user"]);
-        let password = self.field(rec, &["password"]);
-        let notes = self.field(rec, &["notes", "note"]);
+        let title = self.field_trim(rec, &["name", "title"]).unwrap_or_default();
+        let url = self.field_trim(rec, &["url", "uri", "login_uri"]);
+        // VTRFIX-BUG-H10: these must be preserved byte-for-byte; a password
+        // like " p@ss " is legitimate and would otherwise be silently corrupted.
+        let username = self.field_raw(rec, &["username", "user"]);
+        let password = self.field_raw(rec, &["password"]);
+        let notes = self.field_raw(rec, &["notes", "note"]);
+        // VTRFIX-BUG-H08: TOTP must round-trip through import.
+        let totp = self.field_raw(rec, &["totp", "totp_secret", "otpauth"]);
 
         let mut fields = serde_json::Map::new();
         if let Some(u) = username {
@@ -99,6 +118,9 @@ impl CsvIter {
         }
         if let Some(n) = notes {
             fields.insert("notes".into(), Value::String(n));
+        }
+        if let Some(t) = totp {
+            fields.insert("totp".into(), Value::String(t));
         }
 
         let line = self.line;
@@ -156,6 +178,12 @@ fn parse_bitwarden_item(item: &Value, line: u32) -> Result<ParseRecord, String> 
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let notes = item.get("notes").and_then(|v| v.as_str()).map(|s| s.to_string());
+    // VTRFIX-BUG-H08: Bitwarden stores TOTP at `login.totp` (either a bare
+    // base32 secret or a full otpauth:// URI). Preserve it for the translator.
+    let totp = login
+        .and_then(|l| l.get("totp"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let mut fields = serde_json::Map::new();
     if let Some(u) = username {
@@ -166,6 +194,9 @@ fn parse_bitwarden_item(item: &Value, line: u32) -> Result<ParseRecord, String> 
     }
     if let Some(n) = notes {
         fields.insert("notes".into(), Value::String(n));
+    }
+    if let Some(t) = totp {
+        fields.insert("totp".into(), Value::String(t));
     }
 
     Ok(ParseRecord {

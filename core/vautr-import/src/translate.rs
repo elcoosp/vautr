@@ -74,7 +74,7 @@ pub fn translate(
     let now = crate::now_unix();
 
     let mut custom_fields = Vec::new();
-    if let Some(u) = username {
+    if let Some(u) = username.clone() {
         custom_fields.push(CustomField {
             name: "username".to_string(),
             value: Zeroizing::new(u),
@@ -84,15 +84,38 @@ pub fn translate(
 
     // TOTP optional; tolerate a malformed secret (bad base32) as a per-item
     // validation failure rather than a panic.
+    // VTRFIX-BUG-H08: TOTP must never be silently dropped. Accept either a
+    // bare base32 secret (length >= 8) or a full `otpauth://` URI. A non-empty
+    // value that fails validation becomes a per-item error, not a silent skip.
     let mut totp = None;
     if let Some(secret) = field_str(&raw.fields, "totp") {
-        if secret.len() >= 8 {
-            totp = Some(TotpSecret {
-                algorithm: TotpAlgorithm::Sha1,
-                digits: 6,
-                period: 30,
-                secret_base32: Zeroizing::new(secret),
-            });
+        let s = secret.trim();
+        if !s.is_empty() {
+            if s.starts_with("otpauth://") {
+                // Store the URI verbatim — downstream clients parse it.
+                totp = Some(TotpSecret {
+                    algorithm: TotpAlgorithm::Sha1,
+                    digits: 6,
+                    period: 30,
+                    secret_base32: Zeroizing::new(s.to_string()),
+                });
+            } else if s.len() >= 8 {
+                totp = Some(TotpSecret {
+                    algorithm: TotpAlgorithm::Sha1,
+                    digits: 6,
+                    period: 30,
+                    secret_base32: Zeroizing::new(s.to_string()),
+                });
+            } else {
+                return Err(ImportError {
+                    line_number: line,
+                    item_identifier: item_identifier.clone(),
+                    reason: ImportFailureReason::SchemaMismatch(format!(
+                        "invalid totp secret ({} chars; need >= 8 or otpauth:// URI)",
+                        s.len()
+                    )),
+                });
+            }
         }
     }
 
@@ -105,7 +128,9 @@ pub fn translate(
     let overview = DecryptedOverview {
         uuid,
         title: title.clone(),
-        subtitle: String::new(),
+        // VTRFIX-BUG-H09: username is the canonical subtitle everywhere else
+        // in the app; keep it in sync so import -> export round trips.
+        subtitle: username.clone().unwrap_or_default(),
         icon_key: "generic".to_string(),
         urls,
         updated_at: now,
