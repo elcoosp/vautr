@@ -282,3 +282,32 @@ mod tests {
         txn.commit().await.unwrap();
     }
 }
+
+/// VTRFIX-BUG-C06: rotate-only path — update `(payload, enc_key_gen)` on the
+/// existing rows without touching `version`, `deleted_date`, or any overview
+/// column. The older `save_item_txn` upsert path clobbered those fields (set
+/// version to the OLD gen, cleared tombstones, wiped titles).
+pub async fn reencrypt_item_txn(
+    txn: &DatabaseTransaction,
+    uuid: &str,
+    new_payload: &[u8],
+    new_enc_key_gen: i64,
+) -> Result<(), DbErr> {
+    item_payload::Entity::update_many()
+        .col_expr(
+            item_payload::Column::Payload,
+            Expr::value(sea_orm::Value::Bytes(Some(new_payload.to_vec()))),
+        )
+        .filter(item_payload::Column::Uuid.eq(uuid))
+        .exec(txn)
+        .await?;
+    item_overview::Entity::update_many()
+        .col_expr(
+            item_overview::Column::EncKeyGen,
+            Expr::value(new_enc_key_gen),
+        )
+        .filter(item_overview::Column::Uuid.eq(uuid))
+        .exec(txn)
+        .await?;
+    Ok(())
+}

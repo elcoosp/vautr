@@ -202,8 +202,12 @@ struct SecretMaterialRow {
 pub async fn list_enc_key_gens(
     db: &DatabaseConnection,
 ) -> Result<Vec<(Uuid, i64, Vec<u8>)>, String> {
+    // VTRFIX-BUG-C06: ORDER BY is mandatory — without it the rotation loop's
+    // "advance the cursor to last+1" heuristic skipped items with lower gens
+    // behind the cursor, permanently losing them.
     let sql = "SELECT o.uuid, o.enc_key_gen, p.payload \
-               FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid";
+               FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid \
+               ORDER BY o.enc_key_gen ASC";
     let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
     let rows = EncKeyGenRow::find_by_statement(stmt)
         .all(db)

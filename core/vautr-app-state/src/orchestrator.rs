@@ -750,22 +750,27 @@ impl VautrClient {
 
         // 3. Crash-safe batch re-encryption (ADR-006). Re-encrypt every item
         //    whose `enc_key_gen < confirmed_gen`, push, and persist locally.
+        // VTRFIX-BUG-C06: `list_enc_key_gens` now returns rows ORDER BY
+        // enc_key_gen ASC, and we advance a row-count cursor (not a gen value)
+        // so no lower-gen row can be skipped behind the cursor.
         let rows = vautr_db::query::list_enc_key_gens(&self.db)
             .await
             .map_err(|e| format!("list gens: {e}"))?;
-        let batch_size = 100u64;
-        let mut cursor_gen: i64 = 0;
+        let batch_size: usize = 100;
+        let mut cursor_row: usize = 0;
         loop {
             let batch: Vec<(Uuid, i64, Vec<u8>)> = rows
                 .iter()
-                .filter(|(_, gen, _)| *gen < confirmed_gen as i64 && *gen >= cursor_gen)
-                .take(batch_size as usize)
+                .filter(|(_, gen, _)| *gen < confirmed_gen as i64)
+                .skip(cursor_row)
+                .take(batch_size)
                 .map(|(u, g, p)| (*u, *g, p.clone()))
                 .collect();
             if batch.is_empty() {
                 break;
             }
-            cursor_gen = batch.last().map(|(_, g, _)| *g + 1).unwrap_or(cursor_gen);
+            cursor_row += batch.len();
+
             let mut push_items = Vec::with_capacity(batch.len());
             for (uuid, gen, payload) in &batch {
                 // Decrypt under the OLD DEK, re-encrypt under the NEW SVK.
@@ -777,27 +782,18 @@ impl VautrClient {
                     new_gen: confirmed_gen,
                 };
                 let new_payload = rot.reencrypt(uuid, &new_svk, &pt);
-                // Persist the re-encrypted payload locally (atomic).
-                let overview_am = item_overview::ActiveModel {
-                    uuid: Set(uuid.to_string()),
-                    version: Set(*gen as i64),
-                    enc_key_gen: Set(confirmed_gen as i64),
-                    deleted_date: Set(None),
-                    overview_title: Set(String::new()),
-                    overview_subtitle: Set(String::new()),
-                    overview_icon_key: Set(String::new()),
-                    overview_urls: Set("[]".into()),
-                    created_at: Set(0),
-                    updated_at: Set(0),
-                };
-                let payload_am = item_payload::ActiveModel {
-                    uuid: Set(uuid.to_string()),
-                    payload: Set(new_payload.clone()),
-                };
+
+                // Persist ONLY (payload, enc_key_gen) — identity fields are
+                // preserved by the narrow txn.
                 let txn = self.db.begin().await.map_err(|e| format!("begin: {e}"))?;
-                vautr_db::txn::save_item_txn(&txn, overview_am, payload_am, &uuid.to_string())
-                    .await
-                    .map_err(|e| format!("persist re-encrypt: {e}"))?;
+                vautr_db::txn::reencrypt_item_txn(
+                    &txn,
+                    &uuid.to_string(),
+                    &new_payload,
+                    confirmed_gen as i64,
+                )
+                .await
+                .map_err(|e| format!("persist re-encrypt: {e}"))?;
                 txn.commit().await.map_err(|e| format!("commit: {e}"))?;
                 push_items.push((*uuid, *gen as u64, confirmed_gen, Some(new_payload)));
             }
