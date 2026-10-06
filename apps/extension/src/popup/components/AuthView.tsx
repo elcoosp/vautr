@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePopupStore } from '../store';
+import { MfaRequiredError } from '@vautr/client-sdk';
 
 interface AuthViewProps {
   onAuthenticated: (username: string) => void;
@@ -14,6 +15,9 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // VTRFIX-SEC-C03: server withholds the session until TOTP is verified.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
   const setError = usePopupStore((s) => s.setError);
   const setStatus = usePopupStore((s) => s.setStatus);
   const status = usePopupStore((s) => s.status);
@@ -38,7 +42,16 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
         // copy is KEK-sealed in IndexedDB.
         sessionStorage.setItem('vautr:pending-kit', recoveryMnemonic);
       }
-      await client.login(username, password);
+      try {
+        await client.login(username, password);
+      } catch (err) {
+        if (err instanceof MfaRequiredError) {
+          setPendingToken(err.pendingToken);
+          setStatus('locked');
+          return;
+        }
+        throw err;
+      }
       await client.sync();
       const { cacheAllCiphertexts, cacheSvkForSw } = await import('../vaultActions');
       await cacheAllCiphertexts();
@@ -53,6 +66,40 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus('locked');
     }
+  }
+
+  // VTRFIX-SEC-C03: complete the login by submitting the TOTP code.
+  async function verifyTotp(): Promise<void> {
+    if (!pendingToken || !totpCode.trim()) {
+      setError('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setStatus('unlocking');
+    setError(null);
+    try {
+      const { getPopupClient } = await import('../popupClient');
+      const client = await getPopupClient();
+      await client.completeLoginWithTotp(pendingToken, totpCode.trim(), username, password);
+      await client.sync();
+      const { cacheAllCiphertexts, cacheSvkForSw } = await import('../vaultActions');
+      await cacheAllCiphertexts();
+      const { IndexedDbStore } = await import('@vautr/client-sdk/storage');
+      const store = new IndexedDbStore();
+      const storedState = await store.getState();
+      if (storedState.svk) {
+        await cacheSvkForSw(storedState.svk);
+      }
+      onAuthenticated(username);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('locked');
+    }
+  }
+
+  function cancelTotp(): void {
+    setPendingToken(null);
+    setTotpCode('');
+    setError(null);
   }
 
   return (
@@ -78,6 +125,35 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
             <TabsContent value="register" />
           </Tabs>
 
+          {pendingToken ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Enter the 6-digit code from your authenticator app.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="auth-totp">One-time code</Label>
+                <Input
+                  id="auth-totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={totpCode}
+                  disabled={busy}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void verifyTotp();
+                  }}
+                />
+              </div>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <Button className="w-full" disabled={busy} onClick={() => void verifyTotp()}>
+                {busy ? 'Verifying…' : 'Verify and unlock'}
+              </Button>
+              <Button className="w-full" variant="ghost" disabled={busy} onClick={cancelTotp}>
+                Use a different account
+              </Button>
+            </>
+          ) : (
+          <>
           <div className="space-y-2">
             <Label htmlFor="auth-username">Username</Label>
             <Input
@@ -112,6 +188,8 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
                 ? 'Unlock'
                 : 'Register'}
           </Button>
+          </>
+          )}
         </CardContent>
       </Card>
     </div>
