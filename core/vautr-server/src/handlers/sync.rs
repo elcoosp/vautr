@@ -373,7 +373,7 @@ mod tests {
         // NB: insert the session directly (created_at is NOT NULL) rather than
         // via Repository::store_session, which is owned by another agent.
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES ('80b3ad2d438bfafa1ea690c5a59f54548dcc76ad6a839c6704ac1d9d565d9c80', 'u1', ?, ?)",
         )
         .bind(4_000_000_000_000i64) // far-future expiry relative to real wall-clock
         .bind(now)
@@ -382,13 +382,14 @@ mod tests {
         .unwrap();
         for v in 1..=500i64 {
             sqlx::query(
-                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-                 VALUES (?, ?, ?, 1, NULL, NULL, ?)",
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+                 VALUES (?, ?, ?, 1, NULL, NULL, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
             )
             .bind(format!("item-{v}"))
             .bind("u1")
             .bind(v)
             .bind(now + v)
+            .bind("u1")
             .execute(repo.pool())
             .await
             .unwrap();
@@ -418,22 +419,28 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok2', 'u2', ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES ('8690c3af015e6294ff67fcfd334f181a4704b579e9b2bce79ec9716ac62da2d6', 'u2', ?, ?)",
         )
         .bind(4_000_000_000_000i64) // far-future expiry relative to real wall-clock
         .bind(now)
         .execute(repo.pool())
         .await
         .unwrap();
+        // VTRFIX-SEC-H03: seed_gapped must leave the user's seq window starting
+        // ABOVE 50 so a cursor=50 triggers 410. We insert with a jump: first
+        // item is seq 100 (so the next cursor=50 is expired).
+        let mut seq_counter: i64 = 99;
         for v in 101..=500i64 {
+            seq_counter += 1;
             sqlx::query(
-                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-                 VALUES (?, ?, ?, 1, NULL, NULL, ?)",
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+                 VALUES (?, ?, ?, 1, NULL, NULL, ?, ?)",
             )
             .bind(format!("gitem-{v}"))
             .bind("u2")
             .bind(v)
             .bind(now + v)
+            .bind(seq_counter)
             .execute(repo.pool())
             .await
             .unwrap();
@@ -571,7 +578,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('perftok', 'perf', ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES ('85095bd5d8b76a4a597bad7773893c9f187e24f31daf069d39bc79e9c3424f3e', 'perf', ?, ?)",
         )
         .bind(4_000_000_000_000i64)
         .bind(now)
@@ -580,13 +587,14 @@ mod tests {
         .unwrap();
         for v in 1..=10_000i64 {
             sqlx::query(
-                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-                 VALUES (?, ?, ?, 1, NULL, NULL, ?)",
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+                 VALUES (?, ?, ?, 1, NULL, NULL, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
             )
             .bind(format!("perf-{v}"))
             .bind("perf")
             .bind(v)
             .bind(now + v)
+            .bind("perf")
             .execute(repo.pool())
             .await
             .unwrap();

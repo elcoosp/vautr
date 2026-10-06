@@ -1217,9 +1217,9 @@ mod tests {
             .await
             .expect("create user");
             sqlx::query(
-                "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
             )
-            .bind(tok)
+            .bind(crate::repository::sessions::hash_session_token(tok))
             .bind(id)
             .bind(now + 60_000)
             .bind(now)

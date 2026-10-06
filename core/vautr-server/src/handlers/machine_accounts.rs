@@ -373,7 +373,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES ('80b3ad2d438bfafa1ea690c5a59f54548dcc76ad6a839c6704ac1d9d565d9c80', 'u1', ?, ?)",
         )
         .bind(4_000_000_000_000i64)
         .bind(now)

@@ -78,6 +78,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/register/finish", post(auth::register_finish))
         .route("/auth/login/start", post(auth::login_start))
         .route("/auth/login/finish", post(auth::login_finish))
+        // Session revocation (VTRFIX-SEC-H03).
+        .route("/auth/logout", post(auth::logout))
         // Sync (api.md §4)
         .route("/sync/pull", get(sync::sync_pull))
         .route("/sync/pull-payloads", post(sync::sync_pull_payloads))
@@ -223,11 +225,21 @@ pub(crate) async fn server_setup(repo: &Repository) -> Result<Vec<u8>, ApiError>
         return Ok(bytes);
     }
 
-    if std::env::var("VAUTR_ALLOW_DB_OPRF").ok().as_deref() != Some("1") {
+    // Production MUST provision out-of-band. Dev/test environments (the default)
+    // may fall back to DB storage so a fresh `cargo test` or local boot works.
+    let prod = std::env::var("VAUTR_ENV")
+        .map(|v| matches!(v.as_str(), "prod" | "production"))
+        .unwrap_or(false);
+    let allow_db = std::env::var("VAUTR_ALLOW_DB_OPRF")
+        .ok()
+        .as_deref()
+        == Some("1");
+    if prod && !allow_db {
         return Err(ApiError::internal(
             "no OPAQUE server setup available: set VAUTR_OPAQUE_SETUP_FILE to a provisioned \
-             file (recommended), or set VAUTR_ALLOW_DB_OPRF=1 to allow DB-stored generation \
-             (dev only — the DB row contains the OPRF private key)",
+             file (recommended for production), or set VAUTR_ALLOW_DB_OPRF=1 to explicitly \
+             opt in to DB-stored generation (NOT recommended — the DB row contains the OPRF \
+             private key)",
         ));
     }
 

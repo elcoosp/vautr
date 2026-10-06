@@ -113,13 +113,14 @@ mod tests {
         // reports Conflict (caller must insert on 404/initial). We model the
         // initial insert separately here to keep upsert_item_occ pure-OCC.
         sqlx::query(
-            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-             VALUES (?, ?, 1, 1, NULL, ?, ?)",
+            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+             VALUES (?, ?, 1, 1, NULL, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
         )
         .bind("item-1")
         .bind("u1")
         .bind(&[9u8; 8][..])
         .bind(now)
+        .bind("u1")
         .execute(repo.pool())
         .await
         .unwrap();

@@ -5,11 +5,12 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-use axum::{extract::State, Json};
+use axum::{extract::State, Json, http::StatusCode,};
 use serde::{Deserialize, Serialize};
 use vautr_crypto::opaque;
 
 use super::{b64, decode_b64, now_ms, server_setup, ApiError, AppState};
+use super::Bearer;
 
 /// In-memory OPAQUE server-login state, keyed by username.
 ///
@@ -240,4 +241,17 @@ pub(crate) async fn login_finish(
         expires_at: Some(expires_at),
         mfa_required: None,
     }))
+}
+
+/// `POST /auth/logout` — deletes the presented session token (VTRFIX-SEC-H03).
+pub(crate) async fn logout(
+    State(st): State<AppState>,
+    auth: Bearer,
+) -> Result<StatusCode, ApiError> {
+    let _ = super::auth_user(&st.repo, &auth.0).await?;
+    st.repo
+        .delete_session(&auth.0)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
 }

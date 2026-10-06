@@ -624,9 +624,9 @@ mod tests {
             // Insert the session directly: `sessions` has a NOT NULL
             // `created_at` that the `store_session` helper does not populate.
             sqlx::query(
-                "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
             )
-            .bind(tok)
+            .bind(crate::repository::sessions::hash_session_token(tok))
             .bind(id)
             .bind(now + 60_000)
             .bind(now)
@@ -701,13 +701,14 @@ mod tests {
         let item_uuid = Uuid::new_v4().to_string();
         // The shares table FK-references items(uuid); create the item first.
         sqlx::query(
-            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-             VALUES (?, ?, 1, 1, NULL, ?, ?)",
+            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+             VALUES (?, ?, 1, 1, NULL, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
         )
         .bind(&item_uuid)
         .bind("u1")
         .bind(&[9u8; 8][..])
         .bind(now_ms())
+        .bind("u1")
         .execute(state.repo.pool())
         .await
         .expect("insert item");

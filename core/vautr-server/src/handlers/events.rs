@@ -155,8 +155,8 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-             VALUES ('11111111-1111-1111-1111-111111111111', 'u1', 2, 1, ?, NULL, ?)",
+            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+             VALUES ('11111111-1111-1111-1111-111111111111', 'u1', 2, 1, ?, NULL, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = 'u1'))",
         )
         .bind(now)
         .bind(now)
@@ -164,8 +164,8 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-             VALUES ('22222222-2222-2222-2222-222222222222', 'u1', 1, 1, NULL, NULL, ?)",
+            "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+             VALUES ('22222222-2222-2222-2222-222222222222', 'u1', 1, 1, NULL, NULL, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = 'u1'))",
         )
         .bind(now)
         .execute(repo.pool())

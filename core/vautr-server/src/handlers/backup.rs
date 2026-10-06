@@ -287,7 +287,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES ('tok1', 'u1', ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES ('80b3ad2d438bfafa1ea690c5a59f54548dcc76ad6a839c6704ac1d9d565d9c80', 'u1', ?, ?)",
         )
         .bind(4_000_000_000_000i64)
         .bind(now)
@@ -297,13 +297,14 @@ mod tests {
         // Seed two items so the restore test can assert they come back intact.
         for (i, item_uuid) in ["item-1", "item-2"].iter().enumerate() {
             sqlx::query(
-                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-                 VALUES (?, ?, 1, 1, NULL, ?, ?)",
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+                 VALUES (?, ?, 1, 1, NULL, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
             )
             .bind(item_uuid)
             .bind("u1")
             .bind(&[i as u8 + 1; 8][..])
             .bind(now + i as i64)
+            .bind("u1")
             .execute(repo.pool())
             .await
             .unwrap();

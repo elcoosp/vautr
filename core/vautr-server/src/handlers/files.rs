@@ -323,9 +323,9 @@ mod tests {
         // Insert the session directly: `sessions` has a NOT NULL `created_at`
         // that the `store_session` helper does not populate.
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
         )
-        .bind("tok1")
+        .bind(crate::repository::sessions::hash_session_token("tok1"))
         .bind("u1")
         .bind(now + 60_000)
         .bind(now)
@@ -512,9 +512,9 @@ mod tests {
             .await
             .expect("create user 2");
         sqlx::query(
-            "INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
         )
-        .bind("tok2")
+        .bind(crate::repository::sessions::hash_session_token("tok2"))
         .bind("u2")
         .bind(now + 60_000)
         .bind(now)
