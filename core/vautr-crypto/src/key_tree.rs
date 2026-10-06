@@ -35,7 +35,7 @@ pub fn derive_dek(svk: &Zeroizing<[u8; 32]>) -> Result<Zeroizing<[u8; 32]>> {
 /// Generate a fresh random Symmetric Vault Key.
 pub fn generate_svk() -> Zeroizing<[u8; 32]> {
     let mut svk = Zeroizing::new([0u8; 32]);
-    rand::thread_rng().fill_bytes(&mut *svk);
+    rand::rngs::OsRng.fill_bytes(&mut *svk);
     svk
 }
 

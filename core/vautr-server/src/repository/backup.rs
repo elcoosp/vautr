@@ -46,7 +46,7 @@ impl Repository {
             }
         }
         let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
+        rand::rngs::OsRng.fill_bytes(&mut key);
         sqlx::query("INSERT INTO backup_key (id, key) VALUES (1, ?)")
             .bind(&key[..])
             .execute(&self.pool)

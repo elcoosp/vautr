@@ -122,7 +122,7 @@ impl ArchivePayload {
 /// nonce per archive.
 pub fn seal(key: &[u8; 32], payload: &[u8]) -> ArchiveResult<Vec<u8>> {
     let mut nonce = [0u8; NONCE_LEN];
-    rand::thread_rng().fill_bytes(&mut nonce);
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
 
     let cipher = XChaCha20Poly1305::new(key.into());
     let n: XNonce = nonce.as_slice().try_into().expect("nonce len");

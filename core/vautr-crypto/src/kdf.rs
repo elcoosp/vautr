@@ -22,7 +22,7 @@ pub const MK_LEN: usize = 32;
 pub fn generate_kdf_salt() -> [u8; 32] {
     let mut salt = [0u8; 32];
     // CSPRNG from the `rand` crate (OsRng-backed).
-    rand::thread_rng().fill_bytes(&mut salt);
+    rand::rngs::OsRng.fill_bytes(&mut salt);
     salt
 }
 

@@ -139,7 +139,7 @@ pub fn decrypt_with_ad(key: &[u8; 32], ad: &[u8], envelope: &[u8]) -> Result<Vec
 /// CSPRNG 24-byte nonce.
 fn random_nonce() -> [u8; 24] {
     let mut n = [0u8; 24];
-    rand::thread_rng().fill_bytes(&mut n);
+    rand::rngs::OsRng.fill_bytes(&mut n);
     n
 }
 

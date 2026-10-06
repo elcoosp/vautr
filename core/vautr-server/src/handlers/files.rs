@@ -20,7 +20,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{auth_user, now_ms, ApiError, AppState, Bearer};
+use super::{auth_any, auth_user, now_ms, ApiError, AppState, Bearer};
 
 /// Deterministic mock presigned URLs for each chunk. Real S3 presigning will
 /// replace this behind a `rustfs` feature / env toggle; the protocol shape is

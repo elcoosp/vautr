@@ -144,12 +144,12 @@ pub fn share_item(
     // `item_uuid` as the `share_id` keeps the AD consistent end-to-end.
     let share_id = item_uuid;
     let mut sik = Zeroizing::new([0u8; MK_LEN]);
-    rand::thread_rng().fill_bytes(&mut *sik);
+    rand::rngs::OsRng.fill_bytes(&mut *sik);
 
     // DEM: encrypt the payload under the SIK.
     let ad = payload_ad(&share_id);
     let mut nonce = [0u8; 24];
-    rand::thread_rng().fill_bytes(&mut nonce);
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
     let encrypted_payload = encrypt_with_nonce(&sik, &nonce, &ad, plaintext)
         .map_err(|e| ShareError::Crypto(e.to_string()))?;
 
@@ -244,7 +244,7 @@ impl ShareGroupKey {
     pub fn encrypt_item(&self, item_uuid: &Uuid, plaintext: &[u8]) -> Result<Vec<u8>> {
         let ad = payload_ad(item_uuid);
         let mut nonce = [0u8; 24];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
         encrypt_with_nonce(&self.group_sik, &nonce, &ad, plaintext)
             .map_err(|e| ShareError::Crypto(e.to_string()))
     }
@@ -275,7 +275,7 @@ pub struct GroupKeyRotation {
 /// Create a new sharing group: generates a fresh Group SIK (§6.1).
 pub fn create_group(name: String, admin_uuid: Uuid) -> Result<ShareGroupKey> {
     let mut group_sik = Zeroizing::new([0u8; MK_LEN]);
-    rand::thread_rng().fill_bytes(&mut *group_sik);
+    rand::rngs::OsRng.fill_bytes(&mut *group_sik);
     Ok(ShareGroupKey {
         group: ShareGroup {
             group_id: Uuid::new_v4(),
@@ -337,7 +337,7 @@ pub fn rotate_group_sik(
     members: &[(Uuid, SharingPublicKey)],
 ) -> Result<GroupKeyRotation> {
     let mut group_sik = Zeroizing::new([0u8; MK_LEN]);
-    rand::thread_rng().fill_bytes(&mut *group_sik);
+    rand::rngs::OsRng.fill_bytes(&mut *group_sik);
     let new_key = ShareGroupKey {
         group: group.clone(),
         group_sik,

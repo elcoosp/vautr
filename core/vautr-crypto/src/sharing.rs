@@ -35,7 +35,7 @@ pub struct SharingKeyPair {
 impl SharingKeyPair {
     /// Generate a fresh sharing keypair (OsRng-backed).
     pub fn generate() -> Self {
-        let secret = StaticSecret::random_from_rng(rand::thread_rng());
+        let secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
         let public = PublicKey::from(&secret);
         Self {
             public: public.to_bytes(),
@@ -102,7 +102,7 @@ pub fn share_item(
     recipient_pk: &SharingPublicKey,
     item_uuid: &Uuid,
 ) -> Result<SharedEnvelope> {
-    let ephemeral = EphemeralSecret::random_from_rng(rand::thread_rng());
+    let ephemeral = EphemeralSecret::random_from_rng(rand::rngs::OsRng);
     let ephemeral_pk = PublicKey::from(&ephemeral);
     let shared = ephemeral.diffie_hellman(&PublicKey::from(*recipient_pk));
     let key = derive_share_key(shared.as_bytes());
@@ -161,7 +161,7 @@ pub fn unwrap_shared_item(
 
 fn random_nonce() -> [u8; NONCE_LEN] {
     let mut n = [0u8; NONCE_LEN];
-    rand::thread_rng().fill_bytes(&mut n);
+    rand::rngs::OsRng.fill_bytes(&mut n);
     n
 }
 
