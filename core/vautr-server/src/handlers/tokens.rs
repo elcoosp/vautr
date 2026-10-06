@@ -308,8 +308,57 @@ async fn create_token(
         }
     }
 
+    // VTRFIX-SEC-H12: enforce the machine-account project binding. A token
+    // whose project_uuid is not the MA's project_uuid (when the MA is bound)
+    // escapes the MA's scope.
+    if let Some(ma_uuid) = &req.machine_account_uuid {
+        if let Some(ma) = st
+            .repo
+            .get_machine_account(ma_uuid, &user_id)
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?
+        {
+            let ma_project = ma.project_uuid.as_deref();
+            match (ma_project, req.project_uuid.as_deref()) {
+                (Some(mp), Some(rp)) if mp != rp => {
+                    return Err(ApiError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "project_mismatch",
+                        "project_uuid must match the machine account's project",
+                    ));
+                }
+                (Some(_), None) => {
+                    return Err(ApiError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "project_required",
+                        "project_uuid is required when the machine account is project-scoped",
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
     let uuid = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
+
+    // VTRFIX-SEC-H12: default to a finite lifetime unless the operator has
+    // explicitly opted in to non-expiring tokens.
+    let effective_expiry = match req.expires_at {
+        Some(t) => Some(t),
+        None => {
+            if std::env::var("VAUTR_ALLOW_NON_EXPIRING_TOKENS").ok().as_deref() == Some("1") {
+                None
+            } else {
+                let max_days: i64 = std::env::var("VAUTR_MAX_TOKEN_LIFETIME_DAYS")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(90);
+                Some(now + max_days * 86_400_000)
+            }
+        }
+    };
+
     let (secret, hash, prefix) = generate_token();
     st.repo
         .create_access_token(
@@ -321,7 +370,7 @@ async fn create_token(
             &scopes_to_json(&req.scopes),
             &hash,
             &prefix,
-            req.expires_at,
+            effective_expiry,
             now,
         )
         .await
@@ -346,7 +395,7 @@ async fn create_token(
         Json(CreateResponse {
             token: secret,
             token_id: uuid,
-            expires_at: req.expires_at,
+            expires_at: effective_expiry,
         }),
     ))
 }

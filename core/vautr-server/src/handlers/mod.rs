@@ -257,6 +257,24 @@ pub(crate) async fn server_setup(repo: &Repository) -> Result<Vec<u8>, ApiError>
 }
 
 /// Extract + validate a bearer session, returning the user id.
+/// VTRFIX-SEC-H12: authenticate a bearer token that may be either a session
+/// token or a machine-account access token (`vtr-ak-...`). Returns the
+/// effective owner user id. Session-only routes (account, MFA, policy,
+/// recovery, admin) MUST keep calling `auth_user` directly.
+pub(crate) async fn auth_any(repo: &Repository, token: &str) -> Result<String, ApiError> {
+    if token.starts_with("vtr-ak-") {
+        let verified = crate::handlers::tokens::verify_access_token(repo, token).await?;
+        let owner = repo
+            .get_access_token_owner(&verified.token_id)
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?
+            .ok_or_else(ApiError::unauthorized)?;
+        Ok(owner)
+    } else {
+        auth_user(repo, token).await
+    }
+}
+
 pub(crate) async fn auth_user(repo: &Repository, token: &str) -> Result<String, ApiError> {
     let Some((user_id, expires_at)) = repo
         .get_session(token)

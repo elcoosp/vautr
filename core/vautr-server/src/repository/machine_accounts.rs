@@ -268,3 +268,18 @@ impl Repository {
         Ok(())
     }
 }
+
+impl Repository {
+    /// VTRFIX-SEC-H12: return the owner_user_id for a token uuid.
+    pub async fn get_access_token_owner(
+        &self,
+        token_id: &str,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT owner_user_id FROM access_tokens WHERE uuid = ?")
+                .bind(token_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|r| r.0))
+    }
+}
