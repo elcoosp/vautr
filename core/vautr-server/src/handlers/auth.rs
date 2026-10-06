@@ -54,11 +54,18 @@ pub(crate) struct LoginStartReq {
 #[derive(Serialize)]
 pub(crate) struct LoginStartResp {
     login_response: String,
+
+    /// VTRFIX-SEC-M20: opaque handle to pass back on finish.
+    pub login_handle: String,
 }
 #[derive(Deserialize)]
 pub(crate) struct LoginFinishReq {
     username: String,
     login_finish: String, // base64
+
+    /// VTRFIX-SEC-M20: handle returned by login_start (optional for legacy).
+    #[serde(default)]
+    pub login_handle: Option<String>,
 }
 /// Response payload indicating a second factor is required (VTRFIX-SEC-C03).
 #[derive(Debug, Clone, Serialize)]
@@ -159,13 +166,21 @@ pub(crate) async fn login_start(
         req.username.as_bytes(),
     )
     .map_err(|e| ApiError::internal(&e.to_string()))?;
-    // Persist the ephemeral login state for `login_finish`.
-    LOGIN_STATE
-        .lock()
-        .unwrap()
-        .insert(req.username.clone(), sstate);
+    // VTRFIX-SEC-M20: use a random handle so concurrent logins for the same
+    // username cannot clobber each other, and the handle never leaks the
+    // username. Bound the map to prevent unbounded growth from probes.
+    let handle = format!("vtr-lh-{}", uuid::Uuid::new_v4().simple());
+    {
+        let mut map = LOGIN_STATE.lock().unwrap_or_else(|p| p.into_inner());
+        // Prune opportunistically.
+        if map.len() > 10_000 {
+            map.clear();
+        }
+        map.insert(handle.clone(), sstate);
+    }
     Ok(Json(LoginStartResp {
         login_response: b64(&sresp),
+        login_handle: handle,
     }))
 }
 
@@ -182,11 +197,17 @@ pub(crate) async fn login_finish(
         return Err(ApiError::bad_request("not_found", "unknown user"));
     };
     let lupload = decode_b64(&req.login_finish)?;
-    let sstate = LOGIN_STATE
-        .lock()
-        .unwrap()
-        .remove(&req.username)
-        .ok_or_else(|| ApiError::bad_request("invalid_login", "no login in progress"))?;
+    // VTRFIX-SEC-M20: prefer the random handle; fall back to the legacy
+    // username-keyed lookup for one release while older clients catch up.
+    let sstate = {
+        let mut map = LOGIN_STATE.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(h) = req.login_handle.as_deref() {
+            map.remove(h)
+        } else {
+            map.remove(&req.username)
+        }
+    }
+    .ok_or_else(|| ApiError::bad_request("invalid_login", "no login in progress"))?;
     let sfin = opaque::server_login_finish(&sstate, &lupload)
         .map_err(|e| ApiError::internal(&e.to_string()))?;
 

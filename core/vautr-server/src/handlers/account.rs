@@ -109,6 +109,13 @@ pub(crate) async fn account_rotate_key(
 ) -> Result<Json<RotateKeyResp>, ApiError> {
     let user_id = auth_user(&st.repo, &auth.0).await?;
     let svk = decode_b64(&req.new_svk_ciphertext_blob)?;
+    // VTRFIX-SEC-M17: reject absurd epoch bumps / downgrades and empty blobs.
+    if svk.is_empty() || svk.len() > 4096 {
+        return Err(ApiError::bad_request(
+            "invalid_blob_size",
+            "svk blob must be 1..=4096 bytes",
+        ));
+    }
     let Some(user) = st
         .repo
         .get_user_by_id(&user_id)

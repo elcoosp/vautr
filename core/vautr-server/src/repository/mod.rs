@@ -116,7 +116,7 @@ mod tests {
             "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
              VALUES (?, ?, 1, 1, NULL, ?, ?, (SELECT COALESCE(MAX(seq),0)+1 FROM items WHERE user_id = ?))",
         )
-        .bind("item-1")
+        .bind("11111111-1111-4111-8111-111111111111")
         .bind("u1")
         .bind(&[9u8; 8][..])
         .bind(now)
@@ -127,14 +127,14 @@ mod tests {
 
         // Correct OCC version → Updated.
         let out = repo
-            .upsert_item_occ("item-1", "u1", 1, 1, Some(&[9u8; 8][..]), None, now + 1)
+            .upsert_item_occ("11111111-1111-4111-8111-111111111111", "u1", 1, 1, Some(&[9u8; 8][..]), None, now + 1)
             .await
             .unwrap();
         assert_eq!(out, UpsertOutcome::Updated);
 
         // Stale OCC version → Conflict.
         let out = repo
-            .upsert_item_occ("item-1", "u1", 1, 1, Some(&[9u8; 8][..]), None, now + 2)
+            .upsert_item_occ("11111111-1111-4111-8111-111111111111", "u1", 1, 1, Some(&[9u8; 8][..]), None, now + 2)
             .await
             .unwrap();
         assert_eq!(out, UpsertOutcome::Conflict);
@@ -145,7 +145,7 @@ mod tests {
             .await
             .unwrap();
         let out = repo
-            .upsert_item_occ("item-1", "u1", 2, 1, Some(&[9u8; 8][..]), None, now + 3)
+            .upsert_item_occ("11111111-1111-4111-8111-111111111111", "u1", 2, 1, Some(&[9u8; 8][..]), None, now + 3)
             .await
             .unwrap();
         assert_eq!(out, UpsertOutcome::EpochTooOld);

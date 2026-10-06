@@ -50,6 +50,10 @@ impl Repository {
         deleted_date: Option<i64>,
         now: i64,
     ) -> Result<UpsertOutcome, sqlx::Error> {
+        // VTRFIX-SEC-M19: refuse malformed UUIDs rather than persist garbage.
+        if Uuid::parse_str(uuid).is_err() {
+            return Err(sqlx::Error::Protocol("invalid item uuid".into()));
+        }
         // Epoch gate: reject if the client's enc_key_gen is behind the server.
         if let Some(min_gen) = self.min_enc_key_gen(user_id).await? {
             if enc_key_gen < min_gen {
