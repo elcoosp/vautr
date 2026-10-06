@@ -1003,9 +1003,19 @@ export class VautrWebClient {
             });
           }
         }
+        // VTRFIX-BUG-C10: only clear `pending` when the server actually
+        // applied the push (status `success` with a returned `version`).
+        // Conflicts and other non-success statuses must remain pending so the
+        // next sync retries them — the previous unconditional clear silently
+        // dropped local edits.
         for (const item of pending) {
-          const v = updated.get(item.uuid);
-          await this.store.putItem({ ...item, version: v ?? item.version, pending: false });
+          const appliedVersion = updated.get(item.uuid);
+          const applied = appliedVersion !== undefined;
+          await this.store.putItem({
+            ...item,
+            version: appliedVersion ?? item.version,
+            pending: !applied,
+          });
         }
         for (const conflict of conflicts) {
           this.emit({ type: 'ConflictDetected', event: conflict });
