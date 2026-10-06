@@ -589,41 +589,60 @@ impl VautrClient {
     pub async fn sync(&self) -> Result<(), String> {
         let transport = self.transport.read().await.clone();
         let transport = transport.ok_or_else(|| "sync not connected".to_string())?;
-        let engine = Engine::new(transport.clone(), self.blacklist.clone());
+        // VTRFIX-BUG-C02: seed the engine with the persisted cursor so a
+        // long-lived client resumes where it left off, and page through the
+        // server until `has_more == false`.
+        let start_cursor = self.cursor.load(Ordering::SeqCst);
+        let mut engine = Engine::new(transport.clone(), self.blacklist.clone(), start_cursor);
 
         self.bus.publish(VaultStateUpdate::SyncStarted);
         let mut progress = 0u8;
-
-        let (next_cursor, overviews) =
-            engine.pull().await.map_err(|e| format!("sync pull: {e}"))?;
-        self.cursor.store(next_cursor, Ordering::SeqCst);
 
         // Epoch gate: if the server's min_gen is ahead of our local key gen,
         // enter Read-Only (core.md §1.3, REQ-AUTH-05).
         let local_gen = self.local_gen.load(Ordering::SeqCst);
 
-        let total = overviews.len().max(1) as u8;
-        let mut idx = 0u8;
-        for ov in &overviews {
-            // Skip toxic/ignored items (ADR-002): never download their payload.
-            if self.blacklist.is_ignored(&ov.uuid) {
-                idx += 1;
-                continue;
+        // Safety: cap the number of pages so a buggy `has_more` cannot hang us.
+        let mut pages = 0u32;
+        loop {
+            pages += 1;
+            if pages > 10_000 {
+                return Err("sync: exceeded 10000 pages (has_more loop?)".into());
             }
-            if !ov.deleted {
-                if let Ok(Some(payload)) =
-                    engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await
-                {
-                    self.persist_synced_item(&ov, payload).await?;
+            let (overviews, has_more) = engine
+                .pull_and_advance()
+                .await
+                .map_err(|e| format!("sync pull: {e}"))?;
+
+            let total = overviews.len().max(1) as u32;
+            let mut idx = 0u32;
+            for ov in &overviews {
+                if self.blacklist.is_ignored(&ov.uuid) {
+                    idx += 1;
+                    continue;
+                }
+                if !ov.deleted {
+                    if let Ok(Some(payload)) =
+                        engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await
+                    {
+                        self.persist_synced_item(&ov, payload).await?;
+                    }
+                }
+                idx += 1;
+                let p = ((idx * 100) / total) as u8;
+                if p != progress {
+                    progress = p;
+                    self.bus.publish(VaultStateUpdate::SyncProgress(p));
                 }
             }
-            idx += 1;
-            let p = ((idx as u32 * 100) / total as u32) as u8;
-            if p != progress {
-                progress = p;
-                self.bus.publish(VaultStateUpdate::SyncProgress(p));
+
+            if !has_more {
+                break;
             }
         }
+
+        // Persist the cursor only after a fully-successful walk.
+        self.cursor.store(engine.cursor(), Ordering::SeqCst);
 
         // Update epoch gate from the server's min_enc_key_gen.
         if let Ok((min_gen, _svk_blob)) = transport.account_status().await {
@@ -1057,7 +1076,11 @@ impl VautrClient {
             .await
             .clone()
             .ok_or_else(|| "sync not connected".to_string())?;
-        let engine = Engine::new(transport.clone(), self.blacklist.clone());
+        let engine = Engine::new(
+            transport.clone(),
+            self.blacklist.clone(),
+            self.cursor.load(Ordering::SeqCst),
+        );
         let rows = self.list_local_items().await?;
         for chunk in rows.chunks(100) {
             let items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)> = chunk

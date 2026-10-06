@@ -40,7 +40,7 @@ impl Transport for MockTransport {
     fn pull(
         &self,
         _cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>), TransportError>> + Send>>
+    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>>
     {
         let st = self.state.lock().unwrap().clone();
         Box::pin(async move {

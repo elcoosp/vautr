@@ -48,6 +48,8 @@ impl HttpTransport {
 #[derive(serde::Deserialize)]
 struct PullResp {
     new_cursor: u64,
+    #[serde(default)]
+    has_more: bool,
     items: Vec<PullItem>,
 }
 
@@ -150,8 +152,12 @@ impl Transport for HttpTransport {
     fn pull(
         &self,
         cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>), TransportError>> + Send>>
-    {
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>>
+                + Send,
+        >,
+    > {
         let client = self.client.clone();
         let base = self.base.clone();
         let token = self.auth();
@@ -183,7 +189,7 @@ impl Transport for HttpTransport {
                     })
                 })
                 .collect();
-            Ok((body.new_cursor, items))
+            Ok((body.new_cursor, items, body.has_more))
         })
     }
 

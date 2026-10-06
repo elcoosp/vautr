@@ -26,11 +26,19 @@ pub struct PulledOverview {
 /// Methods return `Pin<Box<dyn Future>>` (not `impl Future`) so the trait is
 /// object-safe and usable as `Arc<dyn Transport>` (required by `VautrClient`).
 pub trait Transport: Send + Sync {
-    /// Pull metadata since `cursor`; returns `(next_cursor, overviews)`.
+    /// Pull metadata since `cursor`; returns `(next_cursor, overviews, has_more)`.
+    /// VTRFIX-BUG-C02: `has_more` drives the client-side paging loop; a
+    /// single-call implementation used to cap the vault at the server's page
+    /// limit (100 items).
     fn pull(
         &self,
         cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>), TransportError>> + Send>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>>
+                + Send,
+        >,
+    >;
 
     /// Fetch a single item payload by uuid and the expected local `version`
     /// (api.md §4 exact-version selective download; prevents AEAD races).
@@ -127,19 +135,43 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// Create an engine over a transport and a (loaded) blacklist.
-    pub fn new(transport: Arc<dyn Transport>, blacklist: Arc<LocalBlacklist>) -> Self {
+    /// Create an engine over a transport, a (loaded) blacklist, and the
+    /// persisted cursor position (VTRFIX-BUG-C02).
+    pub fn new(
+        transport: Arc<dyn Transport>,
+        blacklist: Arc<LocalBlacklist>,
+        start_cursor: u64,
+    ) -> Self {
         Self {
             transport,
             blacklist,
-            cursor: 0,
+            cursor: start_cursor,
         }
     }
 
-    /// Metadata-first pull. Returns `(next_cursor, overviews)`.
-    pub async fn pull(&self) -> Result<(u64, Vec<PulledOverview>), TransportError> {
-        let (next, overviews) = self.transport.as_ref().pull(self.cursor).await?;
-        Ok((next, overviews))
+    /// Current cursor position.
+    pub fn cursor(&self) -> u64 {
+        self.cursor
+    }
+
+    /// Metadata-first pull. Returns `(next_cursor, overviews, has_more)`.
+    /// The internal cursor is advanced on success so callers can loop without
+    /// passing the position manually.
+    pub async fn pull(
+        &self,
+    ) -> Result<(u64, Vec<PulledOverview>, bool), TransportError> {
+        let (next, overviews, has_more) = self.transport.as_ref().pull(self.cursor).await?;
+        Ok((next, overviews, has_more))
+    }
+
+    /// Convenience wrapper that advances `self.cursor` in place. Interior
+    /// mutability keeps the signature `&self` so existing callers compile.
+    pub async fn pull_and_advance(
+        &mut self,
+    ) -> Result<(Vec<PulledOverview>, bool), TransportError> {
+        let (next, overviews, has_more) = self.transport.as_ref().pull(self.cursor).await?;
+        self.cursor = next;
+        Ok((overviews, has_more))
     }
 
     /// Download the payload for `uuid` at expected `version`, honoring the
