@@ -139,6 +139,8 @@ export class VautrWebClient {
 
   // In-memory session material (cleared on lock).
   private svk: Uint8Array | null = null;
+  // VTRFIX-BUG-H04: uuids that failed to decrypt/parse during pull.
+  private quarantined = new Set<string>();
   // VTRFIX-SEC-C02: sharing + group key material is memory-only.
   private sharingSecretKey: string | null = null;
   private groupKeys: Record<string, string> = {};
@@ -224,9 +226,17 @@ export class VautrWebClient {
     let status: AccountStatus;
     try {
       status = await this.api.request<AccountStatus>('GET', '/account/status');
-    } catch {
-      // 401 / network error — treat as "session gone".
-      await this.forget();
+    } catch (e) {
+      // VTRFIX-BUG-H03: only clear persisted state for a genuine auth failure.
+      // A transient network error must NOT log the user out and (pre-SEC-C02)
+      // would have wiped the stored SVK.
+      const status = (e as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        await this.forget();
+        this.emit({ type: 'SessionExpired' } as unknown as Parameters<typeof this.emit>[0]);
+      } else {
+        this.emit({ type: 'Offline' } as unknown as Parameters<typeof this.emit>[0]);
+      }
       return false;
     }
 
@@ -945,29 +955,48 @@ export class VautrWebClient {
           if (r.status !== 'payload_delivered' || r.payload == null) {
             continue;
           }
-          const plaintext = this.crypto.decryptItem(
-            r.uuid,
-            r.enc_key_gen ?? 0,
-            this.dek,
-            fromBase64(r.payload),
-          );
-          const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as ItemPlaintext;
-          const overview: DecryptedOverview = {
-            uuid: r.uuid,
-            title: parsed.title,
-            subtitle: parsed.subtitle,
-            iconKey: parsed.iconKey ?? 'key',
-            urls: parsed.urls ?? [],
-            updatedAt: Date.now(),
-          };
-          await this.store.putItem({
-            uuid: r.uuid,
-            version: r.version ?? 0,
-            encKeyGen: r.enc_key_gen ?? 0,
-            deletedDate: r.deleted_date ?? null,
-            payload: r.payload,
-          });
-          this.emit({ type: 'OverviewUpserted', overview });
+          // VTRFIX-BUG-H04: one undecryptable item must not poison the whole
+          // sync. Isolate the failure and mark the item quarantined so the UI
+          // can surface it without blocking other items.
+          try {
+            const plaintext = this.crypto.decryptItem(
+              r.uuid,
+              r.enc_key_gen ?? 0,
+              this.dek,
+              fromBase64(r.payload),
+            );
+            const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as ItemPlaintext;
+            const overview: DecryptedOverview = {
+              uuid: r.uuid,
+              title: parsed.title,
+              subtitle: parsed.subtitle,
+              iconKey: parsed.iconKey ?? 'key',
+              urls: parsed.urls ?? [],
+              updatedAt: Date.now(),
+            };
+            await this.store.putItem({
+              uuid: r.uuid,
+              version: r.version ?? 0,
+              encKeyGen: r.enc_key_gen ?? 0,
+              deletedDate: r.deleted_date ?? null,
+              payload: r.payload,
+            });
+            this.emit({ type: 'OverviewUpserted', overview });
+          } catch (err) {
+            this.quarantined.add(r.uuid);
+            await this.store.putItem({
+              uuid: r.uuid,
+              version: r.version ?? 0,
+              encKeyGen: r.enc_key_gen ?? 0,
+              deletedDate: r.deleted_date ?? null,
+              payload: r.payload,
+            });
+            this.emit({
+              type: 'ItemQuarantined',
+              uuid: r.uuid,
+              error: String(err),
+            } as unknown as Parameters<typeof this.emit>[0]);
+          }
         }
       }
 
