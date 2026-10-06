@@ -450,13 +450,35 @@ pub(crate) async fn policy_get(
 }
 
 /// PUT /mfa/policy — update the organization MFA + password policy.
+///
+/// VTRFIX-SEC-C04: this endpoint previously accepted any authenticated session,
+/// letting any tenant strip MFA globally or lock everyone out. It now requires
+/// the caller to hold the Owner or Admin role in some organization, and records
+/// an audit event for before/after review.
 pub(crate) async fn policy_put(
     State(st): State<AppState>,
     auth: Bearer,
     Json(req): Json<MfaPolicyUpdateReq>,
 ) -> Result<Json<MfaPolicy>, ApiError> {
-    let _ = auth_user(&st.repo, &auth.0).await?;
+    let user_id = auth_user(&st.repo, &auth.0).await?;
+
+    let is_admin = st
+        .repo
+        .user_is_org_admin(&user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if !is_admin {
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "admin_role_required",
+            "organization admins only",
+        ));
+    }
+
     validate_policy(&req)?;
+
+    let before = st.repo.mfa_get_policy().await.map_err(internal)?;
+
     let policy = MfaPolicy {
         required: req.required,
         allowed_methods: req.allowed_methods,
@@ -466,6 +488,35 @@ pub(crate) async fn policy_put(
         .mfa_set_policy(&policy, now_ms())
         .await
         .map_err(internal)?;
+
+    let detail = serde_json::json!({
+        "before": {
+            "required": before.required,
+            "allowed_methods": before.allowed_methods,
+            "master_password_policy": before.master_password_policy,
+        },
+        "after": {
+            "required": policy.required,
+            "allowed_methods": policy.allowed_methods,
+            "master_password_policy": policy.master_password_policy,
+        },
+    })
+    .to_string();
+
+    let _ = st
+        .repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "mfa_policy.update",
+            "policy",
+            Some("mfa_policy"),
+            Some(&detail),
+            None,
+            now_ms(),
+        )
+        .await;
+
     Ok(Json(policy))
 }
 
