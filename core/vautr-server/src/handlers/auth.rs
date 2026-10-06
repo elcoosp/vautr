@@ -140,6 +140,22 @@ pub(crate) async fn register_finish(
         )
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // VTRFIX-SEC-M18: audit registration.
+    if let Ok(Some(u)) = st.repo.get_user_by_email(&req.username).await {
+        let _ = st
+            .repo
+            .audit_org_event(
+                Some(&u.id),
+                Some(&u.id),
+                "auth.register",
+                "user",
+                Some(&u.id),
+                None,
+                None,
+                now_ms(),
+            )
+            .await;
+    }
     Ok(Json(StatusResp {
         status: "success".into(),
     }))
@@ -194,6 +210,11 @@ pub(crate) async fn login_finish(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     else {
+        // VTRFIX-SEC-M18: log failed login attempts (identifier only).
+        let _ = st
+            .repo
+            .audit_org_event(None, None, "auth.login_failed", "session", None, Some(&req.username), None, now_ms())
+            .await;
         return Err(ApiError::bad_request("not_found", "unknown user"));
     };
     let lupload = decode_b64(&req.login_finish)?;
@@ -257,6 +278,20 @@ pub(crate) async fn login_finish(
         .store_session(&token, &user.id, expires_at)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // VTRFIX-SEC-M18: audit successful logins (no secrets in detail).
+    let _ = st
+        .repo
+        .audit_org_event(
+            Some(&user.id),
+            Some(&user.id),
+            "auth.login_success",
+            "session",
+            None,
+            None,
+            None,
+            now_ms(),
+        )
+        .await;
     Ok(Json(LoginFinishResp {
         session_token: Some(token),
         expires_at: Some(expires_at),
