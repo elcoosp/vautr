@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login } from '@/lib/client';
+import { login, MfaRequiredError, completeLoginWithTotp } from '@/lib/client';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -18,6 +18,12 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // VTRFIX-SEC-C03: when the server demands a second factor, we park the
+  // pending token and render the TOTP step. The master password stays in
+  // component state (never persisted) so we can unwrap the SVK after the
+  // server mints the session.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
 
   useEffect(() => {
     if (!isLocked) {
@@ -37,10 +43,42 @@ function LoginPage() {
       await login(username.trim(), password);
       void navigate({ to: '/dashboard' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed.');
+      if (err instanceof MfaRequiredError) {
+        // Server withheld the session; render the TOTP step. Password stays
+        // in state so the follow-up call can unwrap the SVK locally.
+        setPendingToken(err.pendingToken);
+      } else {
+        setError(err instanceof Error ? err.message : 'Login failed.');
+      }
     } finally {
       setBusy(false);
     }
+  };
+
+  // VTRFIX-SEC-C03: complete the login by submitting the TOTP code. The
+  // pending token is single-use and expires in 5 minutes.
+  const onSubmitTotp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingToken || !totpCode.trim()) {
+      setError('Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await completeLoginWithTotp(pendingToken, totpCode.trim(), username.trim(), password);
+      void navigate({ to: '/dashboard' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid one-time code.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelTotp = () => {
+    setPendingToken(null);
+    setTotpCode('');
+    setError(null);
   };
 
   return (
@@ -58,6 +96,43 @@ function LoginPage() {
         {/* Form card */}
         <div className="rounded-xl border border-border bg-surface p-6">
           <p className="mb-5 text-sm text-text-muted">Unlock your vault to continue.</p>
+          {pendingToken ? (
+            <form onSubmit={onSubmitTotp} className="space-y-4">
+              <p className="text-sm text-text-muted">
+                Enter the 6-digit code from your authenticator app.
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="totp-code">One-time code</Label>
+                <Input
+                  id="totp-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder="123456"
+                  autoFocus
+                />
+              </div>
+              {error ? (
+                <p role="alert" className="text-sm text-danger">
+                  {error}
+                </p>
+              ) : null}
+              <Button type="submit" className="vault-btn-press w-full" disabled={busy}>
+                {busy ? 'Verifying\u2026' : 'Verify and unlock'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                disabled={busy}
+                onClick={cancelTotp}
+              >
+                Use a different account
+              </Button>
+            </form>
+          ) : (
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="username">Username</Label>
@@ -90,6 +165,7 @@ function LoginPage() {
               {busy ? 'Unlocking…' : 'Unlock vault'}
             </Button>
           </form>
+          )}
         </div>
 
         <p className="text-center text-xs text-text-muted">
