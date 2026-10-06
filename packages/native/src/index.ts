@@ -91,7 +91,13 @@ export function createSecureEnclaveBridge(): SecureEnclaveBridge {
         disableDeviceFallback: false,
       });
       if (!ok.success) throw new Error('biometric auth declined');
-      await SecureStore.setItemAsync(KEY, b64);
+      // VTRFIX-SEC-H17: bind the item to this device and require a biometric /
+      // passcode re-auth on every read, so a backup extractor cannot lift it.
+      await SecureStore.setItemAsync(KEY, b64, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        requireAuthentication: true,
+        keychainService: 'vautr.svk',
+      });
     },
     async loadSvk(): Promise<Uint8Array | null> {
       const ok = await LocalAuth.authenticateAsync({
