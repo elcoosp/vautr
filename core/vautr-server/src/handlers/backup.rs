@@ -30,6 +30,63 @@ pub fn routes() -> Router<AppState> {
         .route("/backup", get(backup_status))
         .route("/backup/export", post(export_backup))
         .route("/backup/restore", post(restore_backup))
+        // VTRFIX-SEC-H05: authenticated archive download (replaces the
+        // `file://` path disclosure).
+        .route("/backup/{id}/download", get(download_backup))
+}
+
+/// Reject callers who are not Owner/Admin in some organization (VTRFIX-SEC-H04/H05).
+async fn require_admin(st: &AppState, user_id: &str) -> Result<(), ApiError> {
+    let is_admin = st
+        .repo
+        .user_is_org_admin(user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if !is_admin {
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "admin_role_required",
+            "organization admins only",
+        ));
+    }
+    Ok(())
+}
+
+/// `GET /backup/{id}/download` — stream the encrypted archive bytes.
+async fn download_backup(
+    State(st): State<AppState>,
+    auth: Bearer,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::body::Body;
+    use axum::http::header;
+    use axum::response::IntoResponse;
+
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    require_admin(&st, &caller).await?;
+
+    let run = st
+        .repo
+        .get_backup_run(&id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .ok_or_else(|| ApiError::new(axum::http::StatusCode::NOT_FOUND, "unknown_backup", "backup_id not found"))?;
+
+    let bytes = std::fs::read(&run.archive_path)
+        .map_err(|e| ApiError::internal(&format!("read archive: {e}")))?;
+
+    let filename = format!("vautr-backup-{id}.vtrbak");
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        Body::from(bytes),
+    )
+        .into_response())
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +164,10 @@ async fn export_backup(
     auth: Bearer,
     body: Option<Json<BackupExportRequest>>,
 ) -> Result<Json<BackupExportResponse>, ApiError> {
-    auth_user(&st.repo, &auth.0).await?;
+    // VTRFIX-SEC-H05: export/restore snapshot or replace the whole multi-tenant
+    // DB, so both are admin-only.
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    require_admin(&st, &caller).await?;
     // include_secrets is accepted by the contract; in v1 the whole snapshot is
     // captured, so the flag is advisory and defaults to true.
     let _include_secrets = body
@@ -164,9 +224,12 @@ async fn export_backup(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
 
+    let download_path = format!("/backup/{}/download", backup_id);
     Ok(Json(BackupExportResponse {
         backup_id,
-        download_url: Some(format!("file://{}", archive_path.display())),
+        // VTRFIX-SEC-H05: no more `file://` filesystem-path leak. The client
+        // fetches the archive through the authenticated /backup/{id}/download route.
+        download_url: Some(download_path),
         size_bytes: archive.len() as u64,
         checksum,
         created_at,
@@ -183,7 +246,8 @@ async fn restore_backup(
     auth: Bearer,
     Json(body): Json<BackupRestoreRequest>,
 ) -> Result<Json<BackupRestoreResponse>, ApiError> {
-    auth_user(&st.repo, &auth.0).await?;
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    require_admin(&st, &caller).await?;
 
     // Resolve the archive bytes from the request.
     let archive = if let Some(archive_b64) = &body.archive_base64 {
