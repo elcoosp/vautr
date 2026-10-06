@@ -47,6 +47,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mfa/status", get(mfa_status))
         .route("/mfa/totp/issue", post(issue_totp))
         .route("/mfa/totp/verify", post(verify_totp))
+        .route("/mfa/totp/verify-login", post(verify_login_totp))
         .route("/mfa/policy", get(policy_get))
         .route("/mfa/policy", put(policy_put))
 }
@@ -437,6 +438,103 @@ pub(crate) async fn verify_totp(
             }))
         }
     }
+}
+
+
+/// Request body for `POST /mfa/totp/verify-login` (VTRFIX-SEC-C03).
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct TotpVerifyLoginReq {
+    pub(crate) pending_token: String,
+    pub(crate) code: String,
+}
+
+/// `POST /mfa/totp/verify-login` — completes a login that paused for TOTP.
+///
+/// The pending token is single-use, expires in 5 minutes, and is invalidated
+/// after 5 failed codes. On success a full session is minted.
+pub(crate) async fn verify_login_totp(
+    State(st): State<AppState>,
+    Json(req): Json<TotpVerifyLoginReq>,
+) -> Result<Json<super::auth::LoginFinishResp>, ApiError> {
+    let hash = super::auth::sha256_hex(req.pending_token.as_bytes());
+
+    let row = st
+        .repo
+        .get_pending_mfa(&hash)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "invalid_pending_token",
+                "pending MFA token is invalid or expired",
+            )
+        })?;
+    let (user_id, expires_at, attempts) = row;
+    if now_ms() > expires_at || attempts >= 5 {
+        let _ = st.repo.delete_pending_mfa(&hash).await;
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid_pending_token",
+            "pending MFA token is invalid or expired",
+        ));
+    }
+
+    let secret = st
+        .repo
+        .get_totp_secret(&user_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "no_totp_configured",
+                "TOTP is not configured for this account",
+            )
+        })?
+        .0;
+    let totp = totp_verifier(&secret)?;
+    if !totp.check_current(&req.code).map_err(internal)? {
+        st.repo
+            .bump_pending_mfa_attempts(&hash)
+            .await
+            .map_err(internal)?;
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid_totp_code",
+            "invalid one-time code",
+        ));
+    }
+
+    // Single-use: delete before minting.
+    st.repo.delete_pending_mfa(&hash).await.map_err(internal)?;
+
+    let token = format!("vtr-session-{}", uuid::Uuid::new_v4().simple());
+    let session_expires_at = now_ms() + 86_400_000;
+    st.repo
+        .store_session(&token, &user_id, session_expires_at)
+        .await
+        .map_err(internal)?;
+
+    let _ = st
+        .repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "mfa_totp_verify_login",
+            "mfa",
+            None,
+            None,
+            None,
+            now_ms(),
+        )
+        .await;
+
+    Ok(Json(super::auth::LoginFinishResp {
+        session_token: Some(token),
+        expires_at: Some(session_expires_at),
+        mfa_required: None,
+    }))
 }
 
 /// GET /mfa/policy — the organization MFA + password policy.

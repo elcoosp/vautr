@@ -423,3 +423,71 @@ mod tests {
         assert_eq!(got.master_password_policy.min_length, 16);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Pending MFA challenges (VTRFIX-SEC-C03)
+// ---------------------------------------------------------------------------
+
+impl Repository {
+    /// Store a single-use MFA challenge token (already hashed by the caller).
+    pub async fn store_pending_mfa(
+        &self,
+        token_hash: &str,
+        user_id: &str,
+        expires_at: i64,
+        now_ms: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO pending_mfa (token_hash, user_id, created_at, expires_at, attempts) \
+             VALUES (?, ?, ?, ?, 0)",
+        )
+        .bind(token_hash)
+        .bind(user_id)
+        .bind(now_ms)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Fetch `(user_id, expires_at, attempts)` for a pending-MFA token hash.
+    pub async fn get_pending_mfa(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<(String, i64, i64)>, sqlx::Error> {
+        let row: Option<(String, i64, i64)> = sqlx::query_as(
+            "SELECT user_id, expires_at, attempts FROM pending_mfa WHERE token_hash = ?",
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Increment the failure counter for a pending-MFA token.
+    pub async fn bump_pending_mfa_attempts(&self, token_hash: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE pending_mfa SET attempts = attempts + 1 WHERE token_hash = ?")
+            .bind(token_hash)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Delete a pending-MFA row (single-use consumed, or attempts exceeded).
+    pub async fn delete_pending_mfa(&self, token_hash: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM pending_mfa WHERE token_hash = ?")
+            .bind(token_hash)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Opportunistic prune of expired rows.
+    pub async fn purge_expired_pending_mfa(&self, now_ms: i64) -> Result<u64, sqlx::Error> {
+        let res = sqlx::query("DELETE FROM pending_mfa WHERE expires_at < ?")
+            .bind(now_ms)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
+}

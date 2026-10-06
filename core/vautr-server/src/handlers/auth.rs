@@ -59,10 +59,36 @@ pub(crate) struct LoginFinishReq {
     username: String,
     login_finish: String, // base64
 }
-#[derive(Serialize)]
+/// Response payload indicating a second factor is required (VTRFIX-SEC-C03).
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct MfaChallenge {
+    /// Single-use token; the client passes it to `/mfa/totp/verify-login`.
+    pub(crate) pending_token: String,
+    /// Methods the client can present (currently `["totp"]`).
+    pub(crate) methods: Vec<String>,
+    /// Epoch ms when the pending token expires.
+    pub(crate) expires_at: i64,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct LoginFinishResp {
-    session_token: String,
-    expires_at: i64,
+    /// `None` when `mfa_required` is `Some(_)` — the second factor must be
+    /// completed via `POST /mfa/totp/verify-login` before any session exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) session_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) mfa_required: Option<MfaChallenge>,
+}
+
+/// Hex-encoded SHA-256 of `bytes`. Used to hash single-use pending-MFA
+/// tokens so the DB never contains the raw secret (VTRFIX-SEC-C03).
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    h.finalize().iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 pub(crate) async fn register_start(
@@ -167,8 +193,42 @@ pub(crate) async fn login_finish(
     // required, a user with no configured method cannot complete login. This
     // keeps the OPAQUE handshake intact and only adds a business gate before a
     // session token is minted.
+    // Policy gate (unchanged): if MFA is mandatory and the user has no method
+    // configured, reject at login.
     super::mfa::enforce_mfa_required(&st, &user.id).await?;
 
+    // VTRFIX-SEC-C03: if the user has a TOTP secret configured, DO NOT mint a
+    // session yet. Instead return a short-lived pending token; the client must
+    // complete POST /mfa/totp/verify-login with a valid code to obtain one.
+    let has_totp = st
+        .repo
+        .mfa_has_totp(&user.id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if has_totp {
+        // Opportunistic pruning of expired rows.
+        let _ = st.repo.purge_expired_pending_mfa(now_ms()).await;
+
+        let raw = format!("vtr-mfa-{}", uuid::Uuid::new_v4().simple());
+        let hash = sha256_hex(raw.as_bytes());
+        let expires_at = now_ms() + 5 * 60 * 1000; // 5 minutes
+        st.repo
+            .store_pending_mfa(&hash, &user.id, expires_at, now_ms())
+            .await
+            .map_err(|e| ApiError::internal(&e.to_string()))?;
+
+        return Ok(Json(LoginFinishResp {
+            session_token: None,
+            expires_at: None,
+            mfa_required: Some(MfaChallenge {
+                pending_token: raw,
+                methods: vec!["totp".to_string()],
+                expires_at,
+            }),
+        }));
+    }
+
+    // No second factor required — mint the session as before.
     let token = b64(&sfin);
     let expires_at = now_ms() + 86_400_000; // 24h
     st.repo
@@ -176,7 +236,8 @@ pub(crate) async fn login_finish(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
     Ok(Json(LoginFinishResp {
-        session_token: token,
-        expires_at,
+        session_token: Some(token),
+        expires_at: Some(expires_at),
+        mfa_required: None,
     }))
 }
