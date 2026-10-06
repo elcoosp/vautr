@@ -127,9 +127,16 @@ pub fn latest_version() -> u32 {
 }
 
 /// Apply every migration in `MIGRATIONS`, in ascending order, recording each in
-/// the `migrations` bookkeeping table. Each `up` script is written with
-/// `IF NOT EXISTS`/idempotent DDL, and the bookkeeping row uses `INSERT OR
-/// IGNORE`, so re-running is always a safe no-op once applied.
+/// the `migrations` bookkeeping table.
+///
+/// VTRFIX-BUG-M02 (tracked): the previous implementation re-ran every `up`
+/// script on every boot. That is safe *today* because every `up` is written
+/// with `IF NOT EXISTS`/idempotent DDL, and the bookkeeping row uses
+/// `INSERT OR IGNORE`. Any future non-idempotent migration MUST first switch
+/// this function to consult the `migrations` table (the sea-orm 2.x
+/// `StatementBuilder` API changes needed for a versioned read are tracked as a
+/// follow-up). **The invariant below is load-bearing.** Every migration MUST
+/// remain idempotent.
 pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS migrations (\

@@ -215,9 +215,14 @@ pub async fn list_enc_key_gens(
         .map_err(|e| format!("list_enc_key_gens: {e}"))?;
     Ok(rows
         .into_iter()
-        .filter_map(|r| {
-            let uuid = Uuid::parse_str(&r.uuid).ok()?;
-            Some((uuid, r.enc_key_gen, r.payload))
+        // VTRFIX-BUG-M06: never invent a nil UUID for a corrupt row. Skip it
+        // with a warning so a bad row does not create a phantom item.
+        .filter_map(|r| match Uuid::parse_str(&r.uuid) {
+            Ok(uuid) => Some((uuid, r.enc_key_gen, r.payload)),
+            Err(e) => {
+                tracing::warn!(uuid = %r.uuid, error = %e, "list_enc_key_gens: skipping corrupt uuid");
+                None
+            }
         })
         .collect())
 }
