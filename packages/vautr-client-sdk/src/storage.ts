@@ -6,6 +6,11 @@
  * this store is the offline/local mirror (metadata-first, ciphertext blobs).
  *
  * Plaintext secrets are never stored here — only encrypted `payload` bytes.
+ *
+ * VTRFIX-SEC-C02: the raw SVK, sharing secret key, and per-group keys are
+ * NO LONGER persisted. Only the MP-wrapped SVK blob (`svkWrapped`), the
+ * bearer session token, and public/derived metadata are stored. The vault
+ * re-locks on every page load and requires the master password to unlock.
  */
 
 import { fromBase64, toBase64 } from './api';
@@ -37,11 +42,23 @@ export interface StoredState {
   minEncKeyGen: number;
   /** Bearer session token. */
   sessionToken: string | null;
-  /** Recovered SVK kept for this session (decrypted, in-memory only). */
+  /**
+   * MP-wrapped SVK (base64). VTRFIX-SEC-C02: this is what gets persisted;
+   * the raw unwrapped SVK is never written to disk.
+   */
+  svkWrapped: string | null;
+  /**
+   * @deprecated VTRFIX-SEC-C02 — never written; legacy schema slot kept
+   * for one release so old DBs upgrade cleanly. Always `null`.
+   */
   svk: Uint8Array | null;
-  /** Sharing secret key (base64 of 32 raw bytes), persisted for inbox unwrap. */
+  /**
+   * @deprecated VTRFIX-SEC-C02 — never written; held in memory only.
+   */
   sharingSecretKey: string | null;
-  /** Base64 Group SIKs keyed by group_id (sharing-pki.md §6). Sensitive. */
+  /**
+   * @deprecated VTRFIX-SEC-C02 — never written; held in memory only.
+   */
   groupKeys: Record<string, string>;
   /**
    * Recovery Key mnemonic, sealed under the KEK (base64). Zero-knowledge: the
@@ -59,6 +76,7 @@ export const EMPTY_STATE: StoredState = {
   cursor: 0,
   minEncKeyGen: 1,
   sessionToken: null,
+  svkWrapped: null,
   svk: null,
   sharingSecretKey: null,
   groupKeys: {},

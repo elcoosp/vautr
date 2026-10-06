@@ -139,6 +139,9 @@ export class VautrWebClient {
 
   // In-memory session material (cleared on lock).
   private svk: Uint8Array | null = null;
+  // VTRFIX-SEC-C02: sharing + group key material is memory-only.
+  private sharingSecretKey: string | null = null;
+  private groupKeys: Record<string, string> = {};
   private dek: Uint8Array | null = null;
   private localKeyGen = 1;
   /** Decrypted Recovery Key mnemonic (opened from KEK-sealed store at login). */
@@ -227,16 +230,9 @@ export class VautrWebClient {
       return false;
     }
 
-    // Restore in-memory key material if the SVK was persisted.
-    // NOTE: This is the security trade-off described in the doc comment.
-    // If `state.svk` is null (e.g., a register that hasn't yet logged
-    // in, or a future version that stops persisting SVK), the vault
-    // stays crypto-locked — navigation works but reveal/copy/share will
-    // throw "vault is locked" until the user re-logs in.
-    if (state.svk) {
-      this.svk = state.svk;
-      this.dek = this.crypto.deriveDek(state.svk);
-    }
+    // VTRFIX-SEC-C02: the raw SVK is no longer persisted. The client is
+    // authenticated but remains crypto-locked until the user supplies the
+    // master password via `unlockWithPassword(password)`.
     this.localKeyGen = Math.max(1, state.localKeyGen);
 
     // The Recovery Key mnemonic is sealed under the KEK, which requires
@@ -258,6 +254,39 @@ export class VautrWebClient {
 
     return true;
   }
+
+  /**
+   * Unlock a restored session with the master password (VTRFIX-SEC-C02).
+   *
+   * Fetches `/account/status` for the current MP-wrapped SVK blob, derives
+   * KEK from the password + stored kdfSalt, unwraps the SVK, and installs
+   * in-memory key material. Throws on wrong password.
+   */
+  async unlockWithPassword(password: string): Promise<void> {
+    await this.crypto.ready();
+    const st = await this.store.getState();
+    if (!st.sessionToken) throw new Error('no session to unlock');
+    this.api.setToken(st.sessionToken);
+    const status = await this.api.request<AccountStatus>('GET', '/account/status');
+    const state = await this.store.getState();
+    const kdfSalt = state.kdfSalt ? fromBase64(state.kdfSalt) : null;
+    if (!kdfSalt) throw new Error('no stored KDF salt; register or recover first');
+
+    const mk = this.crypto.deriveMasterKey(password, kdfSalt);
+    const kek = this.crypto.deriveKek(mk);
+    const svk = this.crypto.unwrapSvk(fromBase64(status.svk_ciphertext_blob), kek);
+    this.svk = svk;
+    this.dek = this.crypto.deriveDek(svk);
+    this.localKeyGen = Math.max(1, state.localKeyGen);
+
+    const sealed = state.recoveryMnemonicEnc ? fromBase64(state.recoveryMnemonicEnc) : null;
+    this.recoveryMnemonic = sealed
+      ? new TextDecoder().decode(this.crypto.openMnemonic(kek, sealed))
+      : null;
+
+    this.emit({ type: 'SyncCompleted' });
+  }
+
   /**
    * Subscribe to the server-backed quarantine reaper event stream (VTR-069):
    * `GET /events` SSE. The server pushes `item_permanently_deleted` /
@@ -511,10 +540,12 @@ export class VautrWebClient {
     this.dek = dek;
     this.recoveryMnemonic = mnemonic;
     this.localKeyGen = Math.max(1, state.localKeyGen);
+    // VTRFIX-SEC-C02: never persist the raw SVK — only the server-provided
+    // MP-wrapped blob and derived metadata.
     await this.store.setState({
       username,
       sessionToken: token,
-      svk,
+      svkWrapped: status.svk_ciphertext_blob,
       localKeyGen: this.localKeyGen,
       minEncKeyGen: status.min_enc_key_gen,
     });
@@ -548,7 +579,18 @@ export class VautrWebClient {
   async forget(): Promise<void> {
     await this.lock();
     this.api.setToken(null);
-    await this.store.setState({ sessionToken: null, svk: null });
+    await this.store.setState({
+      sessionToken: null,
+      svkWrapped: null,
+      svk: null,
+      sharingSecretKey: null,
+      groupKeys: {},
+    });
+    this.svk = null;
+    this.dek = null;
+    this.recoveryMnemonic = null;
+    this.sharingSecretKey = null;
+    this.groupKeys = {};
   }
 
   /**
@@ -609,15 +651,16 @@ export class VautrWebClient {
    */
   async ensureSharingKey(mlp: VautrMlpClient): Promise<string> {
     const state = await this.store.getState();
-    if (state.sharingSecretKey) {
-      return state.sharingSecretKey;
+    if (this.sharingSecretKey) {
+      return this.sharingSecretKey;
     }
     const kpJson = this.crypto.generateSharingKeypair();
     const kp = JSON.parse(kpJson) as { public: string; secret: string };
     if (state.username) {
       await mlp.publishSharingPublicKey(state.username, kp.public);
     }
-    await this.store.setState({ sharingSecretKey: kp.secret });
+    // VTRFIX-SEC-C02: memory-only.
+    this.sharingSecretKey = kp.secret;
     return kp.secret;
   }
 
@@ -673,10 +716,10 @@ export class VautrWebClient {
    */
   async acceptShare(_mlp: VautrMlpClient, incoming: unknown): Promise<Uint8Array> {
     const state = await this.store.getState();
-    if (!state.sharingSecretKey) {
+    if (!this.sharingSecretKey) {
       throw new Error('no sharing key; cannot decrypt share');
     }
-    return this.crypto.acceptShare(JSON.stringify(incoming), state.sharingSecretKey);
+    return this.crypto.acceptShare(JSON.stringify(incoming), this.sharingSecretKey);
   }
 
   /** Revoke a share we own. */
@@ -702,8 +745,8 @@ export class VautrWebClient {
     const group = JSON.parse(groupJson) as { group: { group_id: string }; secret: string };
     const created = await mlp.createGroup({ name });
     // Persist the Group SIK keyed by the server-assigned group_id.
-    const groupKeys = { ...state.groupKeys, [created.group_id]: group.secret };
-    await this.store.setState({ groupKeys });
+    // VTRFIX-SEC-C02: memory-only.
+    this.groupKeys = { ...this.groupKeys, [created.group_id]: group.secret };
     return JSON.stringify({
       group: { ...group.group, group_id: created.group_id },
       secret: group.secret,
@@ -750,13 +793,13 @@ export class VautrWebClient {
    */
   async unwrapGroupKey(_mlp: VautrMlpClient, inbox: unknown): Promise<string> {
     const state = await this.store.getState();
-    if (!state.sharingSecretKey) {
+    if (!this.sharingSecretKey) {
       throw new Error('no sharing key; cannot unwrap group key');
     }
-    const memberKeyJson = this.crypto.unwrapGroupKey(JSON.stringify(inbox), state.sharingSecretKey);
+    const memberKeyJson = this.crypto.unwrapGroupKey(JSON.stringify(inbox), this.sharingSecretKey);
     const memberKey = JSON.parse(memberKeyJson) as { group: { group_id: string }; secret: string };
-    const groupKeys = { ...state.groupKeys, [memberKey.group.group_id]: memberKey.secret };
-    await this.store.setState({ groupKeys });
+    // VTRFIX-SEC-C02: memory-only.
+    this.groupKeys = { ...this.groupKeys, [memberKey.group.group_id]: memberKey.secret };
     return memberKeyJson;
   }
 
@@ -827,7 +870,7 @@ export class VautrWebClient {
    */
   async getGroupKey(mlp: VautrMlpClient, groupId: string): Promise<string | null> {
     const state = await this.store.getState();
-    const secret = state.groupKeys[groupId];
+    const secret = this.groupKeys[groupId];
     if (!secret) {
       return null;
     }
