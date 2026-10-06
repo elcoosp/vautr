@@ -29,6 +29,17 @@ export default defineManifest({
       js: ['src/content/autofill.ts'],
       run_at: 'document_idle',
     },
+    // VTRFIX-SEC-C05: the page-DOM test relay is dev-only. It lets any page
+    // trigger an autofill by UUID, so it must never ship in a production build.
+    ...(process.env.NODE_ENV === 'development'
+      ? [
+          {
+            matches: ['<all_urls>'],
+            js: ['src/content/autofill-test.ts'],
+            run_at: 'document_idle',
+          },
+        ]
+      : []),
   ],
   permissions: ['storage', 'activeTab', 'scripting', 'clipboardWrite'],
   host_permissions: ['<all_urls>'],

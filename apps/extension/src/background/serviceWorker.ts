@@ -70,8 +70,27 @@ async function handleAutofill(
   }
 }
 
+// VTRFIX-SEC-C05: autofill requests may ONLY come from our own popup/extension
+// pages. Content scripts (which run in web-page contexts) are rejected even
+// though they are technically inside the extension — otherwise any page with a
+// malicious content script on it could ask the SW to decrypt arbitrary items.
+function isTrustedAutofillSender(sender: browser.Runtime.MessageSender): boolean {
+  if (sender.id !== browser.runtime.id) return false;
+  const url = sender.url ?? '';
+  const popupPrefix = browser.runtime.getURL('src/popup/');
+  const extensionRoot = browser.runtime.getURL('');
+  // Accept the popup page and any other extension-internal page (options,
+  // onboarding) but never page-context URLs (https://...).
+  return url.startsWith(popupPrefix) || url.startsWith(extensionRoot);
+}
+
 browser.runtime.onMessage.addListener(((message, sender, sendResponse) => {
   if (isAutofillRequest(message)) {
+    if (!isTrustedAutofillSender(sender)) {
+      // Silently refuse: do not leak whether a UUID exists.
+      sendResponse({ ok: false, error: 'untrusted-sender' });
+      return false;
+    }
     void handleAutofill(message, sender).then(sendResponse);
     return true; // keep the message channel open for the async response
   }

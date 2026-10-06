@@ -74,3 +74,30 @@ export async function copySecret(client: VautrWebClient, item: DecryptedOverview
   await client.performAction({ type: 'CopyToClipboard', handle });
   await client.release(handle);
 }
+
+/**
+ * VTRFIX-SEC-C05 / VTRFIX-SEC-L11: clear the local ciphertext mirror on
+ * logout/lock so no vault blobs linger in `chrome.storage.local` past the
+ * session. Autofill will re-cache on next unlock.
+ */
+export async function clearCiphertextCache(): Promise<void> {
+  try {
+    await localArea.remove('vautr:ciphertexts');
+  } catch {
+    // Non-critical.
+  }
+}
+
+/**
+ * Drop the SVK from the SW session store (defense in depth; the SW also
+ * clears it when the popup tells it to). Called from lock/logout paths.
+ */
+export async function clearSvkForSw(): Promise<void> {
+  try {
+    const { createSvkSessionStore } = await import('@vautr/client-sdk/extension');
+    const store = createSvkSessionStore(sessionArea);
+    await store.clear();
+  } catch {
+    // Non-critical.
+  }
+}
