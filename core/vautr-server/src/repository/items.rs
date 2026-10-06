@@ -17,6 +17,10 @@ pub struct ItemRow {
     pub deleted_date: Option<i64>,
     pub payload: Option<Vec<u8>>,
     pub updated_at: i64,
+    /// VTRFIX-BUG-C03: per-user monotonic pull cursor (assigned at insert,
+    /// never updated). `None` only for rows inserted before the migration on
+    /// a database that was not backfilled — the pull query filters them out.
+    pub seq: Option<i64>,
 }
 
 /// Result of an OCC upsert.
@@ -61,15 +65,20 @@ impl Repository {
             .map(|r| r.deleted_date.is_some())
             .unwrap_or(false);
 
+        // VTRFIX-BUG-C03: seq is a per-user monotonic *change* counter — it
+        // must advance on UPDATE too, otherwise items that already appeared in
+        // a prior pull would never be re-delivered when their payload changes.
         let res = sqlx::query(
             "UPDATE items \
-               SET payload = ?, version = version + 1, enc_key_gen = ?, deleted_date = ?, updated_at = ? \
+               SET payload = ?, version = version + 1, enc_key_gen = ?, deleted_date = ?, updated_at = ?, \
+                   seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM items WHERE user_id = ?) \
              WHERE uuid = ? AND user_id = ? AND version = ?",
         )
         .bind(payload)
         .bind(enc_key_gen)
         .bind(deleted_date)
         .bind(now)
+        .bind(user_id)
         .bind(uuid)
         .bind(user_id)
         .bind(target_version)
@@ -89,9 +98,13 @@ impl Repository {
             // 0). Insert it at version 1 so the sync engine can serve it. This
             // is the initial-insert path the pure-OCC update intentionally
             // leaves to the caller; the HTTP layer was not wiring it.
+            // VTRFIX-BUG-C03: assign a fresh per-user seq at insert time.
+            // COALESCE(MAX(seq),0)+1 in the same statement avoids a race with
+            // concurrent inserts for the same user (SQLite serializes writes).
             sqlx::query(
-                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at) \
-                 VALUES (?, ?, 1, ?, ?, ?, ?)",
+                "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
+                 VALUES (?, ?, 1, ?, ?, ?, ?, \
+                   (SELECT COALESCE(MAX(seq), 0) + 1 FROM items WHERE user_id = ?))",
             )
             .bind(uuid)
             .bind(user_id)
@@ -99,6 +112,7 @@ impl Repository {
             .bind(deleted_date)
             .bind(payload)
             .bind(now)
+            .bind(user_id)
             .execute(&self.pool)
             .await?;
             UpsertOutcome::Updated

@@ -119,14 +119,16 @@ pub(crate) async fn sync_pull(
     // pruned/aged out), the server can no longer serve a consistent delta and
     // MUST return 410 `cursor_expired` so the client drops its cursor and does
     // a full resync from version 0.
-    let min_ver: Option<i64> =
-        sqlx::query_scalar("SELECT MIN(version) FROM items WHERE user_id = ?")
+    // VTRFIX-BUG-C03: the cursor is now a seq position, so the expiry check
+    // must compare against MIN(seq), not MIN(version).
+    let min_seq: Option<i64> =
+        sqlx::query_scalar("SELECT MIN(seq) FROM items WHERE user_id = ? AND seq IS NOT NULL")
             .bind(&user_id)
             .fetch_optional(st.repo.pool())
             .await
             .map_err(|e| ApiError::internal(&e.to_string()))?;
-    if let Some(min_ver) = min_ver {
-        if (q.cursor as i64) < min_ver.saturating_sub(1) {
+    if let Some(min_seq) = min_seq {
+        if (q.cursor as i64) < min_seq.saturating_sub(1) {
             return Err(ApiError::new(
                 StatusCode::GONE,
                 "cursor_expired",
@@ -136,8 +138,13 @@ pub(crate) async fn sync_pull(
     }
 
     let limit_i = limit as i64;
+    // VTRFIX-BUG-C03: page on the per-user monotonic `seq`, not on `version`.
+    // `version` is an OCC counter that resets on tombstone-recreate, so it was
+    // unusable as a global cursor.
     let rows = sqlx::query_as::<_, ItemRow>(
-        "SELECT * FROM items WHERE user_id = ? AND version > ? ORDER BY version ASC LIMIT ?",
+        "SELECT * FROM items \
+         WHERE user_id = ? AND seq IS NOT NULL AND seq > ? \
+         ORDER BY seq ASC LIMIT ?",
     )
     .bind(&user_id)
     .bind(q.cursor as i64)
@@ -147,9 +154,14 @@ pub(crate) async fn sync_pull(
     .map_err(|e| ApiError::internal(&e.to_string()))?;
 
     let has_more = rows.len() as i64 > limit_i;
-    let items: Vec<PullItem> = rows
+    let items_taken: Vec<ItemRow> = rows.into_iter().take(limit as usize).collect();
+    let new_cursor = items_taken
+        .last()
+        .and_then(|r| r.seq)
+        .map(|s| s as u64)
+        .unwrap_or(q.cursor);
+    let items: Vec<PullItem> = items_taken
         .into_iter()
-        .take(limit as usize)
         .map(|r| PullItem {
             uuid: r.uuid,
             version: r.version,
@@ -157,7 +169,6 @@ pub(crate) async fn sync_pull(
             deleted_date: r.deleted_date,
         })
         .collect();
-    let new_cursor = items.last().map(|i| i.version as u64).unwrap_or(q.cursor);
 
     Ok(Json(PullResp {
         new_cursor,
