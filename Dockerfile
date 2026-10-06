@@ -71,8 +71,8 @@ RUN chown -R vautr:vautr /data
 # Health check: /account/status is auth-gated and returns HTTP 401 when the
 # server is up (curl succeeds on any HTTP response); a connection refusal
 # (server down) fails the check.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS -o /dev/null http://127.0.0.1:8080/account/status || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS -o /dev/null http://127.0.0.1:8080/health || exit 1
 
 USER vautr
 ENTRYPOINT ["vautr-server"]

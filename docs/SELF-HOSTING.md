@@ -78,7 +78,7 @@ Use `--proxy none` for a local/LAN install with no TLS:
 Verify it is up:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/account/status   # 401 = up
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/health   # 401 = up
 systemctl status vautr-server    # Linux
 ```
 
@@ -136,7 +136,7 @@ Terminate TLS in front of the server with a strict reverse proxy
 - **Docker Compose `https` profile** runs `caddy:2` using `deploy/Caddyfile`,
   which proxies `https://$VAUTR_DOMAIN` → `server:8080` and handles ACME.
 
-Recommended proxy hardening (already applied by the provided Caddyfile):
+Recommended proxy hardening (TODO (not yet applied — see SEC-M13): request-body limits will be added by the provided Caddyfile):
 
 - **TLS 1.3 only.**
 - **Request size limits:** `/sync/*`, `/auth/*` → 10 MB; file-upload initiate →
@@ -278,7 +278,7 @@ binary → `systemctl restart vautr-server` (or `docker compose up -d --build`).
 
 ## 8. Verification
 
-- **Health / smoke:** `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/account/status`
+- **Health / smoke:** `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/health`
   → an unauthenticated `401` confirms the server is up (auth-gated endpoint).
 - **Container healthcheck:** the `Dockerfile` and `docker-compose.yml` healthcheck
   the same endpoint.

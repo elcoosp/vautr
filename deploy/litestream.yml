@@ -1,0 +1,10 @@
+# Litestream config for the vautr server (SQLite WAL replication).
+# Credentials are provided via env: LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY
+dbs:
+  - path: /data/vautr.db
+    replicas:
+      - url: ${VAUTR_LITESTREAM_URL:-s3://vautr-backups/vautr.db}
+        retention: 24h
+        retention-check-interval: 1h
+        snapshot-interval: 12h
+        sync-interval: 5s

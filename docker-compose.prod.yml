@@ -43,6 +43,10 @@ services:
     volumes:
       - serverdata:/data:ro
       - ./deploy/litestream.yml:/etc/litestream.yml:ro
+    environment:
+      - VAUTR_LITESTREAM_URL=${VAUTR_LITESTREAM_URL:-}
+      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID:-}
+      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY:-}
     depends_on:
       server:
         condition: service_healthy
