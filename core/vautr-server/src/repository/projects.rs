@@ -215,6 +215,19 @@ impl Repository {
         Ok(role.and_then(|r| role_from_db(&r)))
     }
 
+    /// True if `user_id` holds the Owner or Admin role in ANY organization
+    /// they belong to. Used to gate org-wide policy mutations (VTRFIX-SEC-C04).
+    pub async fn user_is_org_admin(&self, user_id: &str) -> Result<bool, sqlx::Error> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM org_members WHERE user_id = ? \
+             AND role IN ('Owner', 'Admin') LIMIT 1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
     /// The first organization the user belongs to, if any.
     pub async fn get_user_org_id(&self, user_id: &str) -> Result<Option<String>, sqlx::Error> {
         sqlx::query_scalar(
