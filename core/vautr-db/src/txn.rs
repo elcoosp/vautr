@@ -96,14 +96,16 @@ pub async fn apply_sync_batch_txn(
         item_overview::Entity::insert_many(overviews_to_upsert)
             .on_conflict(
                 OnConflict::column(item_overview::Column::Uuid)
+                    // VTRFIX-BUG-H02: do NOT overwrite the overview columns
+                    // (title/subtitle/icon/urls) here. The sync path only
+                    // knows server metadata; the plaintext overview was
+                    // populated locally from the decrypted payload and would
+                    // be wiped with empty strings by an unconditional
+                    // re-insert from the server delta.
                     .update_columns([
                         item_overview::Column::Version,
                         item_overview::Column::EncKeyGen,
                         item_overview::Column::DeletedDate,
-                        item_overview::Column::OverviewTitle,
-                        item_overview::Column::OverviewSubtitle,
-                        item_overview::Column::OverviewIconKey,
-                        item_overview::Column::OverviewUrls,
                         item_overview::Column::UpdatedAt,
                     ])
                     .to_owned(),
