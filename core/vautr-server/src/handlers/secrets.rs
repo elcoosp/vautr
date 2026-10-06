@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::repository::secrets::{ProjectAccessLevel, SecretRow};
 
-use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
+use super::{auth_any, auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 /// Create request: `{ project_uuid, key, value_ciphertext }`.
 #[derive(Deserialize)]
@@ -190,7 +190,7 @@ async fn list_secrets(
     Path(project_id): Path<String>,
     auth: Bearer,
 ) -> Result<Json<SecretListResponse>, ApiError> {
-    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let user_id = auth_any(&st.repo, &auth.0).await?;
     require_project_access(&st, &project_id, &user_id, false).await?;
     let rows = st.repo.list_secrets(&project_id).await.map_err(internal)?;
     Ok(Json(SecretListResponse {

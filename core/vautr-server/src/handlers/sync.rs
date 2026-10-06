@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::repository::{ItemRow, UpsertOutcome};
 
-use super::{auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
+use super::{auth_any, auth_user, b64, decode_b64, now_ms, ApiError, AppState, Bearer};
 
 #[derive(Deserialize)]
 pub(crate) struct PullQuery {
@@ -96,7 +96,7 @@ pub(crate) async fn sync_pull(
     Query(q): Query<PullQuery>,
     auth: Bearer,
 ) -> Result<Json<PullResp>, ApiError> {
-    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let user_id = auth_any(&st.repo, &auth.0).await?;
     let min_gen = st
         .repo
         .min_enc_key_gen(&user_id)

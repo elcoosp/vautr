@@ -25,7 +25,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{auth_user, now_ms, ApiError, AppState, Bearer};
+use super::{auth_any, auth_user, now_ms, ApiError, AppState, Bearer};
 use crate::repository::projects::{AccessRow, ProjectRow, UserGroupRow};
 use vautr_domain::{
     GroupMemberRole, OffboardingRequest, OrgRole, Project, ProjectKind, ProjectPermission,
@@ -487,7 +487,7 @@ async fn list_projects(
     State(st): State<AppState>,
     auth: Bearer,
 ) -> Result<Json<ProjectListResp>, ApiError> {
-    let caller = auth_user(&st.repo, &auth.0).await?;
+    let caller = auth_any(&st.repo, &auth.0).await?;
     let rows = st
         .repo
         .list_projects_for_user(&caller)
