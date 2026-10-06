@@ -1139,17 +1139,30 @@ impl VautrClient {
             return Ok(());
         }
 
-        // Push local at server_version + 1 (the canonical OCC retry).
+        // VTRFIX-BUG-C09: the server's OCC expects the caller to push AT the
+        // server's current version (which the server then increments). Pushing
+        // at server_version+1 never matched and produced an infinite conflict.
+        // Also inspect the per-item outcome; a Conflict or EpochTooOld must
+        // NOT be silently reported as success.
         let local = self
             .get_local_item(uuid)
             .await?
             .ok_or_else(|| format!("no local item {uuid}"))?;
         let (_version, enc_key_gen, payload) = local;
-        transport
-            .push_batch(vec![(uuid, server_version + 1, enc_key_gen, Some(payload))])
+        let outcomes = transport
+            .push_batch(vec![(uuid, server_version, enc_key_gen, Some(payload))])
             .await
             .map_err(|e| format!("push conflict resolution: {e}"))?;
-        Ok(())
+        match outcomes.first() {
+            Some(vautr_sync::engine::PushOutcome::Applied { .. }) => Ok(()),
+            Some(vautr_sync::engine::PushOutcome::Conflict(server_v)) => Err(format!(
+                "conflict resolution failed: server is at version {server_v}"
+            )),
+            Some(vautr_sync::engine::PushOutcome::EpochTooOld) => {
+                Err("conflict resolution failed: local enc_key_gen is behind the server".into())
+            }
+            None => Err("conflict resolution failed: no outcome returned".into()),
+        }
     }
 
     /// Read a single local item's `(version, enc_key_gen, payload)` by uuid.
