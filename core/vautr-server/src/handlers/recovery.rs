@@ -14,7 +14,7 @@
 
 use axum::{
     extract::State,
-    routing::{delete, get, post},
+    routing::{delete, post},
     Json, Router,
 };
 use ed25519_dalek::{Signature, VerifyingKey};
@@ -30,7 +30,8 @@ const RECLAIM_SUSPENSION_MS: i64 = 30 * 24 * 3_600_000;
 /// Build this feature's router. Merged into the main router in mod.rs.
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/account/recover/challenge", get(recover_challenge))
+        // VTRFIX-SEC-H09: POST (email in body) so the nonce is bound to a user.
+        .route("/account/recover/challenge", post(recover_challenge))
         .route("/account/recover/verify", post(recover_verify))
         .route("/account/recover/complete", post(recover_complete))
         .route("/account/reclaim", post(reclaim))
@@ -477,14 +478,17 @@ mod tests {
 
         let app = feature_router(state.clone());
 
-        // 1. Challenge.
+        // 1. Challenge (VTRFIX-SEC-H09: POST + email body).
         let resp = app
             .clone()
             .oneshot(
                 Request::builder()
-                    .method(Method::GET)
+                    .method(Method::POST)
                     .uri("/account/recover/challenge")
-                    .body(axum::body::Body::empty())
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({ "email": email }).to_string(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -596,9 +600,12 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .method(Method::GET)
+                    .method(Method::POST)
                     .uri("/account/recover/challenge")
-                    .body(axum::body::Body::empty())
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({ "email": email }).to_string(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -632,9 +639,35 @@ mod tests {
         let state = test_state().await;
         let email = "lifecycle@example.com";
         let user_id = seed_user(&state, email).await;
+        // VTRFIX-SEC-H10: reclaim now requires RK proof-of-possession.
+        let signing = test_signing_key(7);
+        state
+            .repo
+            .set_rk_public_key(&user_id, &signing.verifying_key().to_bytes().to_vec())
+            .await
+            .unwrap();
         let app = feature_router(state.clone());
 
-        // Reclaim initiates.
+        // 1. Get a challenge.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/account/recover/challenge")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({ "email": email }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let nonce = decode_b64(&json_body(resp).await["nonce"].as_str().unwrap()).unwrap();
+
+        // 2. Sign + reclaim.
+        let sig = signing.sign(&nonce).to_bytes();
         let resp = app
             .clone()
             .oneshot(
@@ -643,7 +676,11 @@ mod tests {
                     .uri("/account/reclaim")
                     .header("content-type", "application/json")
                     .body(axum::body::Body::from(
-                        serde_json::json!({ "email": email }).to_string(),
+                        serde_json::json!({
+                            "email": email,
+                            "signature": b64(&sig),
+                        })
+                        .to_string(),
                     ))
                     .unwrap(),
             )
