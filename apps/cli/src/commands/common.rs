@@ -29,27 +29,27 @@ pub fn session_token(cfg: &Config) -> CliResult<&str> {
     cfg.credential().ok_or(CliError::NotLoggedIn)
 }
 
-/// Read a password from `VAUTR_PASSWORD` or, failing that, from stdin.
+/// Read a password from `VAUTR_PASSWORD` or, failing that, from the terminal.
+///
+/// VTRFIX-SEC-H19: the interactive path uses `rpassword::prompt_password`
+/// so the typed password is not echoed back. The env-var fallback remains for
+/// scripting, and is documented as less safe in `--help`.
 pub fn read_password() -> CliResult<String> {
     if let Ok(p) = std::env::var("VAUTR_PASSWORD") {
         if !p.is_empty() {
             return Ok(p);
         }
     }
-    let stdin = std::io::stdin();
-    let mut line = String::new();
-    stdin.lock().read_line(&mut line).map_err(CliError::Io)?;
-    let pw = line.trim_end_matches(['\n', '\r']).to_string();
+    let pw = rpassword::prompt_password("Password: ").map_err(CliError::Io)?;
+    let pw = pw.trim_end_matches(['\n', '\r']).to_string();
     if pw.is_empty() {
         return Err(CliError::NoPassword);
     }
     Ok(pw)
 }
 
-/// Prompt for a password on stderr (no terminal-echo control; avoids extra deps).
+/// Alias kept for existing call sites.
 pub fn prompt_password() -> CliResult<String> {
-    eprint!("Password: ");
-    std::io::stderr().flush().map_err(CliError::Io)?;
     read_password()
 }
 
