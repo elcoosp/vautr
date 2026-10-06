@@ -115,12 +115,43 @@ pub fn save_session(session: &PersistedSession) -> bool {
         if std::fs::create_dir_all(parent).is_err() {
             return false;
         }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+        }
     }
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&wrapped).unwrap_or_default(),
-    )
-    .is_ok()
+    // VTRFIX-SEC-H16: this file holds a live bearer token. Write it 0600
+    // atomically (temp + rename) so a crash cannot leave a partial file and
+    // other local users cannot read the token.
+    write_private_atomic(&path, serde_json::to_string_pretty(&wrapped).unwrap_or_default().as_bytes())
+        .is_ok()
+}
+
+/// VTRFIX-SEC-H16: write `bytes` to `path` with mode 0600 (unix) using an
+/// atomic temp+rename.
+fn write_private_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 /// Load a persisted session, or `None` if absent/unreadable.
