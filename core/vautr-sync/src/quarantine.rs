@@ -84,14 +84,13 @@ impl Quarantine {
 
 /// Re-evaluate the quarantine against current server metadata.
 ///
-/// For each quarantined item, compares its stored status to produce at most
-/// one [`ReaperEvent`] and then clears it from the quarantine (a resolved item
-/// is no longer toxic). Pure and deterministic — the unit tests below drive
-/// this directly.
+/// VTRFIX-BUG-H07: absence no longer means "tombstoned". An item the server
+/// does not currently advertise stays quarantined (Unknown), and a `fetch`
+/// failure skips the cycle entirely. Only an EXPLICIT `Tombstoned` disposition
+/// produces `ItemPermanentlyDeleted`.
 ///
-/// `server_metadata` maps a `uuid` to its current server status; a quarantined
-/// `uuid` absent from the map is treated as `Tombstoned` (the server no longer
-/// advertises it, so it cannot be recovered).
+/// `Err` from `fetch_metadata` also means "skip the cycle": nothing is
+/// removed, nothing is emitted, and the next tick retries.
 pub fn evaluate(
     quarantine: &mut Quarantine,
     server_metadata: &HashMap<Uuid, ItemStatus>,
@@ -100,19 +99,17 @@ pub fn evaluate(
     // Snapshot to avoid borrowing `quarantine` while mutating it.
     let pending: Vec<Uuid> = quarantine.toxic.iter().copied().collect();
     for uuid in pending {
-        let status = server_metadata
-            .get(&uuid)
-            .copied()
-            .unwrap_or(ItemStatus::Tombstoned);
-        match status {
-            ItemStatus::Valid => {
+        match server_metadata.get(&uuid).copied() {
+            Some(ItemStatus::Valid) => {
                 events.push(ReaperEvent::ItemRecovered(uuid));
                 quarantine.remove(&uuid);
             }
-            ItemStatus::Tombstoned => {
+            Some(ItemStatus::Tombstoned) => {
                 events.push(ReaperEvent::ItemPermanentlyDeleted(uuid));
                 quarantine.remove(&uuid);
             }
+            // Absent = Unknown: retain, retry next cycle.
+            None => continue,
         }
     }
     events
@@ -134,13 +131,31 @@ pub type QuarantineHandle = Arc<Mutex<Quarantine>>;
 pub fn spawn_quarantine_reaper(
     quarantine: QuarantineHandle,
     tx: mpsc::Sender<ReaperEvent>,
-    fetch_metadata: Arc<dyn Fn() -> HashMap<Uuid, ItemStatus> + Send + Sync>,
+    fetch_metadata: Arc<dyn Fn() -> Result<HashMap<Uuid, ItemStatus>, String> + Send + Sync>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(QUARANTINE_TICK);
+        let mut consecutive_failures: u32 = 0;
         loop {
             interval.tick().await;
-            let meta = fetch_metadata();
+            // VTRFIX-BUG-H07: a fetch failure skips the whole cycle.
+            let meta = match fetch_metadata() {
+                Ok(m) => {
+                    consecutive_failures = 0;
+                    m
+                }
+                Err(e) => {
+                    consecutive_failures = consecutive_failures.saturating_add(1);
+                    if consecutive_failures == 5 {
+                        tracing::warn!(
+                            failures = consecutive_failures,
+                            error = %e,
+                            "quarantine reaper: 5 consecutive fetch failures"
+                        );
+                    }
+                    continue;
+                }
+            };
             let events = {
                 let mut guard = quarantine.lock().await;
                 evaluate(&mut guard, &meta)
@@ -259,13 +274,25 @@ mod tests {
     }
 
     #[test]
-    fn missing_server_metadata_is_treated_as_tombstoned() {
-        // A quarantined item the server no longer advertises cannot be
-        // recovered, so it is treated as permanently deleted.
+    fn missing_server_metadata_retains_quarantine() {
+        // VTRFIX-BUG-H07: absence is UNKNOWN, not tombstoned. A partial server
+        // response (or a page that didn't include the item) must NOT cause
+        // mass false-positive deletions.
         let id = Uuid::new_v4();
         let mut q = Quarantine::new();
         q.mark_toxic(id);
         let events = evaluate(&mut q, &status_map(&[]));
+        assert!(events.is_empty(), "absent must not emit any event");
+        assert!(q.is_quarantined(&id), "absent must retain the quarantine");
+    }
+
+    #[test]
+    fn explicit_tombstone_emits_delete() {
+        let id = Uuid::new_v4();
+        let mut q = Quarantine::new();
+        q.mark_toxic(id);
+        let events = evaluate(&mut q, &status_map(&[(id, ItemStatus::Tombstoned)]));
         assert_eq!(events, vec![ReaperEvent::ItemPermanentlyDeleted(id)]);
+        assert!(!q.is_quarantined(&id));
     }
 }
