@@ -579,6 +579,35 @@ mod tests {
             .await
             .unwrap();
         }
+
+        // VTRFIX-SEC-C04: PUT /mfa/policy now requires an org-admin role.
+        // Seed a default org with alice (u1) as Owner so the policy tests can
+        // exercise the authorized path; bob (u2) remains a plain member.
+        let org_id = "org-default";
+        sqlx::query("INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)")
+            .bind(org_id)
+            .bind("Default")
+            .bind(now)
+            .execute(repo.pool())
+            .await
+            .unwrap();
+        repo.set_org_member(
+            org_id,
+            "u1",
+            vautr_domain::OrgRole::Owner,
+            now,
+        )
+        .await
+        .unwrap();
+        repo.set_org_member(
+            org_id,
+            "u2",
+            vautr_domain::OrgRole::Member,
+            now,
+        )
+        .await
+        .unwrap();
+
         AppState::new(repo)
     }
 
