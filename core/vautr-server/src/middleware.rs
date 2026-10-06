@@ -26,7 +26,30 @@ use tower_http::cors::CorsLayer;
 
 /// Permissive CORS (client core is a native/extension app; tightened in prod).
 pub fn cors() -> CorsLayer {
-    CorsLayer::permissive()
+    // VTRFIX-SEC-M13: CORS allowlist via VAUTR_CORS_ORIGINS (comma-separated).
+    // Default: allow no cross-origin. Dev setups can opt in.
+    let allowed: Vec<axum::http::HeaderValue> = std::env::var("VAUTR_CORS_ORIGINS")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .filter_map(|o| o.trim().parse::<axum::http::HeaderValue>().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    if allowed.is_empty() {
+        CorsLayer::new()
+    } else {
+        CorsLayer::new()
+            .allow_origin(allowed)
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::PUT,
+                axum::http::Method::DELETE,
+                axum::http::Method::OPTIONS,
+            ])
+            .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE])
+    }
 }
 
 /// Build the rate-limiter layer from env-configurable bounds.
@@ -311,4 +334,24 @@ mod tests {
         let resp = app.clone().oneshot(req("10.0.0.2")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
+}
+
+/// VTRFIX-SEC-M13: axum middleware that adds security headers to every
+/// response (nosniff + no-referrer). Hand-rolled to avoid needing the
+/// tower-http `set-header` feature.
+pub async fn security_headers_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut resp = next.run(req).await;
+    let headers = resp.headers_mut();
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-content-type-options"),
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        axum::http::header::REFERRER_POLICY,
+        axum::http::HeaderValue::from_static("no-referrer"),
+    );
+    resp
 }
