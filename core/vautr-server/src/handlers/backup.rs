@@ -358,6 +358,19 @@ mod tests {
         .execute(repo.pool())
         .await
         .unwrap();
+        // VTRFIX-SEC-H05: /backup is now admin-only; make u1 an Owner of a
+        // default org so the happy-path test still exercises the endpoint.
+        sqlx::query("INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)")
+            .bind("org-default")
+            .bind("Default")
+            .bind(now)
+            .execute(repo.pool())
+            .await
+            .unwrap();
+        repo.set_org_member("org-default", "u1", vautr_domain::OrgRole::Owner, now)
+            .await
+            .unwrap();
+
         // Seed two items so the restore test can assert they come back intact.
         for (i, item_uuid) in ["item-1", "item-2"].iter().enumerate() {
             sqlx::query(
