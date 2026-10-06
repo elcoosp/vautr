@@ -123,12 +123,18 @@ pub async fn apply_sync_batch_txn(
     }
 
     // 4. Update sync cursor + min_enc_key_gen
-    sync_meta::Entity::update_many()
+    // VTRFIX-BUG-C01: guard against a missing singleton row (a silent no-op
+    // was the previous failure mode after a fresh migration).
+    let res = sync_meta::Entity::update_many()
         .col_expr(sync_meta::Column::SyncCursor, Expr::value(new_cursor))
         .col_expr(sync_meta::Column::MinEncKeyGen, Expr::value(new_min_gen))
         .filter(sync_meta::Column::Id.eq(1))
         .exec(txn)
         .await?;
+    debug_assert!(
+        res.rows_affected == 1,
+        "sync_meta singleton row missing — migration failed to seed it"
+    );
 
     Ok(())
 }
@@ -180,7 +186,7 @@ pub async fn reaper_reset_ttl_txn(
 
 /// Persist the (re)wrapped SVK blob into `sync_meta` (rotation / recovery).
 pub async fn store_svk_blob(db: &DatabaseConnection, blob: &[u8]) -> Result<(), DbErr> {
-    sync_meta::Entity::update_many()
+    let res = sync_meta::Entity::update_many()
         .col_expr(
             sync_meta::Column::SvkCiphertextBlob,
             sea_orm::sea_query::Expr::value(sea_orm::Value::Bytes(Some(blob.to_vec()))),
@@ -188,6 +194,12 @@ pub async fn store_svk_blob(db: &DatabaseConnection, blob: &[u8]) -> Result<(), 
         .filter(sync_meta::Column::Id.eq(1))
         .exec(db)
         .await?;
+    // VTRFIX-BUG-C01: fail loudly rather than silently dropping the write.
+    if res.rows_affected != 1 {
+        return Err(DbErr::Custom(
+            "sync_meta singleton row missing (store_svk_blob)".into(),
+        ));
+    }
     Ok(())
 }
 pub fn blacklist_entry(

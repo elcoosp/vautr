@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS sync_meta (
     svk_ciphertext_blob BLOB NOT NULL
 ) STRICT;
 
+-- VTRFIX-BUG-C01: seed the singleton row so `UPDATE ... WHERE id = 1`
+-- in txn.rs has a target (previously matched 0 rows and silently no-opped).
+INSERT OR IGNORE INTO sync_meta (id, sync_cursor, min_enc_key_gen, svk_ciphertext_blob)
+VALUES (1, 0, 0, x'');
+
 CREATE TABLE IF NOT EXISTS local_blacklist (
     uuid TEXT PRIMARY KEY,
     ignored_version INTEGER NOT NULL,
