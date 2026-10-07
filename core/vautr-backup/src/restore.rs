@@ -51,8 +51,39 @@ pub fn decrypt_archive(key: &[u8; 32], archive: &[u8]) -> RestoreResult<ArchiveP
 }
 
 /// Write raw SQLite snapshot bytes to a destination file.
+/// VTRFIX-BUG-M16: write to a sibling temp file and rename onto `dest`. Also
+/// remove any stale `-wal`/`-shm` sidecars so a subsequent open does not
+/// replay an old log over the fresh snapshot.
 pub fn write_snapshot(snapshot: &[u8], dest: &Path) -> RestoreResult<()> {
-    std::fs::write(dest, snapshot).map_err(|e| RestoreError::Io(format!("{e}")))
+    use std::io::Write;
+    let tmp = dest.with_extension("db.tmp");
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)
+            .map_err(|e| RestoreError::Io(format!("open tmp: {e}")))?;
+        f.write_all(snapshot)
+            .map_err(|e| RestoreError::Io(format!("write tmp: {e}")))?;
+        f.sync_all()
+            .map_err(|e| RestoreError::Io(format!("fsync tmp: {e}")))?;
+    }
+    std::fs::rename(&tmp, dest).map_err(|e| RestoreError::Io(format!("rename: {e}")))?;
+
+    // Drop stale WAL sidecars so SQLite does not replay an unrelated log over
+    // the freshly-installed file.
+    let _ = std::fs::remove_file(dest.with_extension("db-wal"));
+    let _ = std::fs::remove_file(dest.with_extension("db-shm"));
+    // The sidecars are named `<file>-wal`/`<file>-shm` when the DB has an
+    // extension; also try the common direct suffix form.
+    let mut with_suffix = dest.as_os_str().to_owned();
+    with_suffix.push("-wal");
+    let _ = std::fs::remove_file(std::path::PathBuf::from(&with_suffix));
+    let mut with_suffix = dest.as_os_str().to_owned();
+    with_suffix.push("-shm");
+    let _ = std::fs::remove_file(std::path::PathBuf::from(&with_suffix));
+    Ok(())
 }
 
 /// Allocate a fresh, unique scratch file path under the system temp dir.
