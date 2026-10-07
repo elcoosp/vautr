@@ -27,15 +27,33 @@ use sha2::Sha512;
 #[derive(Clone, Copy)]
 pub struct VautrSuite;
 
-// VTRFIX-SEC-M07 (tracked): the current build uses opaque-ke's default Argon2
-// parameters. `crypto.md` documents 64 MiB / t=3 / p=4; the library default is
-// ~19 MiB. Pinning the params requires a custom `impl Ksf` (the 4.1.0-pre.1
-// trait shape differs from the released 4.x — tracked as a follow-up). See
-// docs/issues/VTRFIX-LOG.md.
+#[derive(Clone, Copy, Default)]
+pub struct VautrKsf;
+
+impl opaque_ke::ksf::Ksf for VautrKsf {
+    fn hash<L: opaque_ke::generic_array::ArrayLength<u8>>(
+        &self,
+        input: opaque_ke::generic_array::GenericArray<u8, L>,
+    ) -> core::result::Result<
+        opaque_ke::generic_array::GenericArray<u8, L>,
+        opaque_ke::errors::InternalError,
+    > {
+        use opaque_ke::argon2::{Algorithm, Argon2, Params, Version};
+        let params =
+            Params::new(64 * 1024, 3, 4, None).map_err(|_| opaque_ke::errors::InternalError::KsfError)?;
+        let a2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let mut out: opaque_ke::generic_array::GenericArray<u8, L> =
+            opaque_ke::generic_array::GenericArray::default();
+        a2.hash_password_into(&input, &[0u8; 16], &mut out)
+            .map_err(|_| opaque_ke::errors::InternalError::KsfError)?;
+        Ok(out)
+    }
+}
+
 impl CipherSuite for VautrSuite {
     type OprfCs = opaque_ke::Ristretto255;
     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, Sha512>;
-    type Ksf = opaque_ke::argon2::Argon2<'static>;
+    type Ksf = VautrKsf;
 }
 
 // --- Server setup (the OPAQUE server long-term keypair, published as public key) ---
