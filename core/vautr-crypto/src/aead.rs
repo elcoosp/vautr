@@ -28,7 +28,20 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-/// Ciphertext envelope: `Nonce(24) || Ciphertext(N) || Tag(16)`.
+/// VTRFIX-SEC-M03: crypto-agility envelope magic + version + suite.
+///
+/// New writes prepend `[MAGIC(4)] [VERSION(1)] [SUITE(1)]` before the nonce.
+/// Readers accept both the legacy (raw nonce-first) format and the enveloped
+/// format. Unknown magic is treated as legacy (1-in-2^32 collision risk on a
+/// random nonce — negligible and matching the documented migration policy).
+pub const ENVELOPE_MAGIC: [u8; 4] = [0x56, 0x41, 0x55, 0x54]; // "VAUT"
+pub const ENVELOPE_VERSION: u8 = 0x01;
+pub const ENVELOPE_SUITE_XCHACHA20POLY1305: u8 = 0x01;
+/// Bytes preceding the nonce in the enveloped format.
+pub const ENVELOPE_PREFIX_LEN: usize = 6; // magic(4) + ver(1) + suite(1)
+
+/// Ciphertext envelope: `Nonce(24) || Ciphertext(N) || Tag(16)` (legacy form).
+/// New writes are `Prefix(6) || Nonce(24) || Ciphertext(N) || Tag(16)`.
 pub const NONCE_LEN: usize = 24;
 /// XChaCha20-Poly1305 authentication tag length (128-bit).
 pub const TAG_LEN: usize = 16;
@@ -115,6 +128,29 @@ pub fn encrypt_with_nonce(
             },
         )
         .map_err(|_| CryptoError::Internal("encryption failed".into()))?;
+    // VTRFIX-SEC-M03: always emit the enveloped form for new writes.
+    let mut out = Vec::with_capacity(ENVELOPE_PREFIX_LEN + NONCE_LEN + ct.len());
+    out.extend_from_slice(&ENVELOPE_MAGIC);
+    out.push(ENVELOPE_VERSION);
+    out.push(ENVELOPE_SUITE_XCHACHA20POLY1305);
+    out.extend_from_slice(nonce);
+    out.extend_from_slice(&ct);
+    Ok(out)
+}
+
+/// VTRFIX-SEC-M03: raw envelope (no prefix), used only for byte-compat tests
+/// and internal migrations.
+pub fn encrypt_with_nonce_raw(
+    key: &[u8; 32],
+    nonce: &[u8; NONCE_LEN],
+    ad: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>> {
+    let cipher = XChaCha20Poly1305::new(key.into());
+    let n: XNonce = nonce.as_slice().try_into().expect("nonce len");
+    let ct = cipher
+        .encrypt(&n, Payload { msg: plaintext, aad: ad })
+        .map_err(|_| CryptoError::Internal("encryption failed".into()))?;
     let mut out = Vec::with_capacity(NONCE_LEN + ct.len());
     out.extend_from_slice(nonce);
     out.extend_from_slice(&ct);
@@ -130,10 +166,26 @@ pub fn decrypt(key: &[u8; 32], uuid: &Uuid, enc_key_gen: u64, envelope: &[u8]) -
 
 /// Decrypt an envelope produced by [`encrypt_with_nonce`] using an explicit AD.
 pub fn decrypt_with_ad(key: &[u8; 32], ad: &[u8], envelope: &[u8]) -> Result<Vec<u8>> {
-    if envelope.len() < NONCE_LEN + TAG_LEN {
+    // VTRFIX-SEC-M03: detect the enveloped format by magic+version+suite.
+    let (nonce_offset, check_len) = if envelope.len() >= ENVELOPE_PREFIX_LEN
+        && envelope[..4] == ENVELOPE_MAGIC
+    {
+        // Reject unknown version/suite rather than silently treating them as
+        // legacy (fail closed per the audit's crypto-agility contract).
+        if envelope[4] != ENVELOPE_VERSION {
+            return Err(CryptoError::UnsupportedSuite);
+        }
+        if envelope[5] != ENVELOPE_SUITE_XCHACHA20POLY1305 {
+            return Err(CryptoError::UnsupportedSuite);
+        }
+        (ENVELOPE_PREFIX_LEN, ENVELOPE_PREFIX_LEN + NONCE_LEN + TAG_LEN)
+    } else {
+        (0usize, NONCE_LEN + TAG_LEN)
+    };
+    if envelope.len() < check_len {
         return Err(CryptoError::MalformedCiphertext);
     }
-    let (nonce_bytes, ct) = envelope.split_at(NONCE_LEN);
+    let (nonce_bytes, ct) = envelope[nonce_offset..].split_at(NONCE_LEN);
     let cipher = XChaCha20Poly1305::new(key.into());
     let nonce: XNonce = nonce_bytes.try_into().expect("nonce len");
     cipher

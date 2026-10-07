@@ -39,6 +39,9 @@ pub enum CryptoError {
     /// Serialization / RNG failure.
     #[error("internal crypto error: {0}")]
     Internal(String),
+    /// VTRFIX-SEC-M03: unknown envelope version or suite.
+    #[error("unsupported ciphertext suite/version")]
+    UnsupportedSuite,
 }
 
 /// Result alias used throughout `vautr-crypto`.
