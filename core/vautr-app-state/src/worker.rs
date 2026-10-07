@@ -12,6 +12,7 @@ use vautr_domain::{DecryptedOverview, DomainModel};
 
 use crate::epoch::EpochState;
 use crate::event_bus::{EventBus, RevertibleState, TaskReceipt};
+use sea_orm::QuerySelect;
 
 /// A save command: an atomic aggregate + the epoch it was issued under.
 /// `payload` is the ciphertext blob (encrypted by OEK/DEK in the app layer,
@@ -175,9 +176,22 @@ impl PersistenceWorker {
         let ov = &item.overview;
         let meta = &item.metadata;
 
+        // VTRFIX-BUG-M01: preserve the row's server version on update. The
+        // previous code always wrote 1, so an edit produced a local row at
+        // v1 while the server was at vN — the next push then conflicted
+        // forever. New items legitimately start at 1.
+        let existing_version: Option<i64> = item_overview::Entity::find_by_id(ov.uuid.to_string())
+            .select_only()
+            .column(item_overview::Column::Version)
+            .into_tuple()
+            .one(&self.db)
+            .await
+            .map_err(|e| format!("read version: {e}"))?;
+        let version = existing_version.unwrap_or(1);
+
         let overview_am = item_overview::ActiveModel {
             uuid: Set(ov.uuid.to_string()),
-            version: Set(1), // increment handled by sync push; local first-write is v1
+            version: Set(version),
             enc_key_gen: Set(item.enc_key_gen as i64),
             deleted_date: Set(if meta.trashed {
                 Some(meta.updated_at)
