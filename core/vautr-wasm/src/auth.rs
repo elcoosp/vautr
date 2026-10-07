@@ -268,6 +268,54 @@ pub fn seal_mnemonic_js(kek: Vec<u8>, plaintext: Vec<u8>) -> Result<Vec<u8>, JsV
 }
 
 #[wasm_bindgen]
+/// VTRFIX-FEAT-H02: sign the server-issued recovery challenge nonce with the
+/// Ed25519 key derived from the 24-word mnemonic. Returns base64 signature.
+pub fn sign_recovery_nonce_js(mnemonic: &str, nonce_b64: &str) -> Result<String, JsValue> {
+    use base64::Engine;
+    let m = recovery::decode_recovery_mnemonic(mnemonic)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let nonce = base64::engine::general_purpose::STANDARD
+        .decode(nonce_b64)
+        .map_err(|e| JsValue::from_str(&format!("nonce b64: {e}")))?;
+    let sig = recovery::sign_recovery_nonce(&m, &nonce)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(sig))
+}
+
+#[wasm_bindgen]
+/// VTRFIX-FEAT-H02: derive the Ed25519 recovery-auth public key from a mnemonic
+/// (base64). Used at registration/recovery-complete to publish the new key.
+pub fn recovery_public_key_js(mnemonic: &str) -> Result<Vec<u8>, JsValue> {
+    let m = recovery::decode_recovery_mnemonic(mnemonic)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let pk = recovery::recovery_public_key(&m).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(pk.to_vec())
+}
+
+#[wasm_bindgen]
+/// VTRFIX-FEAT-H02: unwrap the SVK from the server-stored RK blob using the
+/// recovery mnemonic. Returns the raw 32-byte SVK.
+pub fn recover_svk_js(
+    mnemonic: &str,
+    svk_rk_wrapped_b64: &str,
+    server_user_id: &str,
+) -> Result<Vec<u8>, JsValue> {
+    use base64::Engine;
+    let m = recovery::decode_recovery_mnemonic(mnemonic)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let wrapped = base64::engine::general_purpose::STANDARD
+        .decode(svk_rk_wrapped_b64)
+        .map_err(|e| JsValue::from_str(&format!("svk b64: {e}")))?;
+    let user_id = uuid::Uuid::parse_str(server_user_id)
+        .map_err(|e| JsValue::from_str(&format!("user id: {e}")))?;
+    let kek_rk =
+        recovery::derive_kek_rk(&m).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let svk = recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &user_id)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(svk.to_vec())
+}
+
+#[wasm_bindgen]
 pub fn open_mnemonic_js(kek: Vec<u8>, ciphertext: Vec<u8>) -> Result<Vec<u8>, JsValue> {
     open_mnemonic(&kek, &ciphertext).map_err(|e| JsValue::from_str(&e))
 }
