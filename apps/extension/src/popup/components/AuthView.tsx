@@ -18,6 +18,11 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
   // VTRFIX-SEC-C03: server withholds the session until TOTP is verified.
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState('');
+  // VTRFIX-FEAT-H02
+  const [recoverMode, setRecoverMode] = useState(false);
+  const [recoverMnemonic, setRecoverMnemonic] = useState('');
+  const [recoverNewPassword, setRecoverNewPassword] = useState('');
+  const [recoverNewMnemonic, setRecoverNewMnemonic] = useState<string | null>(null);
   const setError = usePopupStore((s) => s.setError);
   const setStatus = usePopupStore((s) => s.setStatus);
   const status = usePopupStore((s) => s.status);
@@ -101,6 +106,30 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
     setPendingToken(null);
     setTotpCode('');
     setError(null);
+  }
+
+  // VTRFIX-FEAT-H02: emergency recovery.
+  async function submitRecover(): Promise<void> {
+    if (!username.trim() || !recoverMnemonic.trim() || !recoverNewPassword) {
+      setError('Enter username, recovery kit, and a new master password.');
+      return;
+    }
+    setStatus('unlocking');
+    setError(null);
+    try {
+      const { getPopupClient } = await import('../popupClient');
+      const client = await getPopupClient();
+      const { newMnemonic } = await client.recoverWithKit(
+        username.trim(),
+        recoverMnemonic.trim(),
+        recoverNewPassword,
+      );
+      setRecoverNewMnemonic(newMnemonic);
+      setStatus('locked');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('locked');
+    }
   }
 
   return (
@@ -189,10 +218,92 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
                 ? 'Unlock'
                 : 'Register'}
           </Button>
+          {mode === 'login' ? (
+            <button
+              type="button"
+              onClick={() => setRecoverMode(true)}
+              className="text-xs text-muted-foreground underline"
+            >
+              Recover with kit
+            </button>
+          ) : null}
           </>
           )}
         </CardContent>
       </Card>
+
+      {recoverMode ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>
+                {recoverNewMnemonic ? 'New Recovery Kit' : 'Recover with Emergency Kit'}
+              </CardTitle>
+              <CardDescription>
+                {recoverNewMnemonic
+                  ? 'Write these 24 words down. The old kit is now unusable.'
+                  : 'Paste the kit from registration and choose a new master password.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {recoverNewMnemonic ? (
+                <>
+                  <pre className="whitespace-pre-wrap rounded border border-border bg-surface-raised p-3 font-mono text-xs">
+                    {recoverNewMnemonic}
+                  </pre>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(recoverNewMnemonic);
+                      setRecoverMode(false);
+                      setRecoverNewMnemonic(null);
+                    }}
+                  >
+                    Copy and close
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="recover-mnemonic">Recovery kit</Label>
+                    <textarea
+                      id="recover-mnemonic"
+                      value={recoverMnemonic}
+                      onChange={(e) => setRecoverMnemonic(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="recover-new-password">New master password</Label>
+                    <Input
+                      id="recover-new-password"
+                      type="password"
+                      value={recoverNewPassword}
+                      onChange={(e) => setRecoverNewPassword(e.target.value)}
+                    />
+                  </div>
+                  {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                  <Button className="w-full" disabled={busy} onClick={() => void submitRecover()}>
+                    {busy ? 'Recovering…' : 'Recover vault'}
+                  </Button>
+                  <Button
+                    className="w-full"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setRecoverMode(false);
+                      setError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }
