@@ -630,6 +630,190 @@ impl MobileClient {
         Ok(svk.to_vec())
     }
 
+    /// VTRFIX-FEAT-H02: complete the Emergency Recovery Kit flow end-to-end.
+    ///
+    /// Given the saved 24-word kit and a new master password, this:
+    ///   1. requests a challenge and signs it with the mnemonic-derived key,
+    ///   2. exchanges the signature for a one-time recovery token,
+    ///   3. fetches the RK-wrapped SVK + server user id,
+    ///   4. unwraps the SVK locally with the mnemonic,
+    ///   5. derives fresh KEK (new password) + fresh Recovery Key,
+    ///   6. re-registers OPAQUE with the new password,
+    ///   7. posts /account/recover/complete with all new blobs,
+    ///   8. persists the new local account and returns the new mnemonic.
+    pub fn complete_recovery_kit(
+        &self,
+        server_url: String,
+        username: String,
+        old_mnemonic: String,
+        new_password: String,
+    ) -> Result<String, FfiError> {
+        block_on_ffi(async move {
+            let base = server_url.trim_end_matches('/').to_string();
+
+            // 1. Challenge.
+            let challenge: serde_json::Value = reqwest::Client::new()
+                .post(format!("{base}/account/recover/challenge"))
+                .json(&serde_json::json!({ "email": username }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("challenge req: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("challenge decode: {e}")))?;
+            let nonce_b64 = challenge
+                .get("nonce")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing nonce".into()))?
+                .to_string();
+
+            // 2. Sign with the mnemonic-derived key.
+            let m_old = vautr_crypto::recovery::decode_recovery_mnemonic(&old_mnemonic)
+                .map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
+            let nonce_bytes = {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(&nonce_b64)
+                    .map_err(|e| FfiError::Core(format!("nonce b64: {e}")))?
+            };
+            let sig_bytes = vautr_crypto::recovery::sign_recovery_nonce(&m_old, &nonce_bytes)
+                .map_err(|e| FfiError::Core(format!("sign: {e}")))?;
+            let sig_b64 = {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD.encode(sig_bytes)
+            };
+
+            // 3. Verify → recovery token.
+            let verify: serde_json::Value = reqwest::Client::new()
+                .post(format!("{base}/account/recover/verify"))
+                .json(&serde_json::json!({
+                    "email": username,
+                    "signature": sig_b64,
+                }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("verify req: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("verify decode: {e}")))?;
+            let recovery_token = verify
+                .get("recovery_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing recovery_token".into()))?
+                .to_string();
+
+            // 4. Fetch the RK-wrapped SVK + server user id.
+            let info: serde_json::Value = reqwest::Client::new()
+                .post(format!("{base}/account/recover/info"))
+                .json(&serde_json::json!({ "recovery_token": recovery_token }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("info req: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("info decode: {e}")))?;
+            let svk_rk_b64 = info
+                .get("svk_ciphertext_blob_rk")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing svk_ciphertext_blob_rk".into()))?
+                .to_string();
+            let user_id_str = info
+                .get("user_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing user_id".into()))?
+                .to_string();
+            let user_id = Uuid::parse_str(&user_id_str)
+                .map_err(|e| FfiError::Core(format!("user id parse: {e}")))?;
+
+            // 5. Unwrap the SVK locally.
+            let svk_rk_bytes = {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(&svk_rk_b64)
+                    .map_err(|e| FfiError::Core(format!("svk b64: {e}")))?
+            };
+            let kek_rk_old = vautr_crypto::recovery::derive_kek_rk(&m_old)
+                .map_err(|e| FfiError::Core(format!("kek_rk: {e}")))?;
+            let svk = vautr_crypto::recovery::unwrap_svk_with_rk(&svk_rk_bytes, &kek_rk_old, &user_id)
+                .map_err(|e| FfiError::Core(format!("unwrap svk: {e}")))?;
+
+            // 6. Fresh MP wrap + fresh RK.
+            let kdf_salt = kdf::generate_kdf_salt();
+            let mk = kdf::derive_master_key(&Zeroizing::new(new_password.clone()), &kdf_salt)
+                .map_err(|e| FfiError::Core(format!("mk derive: {e}")))?;
+            let kek_new = key_tree::derive_kek(&mk)
+                .map_err(|e| FfiError::Core(format!("kek derive: {e}")))?;
+            let svk_wrapped_new = vautr_keyring::wrap::wrap_svk(&kek_new, &svk);
+
+            let new_mnemonic = recovery::generate_recovery_mnemonic()
+                .map_err(|e| FfiError::Core(format!("new mnemonic: {e}")))?;
+            let new_mnemonic_decoded = recovery::decode_recovery_mnemonic(&new_mnemonic)
+                .map_err(|e| FfiError::Core(format!("decode new: {e}")))?;
+            let kek_rk_new = recovery::derive_kek_rk(&new_mnemonic_decoded)
+                .map_err(|e| FfiError::Core(format!("kek_rk new: {e}")))?;
+            let svk_rk_wrapped_new = recovery::wrap_svk_with_rk(&svk, &kek_rk_new, &user_id)
+                .map_err(|e| FfiError::Core(format!("wrap rk new: {e}")))?;
+            let new_pk = vautr_crypto::recovery::recovery_public_key(&new_mnemonic_decoded)
+                .map_err(|e| FfiError::Core(format!("pk new: {e}")))?;
+
+            // 7. Re-register OPAQUE under the new password.
+            let (cstate, creq) = state::registration_start(&Zeroizing::new(new_password.clone()));
+            let start_resp: serde_json::Value = reqwest::Client::new()
+                .post(format!("{base}/auth/register/start"))
+                .json(&serde_json::json!({
+                    "username": username,
+                    "registration_start": B64.encode(&creq),
+                }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("register/start: {e}")))?
+                .json()
+                .await
+                .map_err(|e| FfiError::Core(format!("register/start decode: {e}")))?;
+            let sresp_b64 = start_resp
+                .get("registration_response")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing registration_response".into()))?
+                .to_string();
+            let sresp = B64
+                .decode(&sresp_b64)
+                .map_err(|e| FfiError::Core(format!("registration_response b64: {e}")))?;
+            let (upload, _export, _st) = state::registration_finish(
+                &cstate,
+                &sresp,
+                &Zeroizing::new(new_password.clone()),
+                username.as_bytes(),
+            );
+
+            // 8. Complete: server atomically replaces creds.
+            reqwest::Client::new()
+                .post(format!("{base}/account/recover/complete"))
+                .json(&serde_json::json!({
+                    "recovery_token": recovery_token,
+                    "opaque_record": B64.encode(&upload),
+                    "kdf_salt": B64.encode(&kdf_salt),
+                    "svk_ciphertext_blob": B64.encode(&svk_wrapped_new),
+                    "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped_new),
+                    "rk_public_key": B64.encode(&new_pk),
+                }))
+                .send()
+                .await
+                .map_err(|e| FfiError::Core(format!("recover/complete: {e}")))?
+                .error_for_status()
+                .map_err(|e| FfiError::Core(format!("recover/complete status: {e}")))?;
+
+            // 9. Persist the new local account.
+            self.save_local_account(
+                B64.encode(&kdf_salt),
+                B64.encode(&svk_wrapped_new),
+                new_mnemonic.clone(),
+                0,
+            )?;
+
+            Ok(new_mnemonic)
+        })
+    }
+
     pub fn unlock(&self, raw_key: Vec<u8>, local_gen: u64) -> Result<(), FfiError> {
         block_on_ffi(async move {
             if raw_key.len() != 32 {
