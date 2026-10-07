@@ -196,7 +196,11 @@ pub(crate) async fn login_start(
         if map.len() > 10_000 {
             map.clear();
         }
-        map.insert(handle.clone(), sstate);
+        // Store under the handle (canonical) and under the username as a
+        // one-release compatibility alias so older clients that don't echo
+        // `login_handle` still work.
+        map.insert(handle.clone(), sstate.clone());
+        map.insert(req.username.clone(), sstate);
     }
     Ok(Json(LoginStartResp {
         login_response: b64(&sresp),
