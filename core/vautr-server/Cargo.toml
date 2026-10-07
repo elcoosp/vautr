@@ -64,7 +64,7 @@ vautr-sharing.workspace = true
 vautr-crypto = { workspace = true, features = ["sharing"] }
 
 [features]
-default = []
+default = ["webauthn"]  # VTRFIX-FEAT-H04
 # WebAuthn (FIDO2) optional second factor for MP unlock (VTR-052). OFF by default.
 webauthn = ["dep:webauthn-rs"]
 # Opt-in PostgreSQL backend (db.rs §postgres + docs/SELF-HOSTING.md). SQLite stays
