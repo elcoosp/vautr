@@ -73,6 +73,50 @@ export class AsyncCryptoAdapter {
     return this.m().unwrap_svk_js(wrapped, kek);
   }
 
+  // --- VTRFIX-FEAT-H02: recovery-auth Ed25519 signing key ---
+  signRecoveryNonce(mnemonic: string, nonce: Uint8Array): string {
+    const mod = this.m() as unknown as {
+      sign_recovery_nonce_js: (m: string, nonce: number[]) => string;
+    };
+    return mod.sign_recovery_nonce_js(mnemonic, Array.from(nonce));
+  }
+  recoveryPublicKey(mnemonic: string): Uint8Array {
+    const mod = this.m() as unknown as {
+      recovery_public_key_js: (m: string) => Uint8Array;
+    };
+    return mod.recovery_public_key_js(mnemonic);
+  }
+  recoverSvk(mnemonic: string, wrappedB64: string, serverUserId: string): Uint8Array {
+    const mod = this.m() as unknown as {
+      recover_svk_js: (m: string, b64: string, uid: string) => Uint8Array;
+    };
+    return mod.recover_svk_js(mnemonic, wrappedB64, serverUserId);
+  }
+
+  // --- VTRFIX-SEC-M02: user-scoped AD wrap/unwrap ---
+  wrapSvkWithAd(svk: Uint8Array, kek: Uint8Array, userId: string): Uint8Array {
+    const mod = this.m() as unknown as {
+      wrap_svk_with_ad_js: (s: Uint8Array, k: Uint8Array, u: string) => Uint8Array;
+    };
+    return mod.wrap_svk_with_ad_js(svk, kek, userId);
+  }
+  unwrapSvkWithAdOrLegacy(
+    wrapped: Uint8Array,
+    kek: Uint8Array,
+    userId: string,
+  ): { svk: Uint8Array; usedLegacy: boolean } {
+    const mod = this.m() as unknown as {
+      unwrap_svk_with_ad_or_legacy_js: (
+        w: Uint8Array,
+        k: Uint8Array,
+        u: string,
+      ) => { svk: Uint8Array | number[]; used_legacy: boolean };
+    };
+    const r = mod.unwrap_svk_with_ad_or_legacy_js(wrapped, kek, userId);
+    const svk = r.svk instanceof Uint8Array ? r.svk : new Uint8Array(r.svk);
+    return { svk, usedLegacy: r.used_legacy };
+  }
+
   // --- recovery (REQ-RECOVERY-01) ---
   generateRecoveryMnemonic(): string {
     return this.m().generate_recovery_mnemonic_js();

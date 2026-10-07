@@ -552,7 +552,33 @@ export class VautrWebClient {
     }
     const mk = this.crypto.deriveMasterKey(password, kdfSalt);
     const kek = this.crypto.deriveKek(mk);
-    const svk = this.crypto.unwrapSvk(fromBase64(status.svk_ciphertext_blob), kek);
+    // VTRFIX-SEC-M02: try the user-scoped AD first, fall back to the legacy
+    // nil-AD for pre-migration blobs, and re-wrap under the new AD on success.
+    const userId = status.user_id ?? '';
+    let svk: Uint8Array;
+    if (userId) {
+      const r = this.crypto.unwrapSvkWithAdOrLegacy(
+        fromBase64(status.svk_ciphertext_blob),
+        kek,
+        userId,
+      );
+      svk = r.svk;
+      if (r.usedLegacy) {
+        // One-time transparent re-wrap: the client re-uploads the SVK under
+        // the new AD so future logins take the fast path.
+        try {
+          const rewrapped = this.crypto.wrapSvkWithAd(svk, kek, userId);
+          await this.api.request('POST', '/account/rotate-key', {
+            new_min_enc_key_gen: status.min_enc_key_gen,
+            new_svk_ciphertext_blob: toBase64(rewrapped),
+          });
+        } catch {
+          // Non-fatal: the next login will retry.
+        }
+      }
+    } else {
+      svk = this.crypto.unwrapSvk(fromBase64(status.svk_ciphertext_blob), kek);
+    }
     const dek = this.crypto.deriveDek(svk);
 
     const sealed = state.recoveryMnemonicEnc ? fromBase64(state.recoveryMnemonicEnc) : null;
