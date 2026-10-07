@@ -264,7 +264,10 @@ fn validate_policy(req: &MfaPolicyUpdateReq) -> Result<(), ApiError> {
         ));
     }
     for m in &req.allowed_methods {
-        if !matches!(m.as_str(), "totp" | "webauthn" | "email") {
+        // VTRFIX-FEAT-M02: "email" is accepted by the wire contract but has no
+            // server-side transport (no Mailer is wired). Accepting it would
+            // let an org lock everyone out with an unimplementable method.
+            if !matches!(m.as_str(), "totp" | "webauthn") {
             return Err(ApiError::bad_request(
                 "invalid_policy",
                 &format!("unknown MFA method: {m}"),
