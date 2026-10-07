@@ -8,6 +8,7 @@ import {
 import { createSecureEnclaveBridge, createVautrNativeBridge } from '@vautr/native';
 import { MobileApiClient } from './api';
 import { secureTokenStore, VautrAuth } from './auth';
+import { resolveApiBase } from './http';
 
 /** App-wide shared API client + auth (lazy singleton). */
 class AppServices {
@@ -108,35 +109,19 @@ export function isLocalVaultActive(): boolean {
 export async function recoverWithKit(
   username: string,
   mnemonic: string,
-  _newPassword: string,
+  newPassword: string,
 ): Promise<{ newMnemonic: string }> {
   const native = getMobileClient();
   if (!native) {
     throw new Error('native core not linked; cannot recover on this device');
   }
-  const api = services.api.http as unknown as {
-    request<T>(method: string, path: string, body?: unknown): Promise<T>;
-  };
-
-  const challenge = await api.request<{ nonce: string }>(
-    'POST',
-    '/account/recover/challenge',
-    { email: username },
+  // The server URL is resolved the same way the HTTP client does.
+  const serverUrl = resolveApiBase();
+  const newMnemonic = await native.completeRecoveryKit(
+    serverUrl,
+    username,
+    mnemonic,
+    newPassword,
   );
-  const signature = await native.signRecoveryNonce(mnemonic, challenge.nonce);
-  const verify = await api.request<{ recovery_token: string }>(
-    'POST',
-    '/account/recover/verify',
-    { email: username, signature },
-  );
-  const info = await api.request<{ svk_ciphertext_blob_rk: string; user_id: string }>(
-    'POST',
-    '/account/recover/info',
-    { recovery_token: verify.recovery_token },
-  );
-  const svk = await native.recoverSvk(mnemonic, info.svk_ciphertext_blob_rk, info.user_id);
-  void svk;
-  throw new Error(
-    'recoverWithKit: signature + unwrap succeeded; final re-wrap needs the FFI complete binding',
-  );
+  return { newMnemonic };
 }

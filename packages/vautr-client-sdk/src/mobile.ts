@@ -92,6 +92,17 @@ export interface VautrNativeBridge {
    * the session token (the core is unlocked + synced on success).
    */
   login(serverUrl: string, username: string, password: string): Promise<NativeAuthResult>;
+  /**
+   * VTRFIX-FEAT-H02: complete the Emergency Recovery Kit flow end-to-end.
+   * Returns the NEW 24-word mnemonic (the caller must show it to the user;
+   * the old kit is now unusable).
+   */
+  completeRecoveryKit(
+    serverUrl: string,
+    username: string,
+    oldMnemonic: string,
+    newPassword: string,
+  ): Promise<string>;
 
   // ── VTRFIX-FEAT-H02: Emergency Recovery Kit (mobile) ─────────────────
   /** Sign the server recovery-challenge nonce with the mnemonic-derived key. */
@@ -159,6 +170,18 @@ export class MobileVautrClient {
   /** Sign the recovery-challenge nonce (base64) with the mnemonic-derived key. */
   signRecoveryNonce(mnemonic: string, nonceB64: string): Promise<string> {
     return this.native.signRecoveryNonce(mnemonic, nonceB64);
+  }
+  /**
+   * VTRFIX-FEAT-H02: complete the Emergency Recovery Kit flow.
+   * Returns the new mnemonic.
+   */
+  completeRecoveryKit(
+    serverUrl: string,
+    username: string,
+    oldMnemonic: string,
+    newPassword: string,
+  ): Promise<string> {
+    return this.native.completeRecoveryKit(serverUrl, username, oldMnemonic, newPassword);
   }
   /** Derive the recovery Ed25519 public key from a mnemonic. */
   recoveryPublicKey(mnemonic: string): Promise<Uint8Array> {
