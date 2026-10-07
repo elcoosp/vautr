@@ -13,23 +13,32 @@
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(feature = "pipeline")]
 use sea_orm::{DatabaseConnection, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-pub mod encrypt;
 pub mod error;
-pub mod ingest;
 pub mod parser;
 pub mod source;
 pub mod translate;
 
+#[cfg(feature = "pipeline")]
+pub mod encrypt;
+#[cfg(feature = "pipeline")]
+pub mod ingest;
+
 pub use error::{ImportError, ImportFailure, ImportFailureReason, Result};
 
+#[cfg(feature = "pipeline")]
 use crate::encrypt::{encrypt_chunk, plaintext_size, EncryptedItem, MAX_ITEMS_PER_CHUNK, MAX_PLAINTEXT_BYTES};
+#[cfg(feature = "pipeline")]
 use crate::ingest::ingest;
+#[cfg(feature = "pipeline")]
 use crate::parser::{parse_stream, ParseRecord};
+#[cfg(feature = "pipeline")]
 use crate::source::{ImportSource, PathImportSource};
+#[cfg(feature = "pipeline")]
 use crate::translate::{translate, TranslatedItem};
 
 /// Strongly-typed result of a completed import. (§5.1)
@@ -57,6 +66,7 @@ pub struct RawImportItem {
     pub fields: serde_json::Value,
 }
 
+#[cfg(feature = "pipeline")]
 /// The OEK/DEK key pair used to encrypt imported items.
 ///
 /// Derived from the SVK (via `vautr-crypto::key_tree` / `vautr-keyring`).
@@ -68,6 +78,7 @@ pub struct VaultKeys {
     pub dek: Zeroizing<[u8; 32]>,
 }
 
+#[cfg(feature = "pipeline")]
 impl VaultKeys {
     /// Derive OEK/DEK from an SVK.
     pub fn from_svk(svk: &Zeroizing<[u8; 32]>) -> Result<Self> {
@@ -86,6 +97,7 @@ impl VaultKeys {
 }
 
 /// Row mirror of the pre-flight dedup query.
+#[cfg(feature = "pipeline")]
 #[derive(Debug, FromQueryResult)]
 struct DedupRow {
     overview_title: String,
@@ -94,6 +106,7 @@ struct DedupRow {
 
 /// Build the exact-match dedup set `(title, url)` from the local DB (§2.3).
 /// Only the primary (first) URL is used, mirroring the translation layer.
+#[cfg(feature = "pipeline")]
 async fn preflight(db: &DatabaseConnection) -> Result<HashSet<(String, String)>> {
     let sql = "SELECT overview_title, overview_urls FROM item_overviews";
     let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
@@ -119,9 +132,11 @@ fn now_unix() -> i64 {
 }
 
 /// Progress-reporting helper that never moves the bar backwards.
+#[cfg(feature = "pipeline")]
 struct Progress {
     current: u8,
 }
+#[cfg(feature = "pipeline")]
 impl Progress {
     fn new() -> Self {
         Self { current: 0 }
@@ -135,6 +150,7 @@ impl Progress {
 }
 
 /// Run the shared pipeline over a stream of parsed records.
+#[cfg(feature = "pipeline")]
 async fn run_pipeline(
     records: Box<dyn Iterator<Item = core::result::Result<ParseRecord, String>>>,
     existing: &mut HashSet<(String, String)>,
@@ -228,6 +244,7 @@ async fn run_pipeline(
 ///
 /// `progress` receives an integer 0–100 mapping the bulk pipeline stages
 /// (parse → encrypt → ingest) and is guaranteed non-decreasing.
+#[cfg(feature = "pipeline")]
 pub async fn import_file(
     path: &str,
     db: &DatabaseConnection,
@@ -243,6 +260,7 @@ pub async fn import_file(
 }
 
 /// Import already-parsed raw items without touching disk.
+#[cfg(feature = "pipeline")]
 pub async fn import_items(
     items: Vec<RawImportItem>,
     db: &DatabaseConnection,

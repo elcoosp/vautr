@@ -5,12 +5,20 @@
 //! archives (`.1pux` / `.zip`) are extracted to a sandboxed temp directory and
 //! the inner JSON is streamed from there, keeping O(1) peak memory.
 
-use std::cell::RefCell;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::io::BufRead;
 
-use crate::error::{ImportFailure, Result};
+use crate::error::Result;
+
+#[cfg(feature = "pipeline")]
+use std::cell::RefCell;
+#[cfg(feature = "pipeline")]
+use std::fs::File;
+#[cfg(feature = "pipeline")]
+use std::io::BufReader;
+#[cfg(feature = "pipeline")]
+use std::path::{Path, PathBuf};
+#[cfg(feature = "pipeline")]
+use crate::error::ImportFailure;
 
 /// The source format, which selects the streaming parser in [`crate::parser`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,21 +35,31 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
-    /// Infer the source kind from a file extension. Unknown extensions default
-    /// to CSV rather than failing so a malformed/hostile name never panics.
-    pub fn from_path(path: &Path) -> Self {
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        match ext.as_str() {
-            "csv" => SourceKind::Csv,
-            "json" => SourceKind::BitwardenJson,
-            "zip" | "1pux" => SourceKind::Zip1pux,
-            "1pif" => SourceKind::Pif1Password,
-            _ => SourceKind::Csv,
+    /// Infer the source kind from a filename. Unknown extensions default to
+    /// CSV rather than failing so a malformed/hostile name never panics.
+    ///
+    /// VTRFIX-FEAT-H03: takes `&str` so this compiles on wasm32 (no `std::path`).
+    pub fn from_name(name: &str) -> Self {
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".csv") {
+            SourceKind::Csv
+        } else if lower.ends_with(".json") {
+            SourceKind::BitwardenJson
+        } else if lower.ends_with(".zip") || lower.ends_with(".1pux") {
+            SourceKind::Zip1pux
+        } else if lower.ends_with(".1pif") {
+            SourceKind::Pif1Password
+        } else {
+            SourceKind::Csv
         }
+    }
+}
+
+#[cfg(feature = "pipeline")]
+impl SourceKind {
+    /// Infer the source kind from a file extension (native).
+    pub fn from_path(path: &Path) -> Self {
+        Self::from_name(&path.to_string_lossy())
     }
 }
 
@@ -60,12 +78,14 @@ pub trait ImportSource {
 ///
 /// Holds the extracted temp directory (when the source is a ZIP archive) for
 /// the lifetime of the source so the extracted JSON remains readable.
+#[cfg(feature = "pipeline")]
 pub struct PathImportSource {
     path: PathBuf,
     kind: SourceKind,
     temp_dir: RefCell<Option<tempfile::TempDir>>,
 }
 
+#[cfg(feature = "pipeline")]
 impl PathImportSource {
     /// Construct a source from a filesystem path. Does not open the file yet;
     /// kind inference only, so constructing a source never fails.
@@ -80,6 +100,7 @@ impl PathImportSource {
     }
 }
 
+#[cfg(feature = "pipeline")]
 impl ImportSource for PathImportSource {
     fn kind(&self) -> SourceKind {
         self.kind
@@ -97,6 +118,7 @@ impl ImportSource for PathImportSource {
     }
 }
 
+#[cfg(feature = "pipeline")]
 impl PathImportSource {
     /// Extract the first `.json` entry from the ZIP archive to a temp file and
     /// return a reader over it. The temp dir is retained in `self.temp_dir` so
@@ -147,14 +169,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn infers_kind_from_extension() {
-        assert_eq!(SourceKind::from_path(Path::new("a.csv")), SourceKind::Csv);
-        assert_eq!(
-            SourceKind::from_path(Path::new("a.json")),
-            SourceKind::BitwardenJson
-        );
-        assert_eq!(SourceKind::from_path(Path::new("a.1pux")), SourceKind::Zip1pux);
+    fn infers_kind_from_name() {
+        assert_eq!(SourceKind::from_name("a.csv"), SourceKind::Csv);
+        assert_eq!(SourceKind::from_name("a.json"), SourceKind::BitwardenJson);
+        assert_eq!(SourceKind::from_name("a.1pux"), SourceKind::Zip1pux);
+        assert_eq!(SourceKind::from_name("a.1pif"), SourceKind::Pif1Password);
         // Unknown extensions fall back to CSV without panicking.
-        assert_eq!(SourceKind::from_path(Path::new("a.data")), SourceKind::Csv);
+        assert_eq!(SourceKind::from_name("a.data"), SourceKind::Csv);
     }
 }

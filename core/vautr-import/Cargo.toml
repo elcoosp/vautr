@@ -32,11 +32,9 @@ vautr-keyring = { workspace = true, optional = true }
 default = ["pipeline"]
 # The full ingest pipeline (needs a live SQLite DB + the crypto stack).
 pipeline = ["tokio", "sea-orm", "zip", "rayon", "tempfile", "vautr-db", "vautr-keyring"]
-# VTRFIX-FEAT-H03 (tracked): `--no-default-features` does NOT yet compile.
-# The parser + translate surface still transitively reference pipeline-only
-# types (`PathImportSource`, `run_pipeline`'s preflight helpers). A full
-# wasm-compatible split needs those gated too — tracked in
-# docs/issues/VTRFIX-LOG.md. The default build works and all tests pass.
+# VTRFIX-FEAT-H03: `--no-default-features` produces a wasm-compatible
+# parse + translate surface with no DB/tokio/sqlx dependency. The default
+# build keeps the full ingest pipeline.
 
 [dev-dependencies]
 tempfile = "3"
