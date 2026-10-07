@@ -106,3 +106,13 @@ dedicated VTRs rather than stubbed into the UI.
 - `pnpm typecheck` (web / extension / mobile) + `pnpm lint` green.
 - `apps/mobile` vitest `secretLifecycle` green (secure-overlay path exercised).
 - `hermes verify` tracks the 10/10 gate.
+
+<!-- VTRFIX-DOC-02 -->
+
+## Corrections (audit)
+
+The previous matrix referenced `mockWasm.ts`, which no longer exists. All five
+clients instantiate the real `VautrClient`/`VautrWebClient` against the real
+`vautr-wasm` build. Sharing, groups, and Emergency-Kit surfaces are wired for
+web and extension; mobile uses the FFI path. Autofill is popup-triggered only
+(extension). WebAuthn is opt-in via the `webauthn` feature flag on the server.

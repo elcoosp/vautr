@@ -301,3 +301,21 @@ and the aggregated metrics buffer (no per-event data, no user IDs, no PII). The
 For **server-down alerting**, monitor the container/service liveness (the
 healthcheck endpoint above) with your favourite uptime probe, and alert on the
 `systemctl status vautr-server` / compose health state.
+
+<!-- VTRFIX-DOC-03 -->
+
+## Corrections (audit)
+
+- The production healthcheck now targets `GET /health` (unauthenticated);
+  the previous `/account/status` returned 401, so the Caddy + backup
+  sidecars never started. (VTRFIX-OPS-C01.)
+- `deploy/litestream.yml` ships with the repo. (VTRFIX-OPS-C01.)
+- Plaintext `8080` is no longer published in `docker-compose.prod.yml`.
+  (VTRFIX-SEC-M14.)
+- Security headers (`X-Content-Type-Options`, `Referrer-Policy`) are set by
+  the server middleware; `VAUTR_CORS_ORIGINS` controls the allowlist.
+  (VTRFIX-SEC-M13.)
+- Provision the OPAQUE setup via `VAUTR_OPAQUE_SETUP_FILE` and the backup
+  key via `VAUTR_BACKUP_KEY`. (VTRFIX-SEC-C01 / VTRFIX-SEC-M16.)
+- File uploads cap at 512 chunks × 8 MiB; per-account quota via
+  `VAUTR_FILE_QUOTA_BYTES`. (VTRFIX-SEC-H08.)

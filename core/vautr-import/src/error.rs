@@ -43,6 +43,7 @@ pub struct ImportError {
 pub enum ImportFailure {
     /// The import pipeline is not implemented yet. Safe, non-panicking stub.
     #[error("import pipeline not implemented yet")]
+    /// VTRFIX-DOC-05: kept for compatibility; no constructor exists.
     NotImplemented,
 
     /// A fatal, non-per-item failure aborted the whole import.

@@ -1,6 +1,7 @@
 //! Error types for the Vautr sharing crate.
 //!
 //! Maps to [`docs/architecture/sharing-pki.md`]. All flow entry points return a
+    /// VTRFIX-DOC-05: kept for compatibility; no constructor exists.
 //! safe, non-panicking `Err(ShareError::NotImplemented)` stub until the sharing
 //! pipeline is implemented.
 
@@ -11,6 +12,7 @@ use thiserror::Error;
 pub enum ShareError {
     /// The operation is not implemented yet. Safe, non-panicking stub.
     #[error("sharing operation not implemented yet")]
+    /// VTRFIX-DOC-05: kept for compatibility; no constructor exists.
     NotImplemented,
 
     /// The recipient's public key could not be resolved/verified.

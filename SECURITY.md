@@ -65,3 +65,20 @@ If you act in good faith and respect the privacy and data of Vautr users, we wil
 - Do not use automated vulnerability scanners to spam our logs.
 
 Thank you for helping us build the most secure and trustworthy password manager in the world.
+
+## Cryptography (updates per VTRFIX audit)
+
+- **OPAQUE server setup** (contains the OPRF private key) is provisioned
+  out-of-band via `VAUTR_OPAQUE_SETUP_FILE`. It is **not** stored alongside
+  user records. Losing the file requires re-enrollment of every user.
+  (VTRFIX-SEC-C01.)
+- **Session tokens** are stored as SHA-256 hashes; a DB dump yields no
+  live sessions. Revoke via `POST /auth/logout`. (VTRFIX-SEC-H03.)
+- **Recovery codes and TOTP secrets** are single-use / replay-protected.
+  (VTRFIX-SEC-H11.)
+- **Backup key** prefers `VAUTR_BACKUP_KEY` env over the in-DB fallback.
+  (VTRFIX-SEC-M16.)
+- **TOTP second-factor** is enforced at the login boundary; the wrapped
+  vault key is not returned until the code verifies. (VTRFIX-SEC-C03.)
+
+See `docs/issues/VTRFIX-LOG.md` for the full change trail.
