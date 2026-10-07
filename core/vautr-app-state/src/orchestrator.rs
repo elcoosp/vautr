@@ -129,6 +129,9 @@ pub struct VautrClient {
     /// Whether the current login has satisfied the required second factor (a
     /// successful `/webauthn/assert/verify` or `/mfa/totp/verify` round-trip).
     second_factor_verified: Arc<AtomicBool>,
+    /// VTRFIX-BUG-M20: single-flight guard for `sync()`.
+    sync_inflight: Arc<tokio::sync::Mutex<()>>,
+    resync_requested: Arc<AtomicBool>,
 }
 
 impl VautrClient {
@@ -166,6 +169,8 @@ impl VautrClient {
             reaper_sync_requests: Arc::new(AtomicU64::new(0)),
             second_factor: Arc::new(tokio::sync::Mutex::new(None)),
             second_factor_verified: Arc::new(AtomicBool::new(false)),
+            sync_inflight: Arc::new(tokio::sync::Mutex::new(())),
+            resync_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -275,6 +280,8 @@ impl VautrClient {
             reaper_sync_requests: self.reaper_sync_requests.clone(),
             second_factor: self.second_factor.clone(),
             second_factor_verified: self.second_factor_verified.clone(),
+            sync_inflight: self.sync_inflight.clone(),
+            resync_requested: self.resync_requested.clone(),
         }
     }
 
@@ -587,6 +594,16 @@ impl VautrClient {
     /// non-ignored items, upsert locally, and update the epoch gate. At the end
     /// of the session the DashMap is persisted if dirty (core.md §3).
     pub async fn sync(&self) -> Result<(), String> {
+        // VTRFIX-BUG-M20: single-flight sync with coalescing.
+        let _sync_guard = self.sync_inflight.lock().await;
+        self.resync_requested.store(false, Ordering::SeqCst);
+        let mut first_pass = true;
+        loop {
+            if !first_pass {
+                self.resync_requested.store(false, Ordering::SeqCst);
+            }
+            first_pass = false;
+
         let transport = self.transport.read().await.clone();
         let transport = transport.ok_or_else(|| "sync not connected".to_string())?;
         // VTRFIX-BUG-C02: seed the engine with the persisted cursor so a
@@ -655,6 +672,11 @@ impl VautrClient {
         // Persist the DashMap at end of session if it changed (core.md §3).
         self.persist_blacklist_if_dirty().await?;
 
+            if self.resync_requested.swap(false, Ordering::SeqCst) {
+                continue;
+            }
+            break;
+        }
         self.bus.publish(VaultStateUpdate::SyncCompleted);
         Ok(())
     }
