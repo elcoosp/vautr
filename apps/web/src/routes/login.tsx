@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login, MfaRequiredError, completeLoginWithTotp } from '@/lib/client';
+import { login, MfaRequiredError, completeLoginWithTotp, recoverWithKit } from '@/lib/client';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -23,6 +23,11 @@ function LoginPage() {
   // component state (never persisted) so we can unwrap the SVK after the
   // server mints the session.
   const [pendingToken, setPendingToken] = useState<string | null>(null);
+  // VTRFIX-FEAT-H02: emergency recovery flow state.
+  const [recoverMode, setRecoverMode] = useState(false);
+  const [recoverMnemonic, setRecoverMnemonic] = useState('');
+  const [recoverNewPassword, setRecoverNewPassword] = useState('');
+  const [recoverNewMnemonic, setRecoverNewMnemonic] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState('');
 
   useEffect(() => {
@@ -79,6 +84,29 @@ function LoginPage() {
     setPendingToken(null);
     setTotpCode('');
     setError(null);
+  };
+
+  // VTRFIX-FEAT-H02: submit the recovery kit + new password.
+  const onRecover = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !recoverMnemonic.trim() || !recoverNewPassword) {
+      setError('Enter username, recovery kit, and a new master password.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { newMnemonic } = await recoverWithKit(
+        username.trim(),
+        recoverMnemonic.trim(),
+        recoverNewPassword,
+      );
+      setRecoverNewMnemonic(newMnemonic);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Recovery failed.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -173,7 +201,95 @@ function LoginPage() {
           <Link to="/register" className="text-accent underline-offset-2 hover:underline">
             Register an account
           </Link>
+          {' · '}
+          <button
+            type="button"
+            onClick={() => setRecoverMode(true)}
+            className="text-accent underline-offset-2 hover:underline"
+          >
+            Recover with kit
+          </button>
         </p>
+
+        {/* VTRFIX-FEAT-H02: emergency recovery form + result view. */}
+        {recoverMode ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-xl border border-border bg-surface p-6">
+              {recoverNewMnemonic ? (
+                <>
+                  <h2 className="mb-2 text-lg font-semibold">New Recovery Kit</h2>
+                  <p className="mb-3 text-sm text-text-muted">
+                    Write these 24 words down. The old kit is now unusable.
+                  </p>
+                  <pre className="mb-4 whitespace-pre-wrap rounded border border-border bg-surface-raised p-3 font-mono text-xs">
+                    {recoverNewMnemonic}
+                  </pre>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(recoverNewMnemonic);
+                      setRecoverMode(false);
+                      setRecoverNewMnemonic(null);
+                      setRecoverMnemonic('');
+                      setRecoverNewPassword('');
+                    }}
+                  >
+                    Copy and close
+                  </Button>
+                </>
+              ) : (
+                <form onSubmit={onRecover} className="space-y-4">
+                  <h2 className="text-lg font-semibold">Recover with Emergency Kit</h2>
+                  <p className="text-sm text-text-muted">
+                    Paste the 24-word kit you saved at registration and choose a new
+                    master password. Your vault contents are preserved.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="recover-mnemonic">Recovery kit</Label>
+                    <textarea
+                      id="recover-mnemonic"
+                      value={recoverMnemonic}
+                      onChange={(e) => setRecoverMnemonic(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-xs"
+                      placeholder="word1 word2 … word24"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="recover-new-password">New master password</Label>
+                    <Input
+                      id="recover-new-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={recoverNewPassword}
+                      onChange={(e) => setRecoverNewPassword(e.target.value)}
+                    />
+                  </div>
+                  {error ? (
+                    <p role="alert" className="text-sm text-danger">
+                      {error}
+                    </p>
+                  ) : null}
+                  <Button type="submit" className="w-full" disabled={busy}>
+                    {busy ? 'Recovering…' : 'Recover vault'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    disabled={busy}
+                    onClick={() => {
+                      setRecoverMode(false);
+                      setError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </form>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </main>
   );

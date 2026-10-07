@@ -229,3 +229,15 @@ export const getGroupKey = (groupId: string): Promise<string | null> =>
 export {
   MfaRequiredError,
 } from '@vautr/client-sdk';
+
+/**
+ * VTRFIX-FEAT-H02: complete the Emergency Recovery Kit flow. Returns the NEW
+ * mnemonic — the caller must show it to the user (the old one is now dead).
+ */
+export async function recoverWithKit(
+  username: string,
+  mnemonic: string,
+  newPassword: string,
+): Promise<{ newMnemonic: string }> {
+  return getClient().recoverWithKit(username, mnemonic, newPassword);
+}
