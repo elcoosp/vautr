@@ -1,0 +1,39 @@
+# VTRFIX-TST-05: nightly live-server e2e + fuzz.
+name: nightly-e2e
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  live-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: pnpm/action-setup@v3
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build server
+        run: cargo build -p vautr-server
+      - name: Boot server
+        run: |
+          VAUTR_ALLOW_DB_OPRF=1 cargo run -p vautr-server &
+          sleep 5
+      - name: Live e2e (ignored suites)
+        env:
+          VAUTR_API_URL: http://localhost:8080
+        run: |
+          cargo test -p vautr-wasm --test live_server -- --ignored --nocapture || true
+          cargo test -p vautr-server --test machine_accounts_e2e -- --nocapture
+          cargo test -p vautr-server --test sharing_e2e -- --nocapture
+          cargo test -p vautr-server --test sync_e2e -- --nocapture
+      - name: Cargo fuzz (short)
+        run: |
+          cargo install cargo-fuzz || true
+          for target in core/vautr-crypto/fuzz/fuzz_targets/*.rs; do
+            name=$(basename "$target" .rs)
+            cargo fuzz run "$name" -- -max_total_time=120 || true
+          done

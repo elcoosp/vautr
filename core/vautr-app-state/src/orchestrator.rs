@@ -658,7 +658,10 @@ impl VautrClient {
             }
         }
 
-        // Persist the cursor only after a fully-successful walk.
+        // VTRFIX-BUG-M07: cursor is persisted only after the entire walk
+        // completed. A per-page fetch failure currently leaves the failed item
+        // quarantined; the next sync retries. Fully-precise page-rewind on
+        // partial failure is tracked in docs/issues/VTRFIX-LOG.md.
         self.cursor.store(engine.cursor(), Ordering::SeqCst);
 
         // Update epoch gate from the server's min_enc_key_gen.
