@@ -26,3 +26,30 @@ See `git log --oneline` for the exact commit trail. Highlights:
 - SEC-M21..M30 remaining client hardening items.
 - Phase 7 TST-01..TST-07 (dedicated test additions).
 - Phase 8 DOC-01..DOC-05 (doc rewrite against implemented reality).
+
+## Updated status
+
+### Done since the initial log
+- **SEC-M02** per-user AD binding shipped with one-release legacy fallback
+- **SEC-M03** crypto-agility envelope with versioned magic/version/suite
+- **SEC-M04** UNIQUE-race → 409
+- **SEC-M11/M12** per-route rate limits keyed by (class, client)
+- **SEC-M15** WebAuthn UV requirement + prod gate + sign-count regression
+- **SEC-M30** desktop updater stages to private random path, re-verifies
+- **FEAT-H02** Emergency Recovery Kit end-to-end (wasm + SDK + web + extension)
+- **FEAT-H03** (partial) — import preview wasm tracked
+
+### Still tracked
+- **SEC-M07** OPAQUE KSF params — the opaque-ke 4.1.0-pre.1 `Ksf` trait is
+  blanket-implemented for `argon2::Argon2<'_>` with hard-coded defaults; a
+  custom impl requires constructing an `Argon2` with custom params inside the
+  `Ksf::hash` body. Doable but requires reading the argon2 0.6-rc API.
+- **SEC-M10** FEK decoupling — needs a `fek_wrapped` column on the manifest +
+  a migration + re-wrap on rotation.
+- **SEC-M21..M30** client hardening tails.
+- **BUG-M03** FTS transactional rebuild.
+- **BUG-M07/M14/M18/M19** — documented.
+- **FEAT-M05** passive form detection.
+- **FEAT-H03** full pipeline needs a wasm-compatible feature split in
+  `vautr-import`.
+- Mobile FEAT-H02 UI — needs FFI `sign_recovery_nonce`.

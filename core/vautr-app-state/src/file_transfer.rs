@@ -61,6 +61,16 @@ pub trait FileTransport: Send + Sync {
 }
 
 /// Derive the per-file encryption key (§2.2): `FEK = HKDF(SVK, "vautr-fek-{file_uuid}")`.
+///
+/// VTRFIX-SEC-M10 (partially closed): the FEK is derived deterministically
+/// from the SVK + file_uuid. The security of the streaming nonce derivation
+/// depends on the invariant **"one file_uuid = one content"**. Violating this
+/// invariant (uploading different bytes under the same file_uuid) would
+/// reuse (key, nonce) pairs and break confidentiality. The protocol enforces
+/// this by binding `content_sha256` in the manifest, but the derivation
+/// itself does not check it. Full decoupling (storing `fek_wrapped` in the
+/// manifest so rotation doesn't break attachments) is a schema migration
+/// tracked in docs/issues/VTRFIX-LOG.md.
 fn derive_fek(svk: &[u8; 32], file_uuid: &Uuid) -> Zeroizing<[u8; 32]> {
     let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, svk);
     let mut okm = Zeroizing::new([0u8; 32]);
