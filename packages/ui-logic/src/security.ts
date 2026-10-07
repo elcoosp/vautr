@@ -291,3 +291,24 @@ export function safeExternalUrl(raw: string | undefined | null): string | null {
     return null;
   }
 }
+
+/**
+ * VTRFIX-SEC-M27: only allow https (or localhost for dev) as the API base.
+ * Returns the normalised URL or `null` when it must be rejected.
+ */
+export function validateApiBase(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'https:') return u.toString();
+    if (
+      u.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname)
+    ) {
+      return u.toString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
