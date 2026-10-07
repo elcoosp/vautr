@@ -33,9 +33,17 @@ const DEFAULT_OPTIONS: Required<GeneratorOptions> = {
   excludeAmbiguous: true,
 };
 
+/**
+ * VTRFIX-SEC-L01: unbiased random integer in [0, max). Uses rejection
+ * sampling to avoid the modulo bias of `random % max`.
+ */
 function secureRandomInt(max: number): number {
+  if (max <= 0) return 0;
+  const limit = Math.floor(0x100000000 / max) * max;
   const arr = new Uint32Array(1);
-  crypto.getRandomValues(arr);
+  do {
+    crypto.getRandomValues(arr);
+  } while ((arr[0] ?? 0) >= limit);
   return (arr[0] ?? 0) % max;
 }
 
