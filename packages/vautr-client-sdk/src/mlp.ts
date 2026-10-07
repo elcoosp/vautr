@@ -71,23 +71,23 @@ export class VautrMlpClient {
   }
 
   getProject(uuid: string): Promise<Project> {
-    return this.api.request<Project>('GET', `/projects/${uuid}`);
+    return this.api.request<Project>('GET', `/projects/${encodeURIComponent(uuid)}`);
   }
 
   updateProject(uuid: string, request: ProjectUpdateRequest): Promise<Project> {
-    return this.api.request<Project>('PATCH', `/projects/${uuid}`, request);
+    return this.api.request<Project>('PATCH', `/projects/${encodeURIComponent(uuid)}`, request);
   }
 
   deleteProject(uuid: string): Promise<StatusResponse> {
-    return this.api.request<StatusResponse>('DELETE', `/projects/${uuid}`);
+    return this.api.request<StatusResponse>('DELETE', `/projects/${encodeURIComponent(uuid)}`);
   }
 
   listProjectMembers(uuid: string): Promise<ProjectMemberListResponse> {
-    return this.api.request<ProjectMemberListResponse>('GET', `/projects/${uuid}/members`);
+    return this.api.request<ProjectMemberListResponse>('GET', `/projects/${encodeURIComponent(uuid)}/members`);
   }
 
   addProjectMember(uuid: string, request: ProjectAddMemberRequest): Promise<ProjectMember> {
-    return this.api.request<ProjectMember>('POST', `/projects/${uuid}/members`, request);
+    return this.api.request<ProjectMember>('POST', `/projects/${encodeURIComponent(uuid)}/members`, request);
   }
 
   updateProjectMember(
@@ -97,13 +97,13 @@ export class VautrMlpClient {
   ): Promise<ProjectMember> {
     return this.api.request<ProjectMember>(
       'PATCH',
-      `/projects/${uuid}/members/${userUuid}`,
+      `/projects/${encodeURIComponent(uuid)}/members/${encodeURIComponent(userUuid)}`,
       request,
     );
   }
 
   removeProjectMember(uuid: string, userUuid: string): Promise<StatusResponse> {
-    return this.api.request<StatusResponse>('DELETE', `/projects/${uuid}/members/${userUuid}`);
+    return this.api.request<StatusResponse>('DELETE', `/projects/${encodeURIComponent(uuid)}/members/${encodeURIComponent(userUuid)}`);
   }
 
   // -------------------------------------------------------------------------
@@ -111,7 +111,7 @@ export class VautrMlpClient {
   // -------------------------------------------------------------------------
 
   listSecrets(projectUuid: string): Promise<SecretListResponse> {
-    return this.api.request<SecretListResponse>('GET', `/projects/${projectUuid}/secrets`);
+    return this.api.request<SecretListResponse>('GET', `/projects/${encodeURIComponent(projectUuid)}/secrets`);
   }
 
   createSecret(request: SecretCreateRequest): Promise<Secret> {
@@ -119,20 +119,20 @@ export class VautrMlpClient {
   }
 
   getSecret(uuid: string): Promise<Secret> {
-    return this.api.request<Secret>('GET', `/secrets/${uuid}`);
+    return this.api.request<Secret>('GET', `/secrets/${encodeURIComponent(uuid)}`);
   }
 
   updateSecret(uuid: string, request: SecretUpdateRequest): Promise<Secret> {
-    return this.api.request<Secret>('PATCH', `/secrets/${uuid}`, request);
+    return this.api.request<Secret>('PATCH', `/secrets/${encodeURIComponent(uuid)}`, request);
   }
 
   deleteSecret(uuid: string): Promise<StatusResponse> {
-    return this.api.request<StatusResponse>('DELETE', `/secrets/${uuid}`);
+    return this.api.request<StatusResponse>('DELETE', `/secrets/${encodeURIComponent(uuid)}`);
   }
 
   /** Read a secret's value. Requires the `secrets:reveal` scope on the caller. */
   getSecretValue(uuid: string): Promise<SecretValue> {
-    return this.api.request<SecretValue>('GET', `/secrets/${uuid}/value`);
+    return this.api.request<SecretValue>('GET', `/secrets/${encodeURIComponent(uuid)}/value`);
   }
 
   // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export class VautrMlpClient {
    */
   auditList(query?: AuditListQuery): Promise<AuditEntry[]> {
     const qs = auditQueryString(query);
-    return this.api.request<AuditEntry[]>('GET', `/audit${qs}`);
+    return this.api.request<AuditEntry[]>('GET', `/audit${encodeURIComponent(qs)}`);
   }
 
   backupRestore(request: {
@@ -179,11 +179,11 @@ export class VautrMlpClient {
     uuid: string,
     request: MachineAccountUpdateRequest,
   ): Promise<MachineAccount> {
-    return this.api.request<MachineAccount>('PATCH', `/machine-accounts/${uuid}`, request);
+    return this.api.request<MachineAccount>('PATCH', `/machine-accounts/${encodeURIComponent(uuid)}`, request);
   }
 
   deleteMachineAccount(uuid: string): Promise<StatusResponse> {
-    return this.api.request<StatusResponse>('DELETE', `/machine-accounts/${uuid}`);
+    return this.api.request<StatusResponse>('DELETE', `/machine-accounts/${encodeURIComponent(uuid)}`);
   }
 
   listTokens(): Promise<AccessTokenListResponse> {
@@ -195,7 +195,7 @@ export class VautrMlpClient {
   }
 
   revokeToken(uuid: string): Promise<StatusResponse> {
-    return this.api.request<StatusResponse>('DELETE', `/tokens/${uuid}`);
+    return this.api.request<StatusResponse>('DELETE', `/tokens/${encodeURIComponent(uuid)}`);
   }
 
   // -------------------------------------------------------------------------
@@ -238,7 +238,7 @@ export class VautrMlpClient {
 
   /** Look up a user's published X25519 sharing public key. */
   getSharingPublicKey(userId: string): Promise<{ user_id: string; public_key: string }> {
-    return this.api.request('GET', `/users/${userId}/public-key`);
+    return this.api.request('GET', `/users/${encodeURIComponent(userId)}/public-key`);
   }
 
   /** Publish/replace our own sharing public key (caller must equal `userId`). */
@@ -246,7 +246,7 @@ export class VautrMlpClient {
     userId: string,
     publicKeyB64: string,
   ): Promise<{ user_id: string; public_key: string }> {
-    return this.api.request('PUT', `/users/${userId}/public-key`, { public_key: publicKeyB64 });
+    return this.api.request('PUT', `/users/${encodeURIComponent(userId)}/public-key`, { public_key: publicKeyB64 });
   }
 
   /** Create a 1:1 share: the KEM envelope (`wrapped_sik` + `ephemeral_public_key`). */
@@ -269,7 +269,7 @@ export class VautrMlpClient {
     itemUuid: string,
     payloadB64: string,
   ): Promise<{ share_id: string; status: string }> {
-    return this.api.request('POST', `/shares/${itemUuid}/payload`, { payload: payloadB64 });
+    return this.api.request('POST', `/shares/${encodeURIComponent(itemUuid)}/payload`, { payload: payloadB64 });
   }
 
   /** List shares waiting in our inbox. */
@@ -288,7 +288,7 @@ export class VautrMlpClient {
 
   /** Revoke a share we own. */
   revokeShare(itemUuid: string): Promise<{ share_id: string; status: string }> {
-    return this.api.request('DELETE', `/shares/${itemUuid}`);
+    return this.api.request('DELETE', `/shares/${encodeURIComponent(itemUuid)}`);
   }
 
   // -------------------------------------------------------------------------
@@ -307,7 +307,7 @@ export class VautrMlpClient {
     groupId: string,
     request: { member_uuid: string; wrapped_sik: string; ephemeral_public_key: string },
   ): Promise<{ group_id: string; status: string }> {
-    return this.api.request('POST', `/groups/${groupId}/members`, request);
+    return this.api.request('POST', `/groups/${encodeURIComponent(groupId)}/members`, request);
   }
 
   /** List groups the caller belongs to, with the member's wrapped Group SIK. */
@@ -334,7 +334,7 @@ export class VautrMlpClient {
       }>;
     },
   ): Promise<{ group_id: string; status: string }> {
-    return this.api.request('POST', `/groups/${groupId}/rotate`, request);
+    return this.api.request('POST', `/groups/${encodeURIComponent(groupId)}/rotate`, request);
   }
 
   /** Remove a member from a group. Admin-only. */
@@ -342,7 +342,7 @@ export class VautrMlpClient {
     groupId: string,
     memberUuid: string,
   ): Promise<{ group_id: string; status: string }> {
-    return this.api.request('DELETE', `/groups/${groupId}/members/${memberUuid}`);
+    return this.api.request('DELETE', `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberUuid)}`);
   }
 
   /** Upload a Group-SIK-encrypted item payload. Admin-only. */
@@ -350,14 +350,14 @@ export class VautrMlpClient {
     groupId: string,
     request: { item_uuid: string; payload: string },
   ): Promise<{ group_id: string; item_uuid: string; payload: string }> {
-    return this.api.request('POST', `/groups/${groupId}/items`, request);
+    return this.api.request('POST', `/groups/${encodeURIComponent(groupId)}/items`, request);
   }
 
   /** List a group's shared items (item_uuid + Group-SIK-encrypted payload). */
   listGroupItems(
     groupId: string,
   ): Promise<Array<{ group_id: string; item_uuid: string; payload: string }>> {
-    return this.api.request('GET', `/groups/${groupId}/items`);
+    return this.api.request('GET', `/groups/${encodeURIComponent(groupId)}/items`);
   }
 
   /** Remove an item from a group. Admin-only. */
@@ -365,7 +365,7 @@ export class VautrMlpClient {
     groupId: string,
     itemUuid: string,
   ): Promise<{ group_id: string; item_uuid: string; status: string }> {
-    return this.api.request('DELETE', `/groups/${groupId}/items/${itemUuid}`);
+    return this.api.request('DELETE', `/groups/${encodeURIComponent(groupId)}/items/${encodeURIComponent(itemUuid)}`);
   }
 }
 
@@ -408,5 +408,5 @@ function auditQueryString(query?: AuditListQuery): string {
   set('limit', query.limit);
   set('offset', query.offset);
   const s = params.toString();
-  return s ? `?${s}` : '';
+  return s ? `?${encodeURIComponent(s)}` : '';
 }

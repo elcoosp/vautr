@@ -53,6 +53,16 @@ export interface ApiClientOptions {
 
 /** JSON-capable HTTP client for the Vautr server. */
 export class ApiClient {
+
+  // VTRFIX-SEC-M28: session-expiry notification hook.
+  private lastExpiredNotice = 0;
+  private onSessionExpired: (() => void) | null = null;
+
+  /** Register a hook fired once per 30s on a 401/403 response. */
+  setSessionExpiredHandler(handler: (() => void) | null): void {
+    this.onSessionExpired = handler;
+  }
+
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly onRequestId: () => string;
@@ -103,6 +113,20 @@ export class ApiClient {
       }
     }
     if (!res.ok) {
+      // VTRFIX-SEC-M28: fire a session-expired hook on 401/403 so callers
+      // (web useSession, extension App) can bounce to the login screen. The
+      // hook is opt-in and guarded against loops by a 30s cooldown.
+      if (res.status === 401 || res.status === 403) {
+        const now = Date.now();
+        if (now - this.lastExpiredNotice > 30_000) {
+          this.lastExpiredNotice = now;
+          try {
+            this.onSessionExpired?.();
+          } catch {
+            // never let a subscriber break the request path
+          }
+        }
+      }
       throw this.toApiError(res.status, data);
     }
     return data as T;

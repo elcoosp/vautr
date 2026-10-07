@@ -139,6 +139,10 @@ export class VautrWebClient {
 
   // In-memory session material (cleared on lock).
   private svk: Uint8Array | null = null;
+  // VTRFIX-SEC-M33: TTL reaper for secret handles.
+  private handleTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly handleTtlMs = 60_000;
+  private readonly handleCreated = new Map<number, number>();
   // VTRFIX-BUG-H04: uuids that failed to decrypt/parse during pull.
   private quarantined = new Set<string>();
   // VTRFIX-SEC-C02: sharing + group key material is memory-only.
@@ -458,6 +462,7 @@ export class VautrWebClient {
   /** OPAQUE login → bearer token → recover SVK → unlock. */
   async login(username: string, password: string): Promise<void> {
     await this.crypto.ready();
+    this.ensureReaper();
 
     const start = this.crypto.opaqueLoginStart(password);
     const startResp = await this.api.request<{ login_response: string }>(
@@ -561,6 +566,28 @@ export class VautrWebClient {
     });
 
     this.emit({ type: 'SyncCompleted' });
+  }
+
+  /** VTRFIX-SEC-M33: start the handle TTL reaper (idempotent). */
+  private ensureReaper(): void {
+    if (this.handleTimer) return;
+    this.handleTimer = setInterval(() => {
+      const now = Date.now();
+      let expired = 0;
+      for (const [h, t] of this.handleCreated) {
+        if (now - t > this.handleTtlMs) {
+          this.handleCreated.delete(h);
+          this.handles.delete(String(h));
+          expired += 1;
+        }
+      }
+      if (expired > 0) {
+        this.emit({
+          type: 'SecretHandleExpired',
+          count: expired,
+        } as unknown as Parameters<typeof this.emit>[0]);
+      }
+    }, 15_000);
   }
 
   /** Lock: clear in-memory key material + handles; keep the session token. */
