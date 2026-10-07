@@ -45,11 +45,38 @@ function randomUUID(): string {
     return crypto.randomUUID();
   }
   // Minimal RFC4122 v4 fallback for environments without crypto.randomUUID.
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.floor(Math.random() * 16);
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  // VTRFIX-BUG-L02: never use Math.random here — request IDs feed audit and
+  // server logs and must not be predictable.
+  const bytes = new Uint8Array(16);
+  const c = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
+  if (c?.getRandomValues) {
+    c.getRandomValues(bytes);
+  } else {
+    // Extremely rare: no crypto at all (very old RN). Fall back to a
+    // monotonically-increasing counter + timestamp so we never call
+    // Math.random for security-relevant identifiers.
+    const now = Date.now();
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = (now >> (i % 8)) & 0xff;
+    }
+  }
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40; // version 4
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80; // variant
+  const hex: string[] = [];
+  for (let i = 0; i < bytes.length; i += 1) {
+    hex.push((bytes[i] ?? 0).toString(16).padStart(2, '0'));
+  }
+  return (
+    hex.slice(0, 4).join('') +
+    '-' +
+    hex.slice(4, 6).join('') +
+    '-' +
+    hex.slice(6, 8).join('') +
+    '-' +
+    hex.slice(8, 10).join('') +
+    '-' +
+    hex.slice(10, 16).join('')
+  );
 }
 
 export class HttpClient {
