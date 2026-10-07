@@ -92,7 +92,7 @@ pub(crate) struct LoginFinishResp {
 
 /// Hex-encoded SHA-256 of `bytes`. Used to hash single-use pending-MFA
 /// tokens so the DB never contains the raw secret (VTRFIX-SEC-C03).
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+pub fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(bytes);
