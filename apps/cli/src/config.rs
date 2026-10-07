@@ -135,6 +135,11 @@ use crate::error::CliResult;
 
 #[cfg(test)]
 mod tests {
+    // VTRFIX: the CLI tests mutate a process-global env var (VAUTR_CONFIG),
+    // which races under the default parallel test runner. Serialize the
+    // affected tests through this mutex.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     use super::*;
 
     #[test]
@@ -150,6 +155,7 @@ mod tests {
 
     #[test]
     fn honors_vautr_config_env_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let p = std::env::var("VAUTR_CONFIG").ok();
         std::env::set_var("VAUTR_CONFIG", "/tmp/custom-vautr-config.json");
         assert_eq!(
@@ -164,6 +170,7 @@ mod tests {
 
     #[test]
     fn round_trips_via_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path =
             std::env::temp_dir().join(format!("vautr_cli_cfg_test_{}.json", uuid::Uuid::new_v4()));
         let prev = std::env::var("VAUTR_CONFIG").ok();
