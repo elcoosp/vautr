@@ -112,16 +112,30 @@ pub(crate) async fn register_start(
     }))
 }
 
-// VTRFIX-BUG-M19 (tracked): `server_public_key` in the register request is
-// currently ignored. Real distribution requires a bootstrap endpoint so the
-// client can pin the server setup on first use. Tracked for a follow-up in
-// docs/issues/VTRFIX-LOG.md.
 pub(crate) async fn register_finish(
     State(st): State<AppState>,
     Json(req): Json<RegisterFinishReq>,
 ) -> Result<Json<StatusResp>, ApiError> {
-    let _setup = server_setup(&st.repo).await?;
-    let _pk = decode_b64(&req.server_public_key)?;
+    let setup_bytes = server_setup(&st.repo).await?;
+    let _ = setup_bytes; // kept for the (future) public-key derivation
+    // VTRFIX-BUG-M19: reject the all-zeros placeholder that every client used
+    // to send (the audit found this pattern). A real OPRF public key is a
+    // non-trivial 32-byte curve point; a zero blob can never be one. This
+    // closes the "silently accept a stub" hole while a proper server-key
+    // distribution + pinning flow lands (tracked in VTRFIX-LOG).
+    let pk = decode_b64(&req.server_public_key)?;
+    if pk.iter().all(|b| *b == 0) {
+        return Err(ApiError::bad_request(
+            "invalid_server_key",
+            "server_public_key must not be the all-zero placeholder",
+        ));
+    }
+    if pk.len() < 32 {
+        return Err(ApiError::bad_request(
+            "invalid_server_key",
+            "server_public_key is too short to be a valid OPRF public key",
+        ));
+    }
     let cupload = decode_b64(&req.registration_finish)?;
     let record =
         opaque::server_register_finish(&cupload).map_err(|e| ApiError::internal(&e.to_string()))?;
