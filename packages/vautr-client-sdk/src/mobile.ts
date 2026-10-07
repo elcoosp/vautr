@@ -93,6 +93,18 @@ export interface VautrNativeBridge {
    */
   login(serverUrl: string, username: string, password: string): Promise<NativeAuthResult>;
 
+  // ── VTRFIX-FEAT-H02: Emergency Recovery Kit (mobile) ─────────────────
+  /** Sign the server recovery-challenge nonce with the mnemonic-derived key. */
+  signRecoveryNonce(mnemonic: string, nonceB64: string): Promise<string>;
+  /** Derive the recovery Ed25519 public key from a mnemonic. */
+  recoveryPublicKey(mnemonic: string): Promise<Uint8Array>;
+  /** Unwrap the SVK from the server-stored RK blob using the mnemonic. */
+  recoverSvk(
+    mnemonic: string,
+    svkRkWrappedB64: string,
+    serverUserId: string,
+  ): Promise<Uint8Array>;
+
   // ── Sharing PKI (ADR-007 / sharing-pki.md §6) ────────────────────────
   // These run the zero-knowledge crypto in Rust; plaintext secret bytes are
   // returned only to native callers and never enter the JS heap.
@@ -141,6 +153,24 @@ export class MobileVautrClient {
 
   constructor(native: VautrNativeBridge) {
     this.native = native;
+  }
+
+  // ── VTRFIX-FEAT-H02: Emergency Recovery Kit ─────────────────────────
+  /** Sign the recovery-challenge nonce (base64) with the mnemonic-derived key. */
+  signRecoveryNonce(mnemonic: string, nonceB64: string): Promise<string> {
+    return this.native.signRecoveryNonce(mnemonic, nonceB64);
+  }
+  /** Derive the recovery Ed25519 public key from a mnemonic. */
+  recoveryPublicKey(mnemonic: string): Promise<Uint8Array> {
+    return this.native.recoveryPublicKey(mnemonic);
+  }
+  /** Unwrap the SVK from the server-stored RK blob using the mnemonic. */
+  recoverSvk(
+    mnemonic: string,
+    svkRkWrappedB64: string,
+    serverUserId: string,
+  ): Promise<Uint8Array> {
+    return this.native.recoverSvk(mnemonic, svkRkWrappedB64, serverUserId);
   }
 
   /** Unlock the vault with a raw 32-byte SVK (biometric path). */
