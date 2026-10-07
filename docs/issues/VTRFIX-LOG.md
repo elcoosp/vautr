@@ -53,3 +53,11 @@ See `git log --oneline` for the exact commit trail. Highlights:
 - **FEAT-H03** full pipeline needs a wasm-compatible feature split in
   `vautr-import`.
 - Mobile FEAT-H02 UI — needs FFI `sign_recovery_nonce`.
+
+### FEAT-H03 status update
+
+The `pipeline` feature is split out of `vautr-import` (default on). The
+`--no-default-features` build does not yet compile because the parser/translate
+surface still transitively references pipeline-only types. A full wasm-compatible
+split is a follow-up; the parser and translate logic themselves have no DB or
+tokio dependency, so the remaining work is mechanical gating.

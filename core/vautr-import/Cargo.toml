@@ -14,16 +14,29 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
-tokio.workspace = true
-sea-orm.workspace = true
 csv = "1.3"
-zip = "2"
-rayon = "1"
-tempfile = "3"
 vautr-domain.workspace = true
-vautr-db.workspace = true
 vautr-crypto.workspace = true
-vautr-keyring.workspace = true
+# VTRFIX-FEAT-H03: the DB + async pipeline is behind the (default) `pipeline`
+# feature so the translate/parser surface can compile to wasm32, where
+# sea-orm + tokio + sqlx do not.
+tokio = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+zip = { version = "2", optional = true }
+rayon = { version = "1", optional = true }
+tempfile = { version = "3", optional = true }
+vautr-db = { workspace = true, optional = true }
+vautr-keyring = { workspace = true, optional = true }
+
+[features]
+default = ["pipeline"]
+# The full ingest pipeline (needs a live SQLite DB + the crypto stack).
+pipeline = ["tokio", "sea-orm", "zip", "rayon", "tempfile", "vautr-db", "vautr-keyring"]
+# VTRFIX-FEAT-H03 (tracked): `--no-default-features` does NOT yet compile.
+# The parser + translate surface still transitively reference pipeline-only
+# types (`PathImportSource`, `run_pipeline`'s preflight helpers). A full
+# wasm-compatible split needs those gated too — tracked in
+# docs/issues/VTRFIX-LOG.md. The default build works and all tests pass.
 
 [dev-dependencies]
 tempfile = "3"
