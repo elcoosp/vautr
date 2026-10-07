@@ -27,25 +27,23 @@ async function ensureClient(): Promise<import('vautr-wasm').WebClient> {
 }
 
 function parseActionJson(json: string): CoreAction {
+  // VTRFIX-BUG-M15: handle both `CopyToClipboard` and `Autofill`. The previous
+  // version only recognized the former, so autofill requests always timed out.
   try {
     const parsed: unknown = JSON.parse(json);
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'CopyToClipboard' in parsed &&
-      (parsed as { CopyToClipboard: { handle: number } }).CopyToClipboard
-    ) {
-      return {
-        type: 'CopyToClipboard',
-        handle: String((parsed as { CopyToClipboard: { handle: number } }).CopyToClipboard.handle),
-      };
+    if (parsed && typeof parsed === 'object') {
+      if ('CopyToClipboard' in parsed) {
+        const v = (parsed as { CopyToClipboard: { handle: number } }).CopyToClipboard;
+        if (v) return { type: 'CopyToClipboard', handle: String(v.handle) };
+      }
+      if ('Autofill' in parsed) {
+        const v = (parsed as { Autofill: { handle: number } }).Autofill;
+        if (v) return { type: 'Autofill', handle: String(v.handle) };
+      }
     }
   } catch {
-    // Malformed action JSON must not silently degrade to a clipboard
-    // Autofill of handle '0' — surface the failure to the caller.
     throw new Error('Unknown action format');
   }
-  // Unreachable: the try returns on success and the catch throws on failure.
   throw new Error('Unknown action format');
 }
 
@@ -93,6 +91,14 @@ async function handle(request: WorkerRequest): Promise<void> {
         const envelope = c.encrypt_secret(request.args.uuid, request.args.encKeyGen, plaintext);
         respond(request.id, true, Array.from(envelope));
         break;
+      }
+      // VTRFIX-BUG-M15: an unknown method must respond, not silently hang the
+      // caller for the whole timeout budget.
+      default: {
+        // The request union is exhaustive at compile time; cast through
+        // unknown to describe the runtime shape we actually received.
+        const unknownReq = request as unknown as { id: string; method: string };
+        respond(unknownReq.id, false, undefined, `unknown method: ${unknownReq.method}`);
       }
     }
   } catch (error) {
