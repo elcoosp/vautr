@@ -18,8 +18,11 @@ services:
         VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:vautr.db}
     image: vautr/server:latest
     restart: unless-stopped
-    ports:
-      - "${VAUTR_PORT:-8080}:8080"
+    # VTRFIX-SEC-M14: do NOT publish plaintext 8080 in prod. Caddy fronts this
+    # service over the internal docker network. If you must expose the raw port
+    # for debugging, uncomment the line below on a trusted network only.
+    # ports:
+    #   - "${VAUTR_PORT:-8080}:8080"
     environment:
       VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:/data/vautr.db}
       RUST_LOG: ${RUST_LOG:-info}
