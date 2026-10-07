@@ -69,6 +69,7 @@ interface PushBatchResult {
 interface AccountStatus {
   min_enc_key_gen: number;
   svk_ciphertext_blob: string;
+  user_id?: string;
 }
 
 /** Plaintext content of an item payload (overview + secret, data.md §3.6). */

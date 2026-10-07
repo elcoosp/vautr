@@ -23,6 +23,8 @@ pub(crate) struct AccountStatusResp {
     /// when no second factor is required (mlp-wave-plan §3 A4).
     #[serde(skip_serializing_if = "Option::is_none")]
     second_factor_method: Option<String>,
+    /// VTRFIX-SEC-M02: server user id (used as AEAD AD for the SVK wrap).
+    user_id: String,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -68,6 +70,7 @@ pub(crate) async fn account_status(
                 svk_ciphertext_blob: String::new(),
                 second_factor_required: true,
                 second_factor_method: Some("webauthn".to_string()),
+                user_id: user_id.clone(),
             }));
         }
     }
@@ -99,6 +102,7 @@ pub(crate) async fn account_status(
         svk_ciphertext_blob: b64(&user.svk_ciphertext_blob),
         second_factor_required: second_factor_method.is_some(),
         second_factor_method,
+        user_id,
     }))
 }
 
