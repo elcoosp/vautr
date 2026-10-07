@@ -24,6 +24,31 @@ DROP TRIGGER IF EXISTS overviews_ad;
 DROP TRIGGER IF EXISTS overviews_au;
 "#;
 
+/// VTRFIX-BUG-M03: recreate the FTS5 virtual table + triggers. This is the
+/// same DDL as `migrate::SCHEMA` (lines 71-92). Kept inline so the ingest
+/// transaction can run the whole sequence — drop, insert, recreate, rebuild —
+/// atomically. A crash mid-sequence no longer leaves the FTS index dropped.
+const RECREATE_FTS_SQL: &str = r#"
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+    uuid UNINDEXED, overview_title, overview_subtitle, overview_urls,
+    content='item_overviews', content_rowid='rowid', tokenize="unicode61"
+);
+CREATE TRIGGER IF NOT EXISTS overviews_ai AFTER INSERT ON item_overviews BEGIN
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
+END;
+CREATE TRIGGER IF NOT EXISTS overviews_ad AFTER DELETE ON item_overviews BEGIN
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
+END;
+CREATE TRIGGER IF NOT EXISTS overviews_au AFTER UPDATE ON item_overviews BEGIN
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
+END;
+"#;
+
 /// Rebuild the (already recreated) FTS5 index from the content table.
 ///
 /// The FTS table uses external content (`content='item_overviews'`) whose column
@@ -45,26 +70,27 @@ pub async fn ingest(
         .await
         .map_err(|e| ImportFailure::Pipeline(format!("db init: {e}")))?;
 
-    // 1. Drop FTS5 index + triggers before the bulk insert.
-    db.execute_unprepared(DROP_FTS_SQL)
-        .await
-        .map_err(|e| ImportFailure::Pipeline(format!("drop fts: {e}")))?;
-
     let overviews: Vec<item_overview::ActiveModel> =
         items.iter().map(|e| e.overview.clone()).collect();
     let payloads: Vec<item_payload::ActiveModel> = items.iter().map(|e| e.payload.clone()).collect();
 
-    // 2. Single transaction with bulk insert.
+    // VTRFIX-BUG-M03: the entire drop→insert→recreate→rebuild sequence runs
+    // inside ONE transaction. Previously DROP and RECREATE were separate
+    // statements on the connection; a crash between them left the search
+    // index dropped until the next successful import.
     let txn = db
         .begin()
         .await
         .map_err(|e| ImportFailure::Pipeline(format!("begin txn: {e}")))?;
 
     let result = async {
-        // VTRFIX-BUG-C08: SQLite caps bound variables (often at 999). A single
-        // `insert_many` over the whole vault failed with "too many SQL
-        // variables" for large imports. 80 rows * ~10 cols = 800 binds, safely
-        // under the old 999 limit.
+        // 1. Drop FTS5 index + triggers inside the transaction.
+        txn.execute_unprepared(DROP_FTS_SQL)
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("drop fts: {e}")))?;
+
+        // 2. Chunked bulk inserts (VTRFIX-BUG-C08: SQLite caps bound variables
+        //    at ~999 on older builds; 80 rows * ~10 cols = 800 binds).
         const CHUNK: usize = 80;
         for chunk in overviews.chunks(CHUNK) {
             item_overview::Entity::insert_many(chunk.to_vec())
@@ -76,6 +102,15 @@ pub async fn ingest(
                 .exec(&txn)
                 .await?;
         }
+
+        // 3. Recreate FTS + triggers and bulk-rebuild the index, still inside
+        //    the same transaction.
+        txn.execute_unprepared(RECREATE_FTS_SQL)
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("recreate fts: {e}")))?;
+        txn.execute_unprepared(REBUILD_FTS_SQL)
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("rebuild fts: {e}")))?;
         Ok::<(), sea_orm::DbErr>(())
     }
     .await;
@@ -89,14 +124,6 @@ pub async fn ingest(
     txn.commit()
         .await
         .map_err(|e| ImportFailure::Pipeline(format!("commit txn: {e}")))?;
-
-    // 3. Recreate the FTS5 virtual table + triggers, then rebuild the index.
-    migrate::init(db)
-        .await
-        .map_err(|e| ImportFailure::Pipeline(format!("recreate fts: {e}")))?;
-    db.execute_unprepared(REBUILD_FTS_SQL)
-        .await
-        .map_err(|e| ImportFailure::Pipeline(format!("rebuild fts: {e}")))?;
 
     Ok(())
 }
