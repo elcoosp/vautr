@@ -228,3 +228,25 @@ impl Repository {
             .unwrap_or(false))
     }
 }
+
+impl Repository {
+    /// VTRFIX-FEAT-H02: read a recovery session without consuming it.
+    /// Used by `/account/recover/info` to hand the client the RK-wrapped blob
+    /// before `/complete` consumes the token.
+    pub async fn peek_recovery_session(
+        &self,
+        token: &str,
+    ) -> Result<Option<(String, i64)>, sqlx::Error> {
+        let row: Option<(String, i64)> = sqlx::query_as(
+            "SELECT user_id, expires_at FROM recovery_sessions \
+             WHERE token = ? AND one_time_use = 1",
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await?;
+        match row {
+            Some((uid, exp)) if exp > crate::handlers::now_ms() => Ok(Some((uid, exp))),
+            _ => Ok(None),
+        }
+    }
+}

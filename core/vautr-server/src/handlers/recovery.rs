@@ -33,6 +33,9 @@ pub fn routes() -> Router<AppState> {
         // VTRFIX-SEC-H09: POST (email in body) so the nonce is bound to a user.
         .route("/account/recover/challenge", post(recover_challenge))
         .route("/account/recover/verify", post(recover_verify))
+        // VTRFIX-FEAT-H02: return the RK-wrapped SVK so the client can unwrap it
+        // with the mnemonic before calling /recover/complete.
+        .route("/account/recover/info", post(recover_info))
         .route("/account/recover/complete", post(recover_complete))
         .route("/account/reclaim", post(reclaim))
         .route("/account/reclaim/confirm", post(reclaim_confirm))
@@ -729,4 +732,49 @@ mod tests {
                 .unwrap();
         assert!(row.0.is_none(), "reclaim token cleared");
     }
+}
+
+// ---------------------------------------------------------------------------
+// VTRFIX-FEAT-H02: recovery info
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub(crate) struct RecoverInfoReq {
+    recovery_token: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct RecoverInfoResp {
+    /// base64 of the current `svk_ciphertext_blob_rk` (RK-wrapped SVK).
+    svk_ciphertext_blob_rk: String,
+    /// Server user id (needed as AD for the unwrap).
+    user_id: String,
+}
+
+/// `POST /account/recover/info` — after /recover/verify succeeds, the client
+/// needs the current RK-wrapped SVK blob so it can unwrap the SVK with the
+/// mnemonic and re-wrap it under a new password. This route returns that blob
+/// gated on the recovery token.
+pub(crate) async fn recover_info(
+    State(st): State<AppState>,
+    Json(req): Json<RecoverInfoReq>,
+) -> Result<Json<RecoverInfoResp>, ApiError> {
+    let Some((user_id, _)) = st
+        .repo
+        .peek_recovery_session(&req.recovery_token)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    else {
+        return Err(ApiError::unauthorized());
+    };
+    let user = st
+        .repo
+        .get_user_by_id(&user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .ok_or_else(|| ApiError::unauthorized())?;
+    Ok(Json(RecoverInfoResp {
+        svk_ciphertext_blob_rk: b64(&user.svk_ciphertext_blob_rk),
+        user_id,
+    }))
 }
