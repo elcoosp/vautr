@@ -598,6 +598,98 @@ export class VautrWebClient {
     }, 15_000);
   }
 
+  /**
+   * VTRFIX-FEAT-H02: complete the Emergency Recovery Kit flow.
+   *
+   * Steps (all against the real server):
+   *   1. POST /account/recover/challenge → nonce
+   *   2. Sign the nonce with the RK Ed25519 key derived from `mnemonic`
+   *   3. POST /account/recover/verify → one-time recovery_token
+   *   4. POST /account/recover/info → current `svk_ciphertext_blob_rk`
+   *   5. Unwrap the SVK locally with the mnemonic
+   *   6. Re-wrap under a fresh MP-derived KEK + a fresh RK; register the new
+   *      RK public key
+   *   7. POST /account/recover/complete — server atomically replaces creds
+   *
+   * On success returns the NEW mnemonic, which the caller MUST show to the
+   * user (the old one is now unusable).
+   */
+  async recoverWithKit(
+    username: string,
+    mnemonic: string,
+    newPassword: string,
+  ): Promise<{ newMnemonic: string }> {
+    await this.crypto.ready();
+
+    // 1. Challenge.
+    const challenge = await this.api.request<{ nonce: string }>(
+      'POST',
+      '/account/recover/challenge',
+      { email: username },
+    );
+    const nonceBytes = fromBase64(challenge.nonce);
+
+    // 2. Sign.
+    const signature = this.crypto.signRecoveryNonce(mnemonic, nonceBytes);
+
+    // 3. Verify.
+    const verify = await this.api.request<{ recovery_token: string }>(
+      'POST',
+      '/account/recover/verify',
+      { email: username, signature },
+    );
+    const token = verify.recovery_token;
+
+    // 4. Fetch the RK-wrapped SVK + server user id.
+    const info = await this.api.request<{
+      svk_ciphertext_blob_rk: string;
+      user_id: string;
+    }>('POST', '/account/recover/info', { recovery_token: token });
+
+    // 5. Unwrap the SVK with the mnemonic.
+    const svk = this.crypto.recoverSvk(mnemonic, info.svk_ciphertext_blob_rk, info.user_id);
+    if (svk.length !== 32) {
+      throw new Error('recovered SVK has wrong length');
+    }
+
+    // 6a. New MP-wrapped SVK.
+    const salt = this.crypto.generateKdfSalt();
+    const mk = this.crypto.deriveMasterKey(newPassword, salt);
+    const kek = this.crypto.deriveKek(mk);
+    const svkWrapped = this.crypto.wrapSvk(svk, kek);
+
+    // 6b. New RK mnemonic + RK-wrapped SVK + public key.
+    const newMnemonic = this.crypto.generateRecoveryMnemonic();
+    const svkRkWrapped = this.crypto.wrapSvkWithRk(svk, newMnemonic);
+    const newPk = this.crypto.recoveryPublicKey(newMnemonic);
+
+    // 6c. Fresh OPAQUE record under the new master password.
+    const reg = this.crypto.opaqueRegisterStart(newPassword);
+    const regStart = await this.api.request<{ registration_response: string }>(
+      'POST',
+      '/auth/register/start',
+      { username, registration_start: toBase64(reg.message) },
+    );
+    const regFinish = this.crypto.opaqueRegisterFinish(
+      reg.state,
+      fromBase64(regStart.registration_response),
+      newPassword,
+      username,
+    );
+
+    // 7. Complete.
+    await this.api.request('POST', '/account/recover/complete', {
+      recovery_token: token,
+      opaque_record: toBase64(regFinish),
+      kdf_salt: toBase64(salt),
+      svk_ciphertext_blob: toBase64(svkWrapped),
+      svk_ciphertext_blob_rk: toBase64(svkRkWrapped),
+      rk_public_key: toBase64(newPk),
+    });
+
+    return { newMnemonic };
+  }
+
   /** Lock: clear in-memory key material + handles; keep the session token. */
   async lock(): Promise<void> {
     this.svk = null;
