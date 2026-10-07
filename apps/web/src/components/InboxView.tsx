@@ -1,3 +1,5 @@
+// VTRFIX-SEC-L08 (tracked): decrypted share plaintext should not sit in React state.
+
 import { Inbox } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/EmptyState';

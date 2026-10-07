@@ -1,3 +1,5 @@
+// VTRFIX-SEC-L08 (tracked): decrypted share plaintext should not sit in React state.
+
 import type { VautrMlpClient } from '@vautr/client-sdk';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import { Inbox } from 'lucide-react';

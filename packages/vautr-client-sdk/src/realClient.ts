@@ -312,13 +312,21 @@ export class VautrWebClient {
   subscribeVaultEvents(): () => void {
     let closed = false;
     let abort: AbortController | null = null;
+    // VTRFIX-SEC-L07: exponential backoff with jitter for SSE reconnects.
+    let attempt = 0;
+    const nextDelay = (): number => {
+      const base = Math.min(30_000, 1000 * 2 ** attempt);
+      const jitter = Math.floor(Math.random() * 500);
+      attempt += 1;
+      return base + jitter;
+    };
 
     const connect = async (): Promise<void> => {
       if (closed) return;
       const token = this.api.getToken();
       if (!token) {
         // Not logged in yet; retry shortly.
-        if (!closed) setTimeout(() => void connect(), 2000);
+        if (!closed) setTimeout(() => connect(), nextDelay());
         return;
       }
       abort = new AbortController();
