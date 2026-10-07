@@ -336,3 +336,26 @@ mod tests {
         assert!(is_crash_reporting_enabled());
     }
 }
+
+/// VTRFIX-FEAT-M03: strip anything that looks like a token, base64 key, or
+/// password from a text blob before it is sent off the machine. Exposed for
+/// the desktop/web/mobile reporter integrations to reuse.
+pub fn scrub_for_crash_report(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut token_len = 0usize;
+    for c in raw.chars() {
+        if c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=' || c == '-' || c == '_' {
+            token_len += 1;
+        } else {
+            if token_len >= 24 {
+                out.push_str("[REDACTED]");
+            }
+            token_len = 0;
+            out.push(c);
+        }
+    }
+    if token_len >= 24 {
+        out.push_str("[REDACTED]");
+    }
+    out
+}

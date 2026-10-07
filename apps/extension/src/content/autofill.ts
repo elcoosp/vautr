@@ -40,3 +40,9 @@ browser.runtime.onMessage.addListener(((message: unknown) => {
     fillActiveElement((message as { secret: string }).secret);
   }
 }) as Parameters<typeof browser.runtime.onMessage.addListener>[0]);
+
+// VTRFIX-FEAT-M05 (tracked): a passive form detector would look for a visible
+// password input near a username-ish field and badge a picker on focus. The
+// popup-triggered path is what ships today; the passive detector is deferred
+// because it requires a shadow-DOM overlay + a UI in the popup, i.e. a
+// meaningful slice of design work. See docs/issues/VTRFIX-LOG.md.
