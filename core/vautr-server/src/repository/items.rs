@@ -105,7 +105,7 @@ impl Repository {
             // VTRFIX-BUG-C03: assign a fresh per-user seq at insert time.
             // COALESCE(MAX(seq),0)+1 in the same statement avoids a race with
             // concurrent inserts for the same user (SQLite serializes writes).
-            sqlx::query(
+            let res = sqlx::query(
                 "INSERT INTO items (uuid, user_id, version, enc_key_gen, deleted_date, payload, updated_at, seq) \
                  VALUES (?, ?, 1, ?, ?, ?, ?, \
                    (SELECT COALESCE(MAX(seq), 0) + 1 FROM items WHERE user_id = ?))",
@@ -118,13 +118,21 @@ impl Repository {
             .bind(now)
             .bind(user_id)
             .execute(&self.pool)
-            .await?;
-            // VTRFIX-BUG-M04 (tracked): a concurrent create that races to a
-            // UNIQUE violation surfaces as a raw DbErr (500) instead of a 409
-            // Conflict. Detecting the specific SQLite error code reliably and
-            // mapping it here is a targeted follow-up; see
-            // docs/issues/VTRFIX-LOG.md.
-            UpsertOutcome::Updated
+            .await;
+            // VTRFIX-BUG-M04: a concurrent create races to a UNIQUE violation
+            // on (uuid, user_id). Map that specific error to Conflict (409);
+            // any other error must propagate.
+            match res {
+                Ok(_) => UpsertOutcome::Updated,
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("UNIQUE constraint failed") {
+                        UpsertOutcome::Conflict
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         } else {
             UpsertOutcome::Conflict
         })
