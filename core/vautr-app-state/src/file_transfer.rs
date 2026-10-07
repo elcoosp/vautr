@@ -71,6 +71,40 @@ pub trait FileTransport: Send + Sync {
 /// itself does not check it. Full decoupling (storing `fek_wrapped` in the
 /// manifest so rotation doesn't break attachments) is a schema migration
 /// tracked in docs/issues/VTRFIX-LOG.md.
+/// VTRFIX-SEC-M10: wrap the FEK under the SVK using the file_uuid as AEAD AD.
+///
+/// The wrapped blob is stored on the manifest so SVK rotation re-wraps only
+/// this envelope (not the FEK itself), leaving existing chunk ciphertexts
+/// decryptable.
+fn wrap_fek(svk: &[u8; 32], file_uuid: &Uuid, fek: &[u8; 32]) -> Vec<u8> {
+    vautr_crypto::aead::encrypt(svk, file_uuid, 0, fek).unwrap_or_default()
+}
+
+/// VTRFIX-SEC-M10: unwrap the FEK from the manifest's `fek_wrapped` blob.
+fn unwrap_fek(svk: &[u8; 32], file_uuid: &Uuid, wrapped: &[u8]) -> Option<Zeroizing<[u8; 32]>> {
+    let pt = vautr_crypto::aead::decrypt(svk, file_uuid, 0, wrapped).ok()?;
+    if pt.len() != 32 {
+        return None;
+    }
+    let mut out = Zeroizing::new([0u8; 32]);
+    out.copy_from_slice(&pt);
+    Some(out)
+}
+
+/// VTRFIX-SEC-M10: FEK resolution order:
+///   1. If the manifest carries a `fek_wrapped` blob, unwrap it under the SVK.
+///   2. Otherwise fall back to the legacy `derive_fek(svk, file_uuid)`.
+/// Legacy manifests (uploaded before this fix) keep working; new uploads
+/// always set `fek_wrapped`, so rotation no longer breaks attachments.
+fn resolve_fek(svk: &[u8; 32], manifest: &FileManifest) -> Option<Zeroizing<[u8; 32]>> {
+    if let Some(w) = manifest.fek_wrapped.as_deref() {
+        if let Some(k) = unwrap_fek(svk, &manifest.file_uuid, w) {
+            return Some(k);
+        }
+    }
+    Some(derive_fek(svk, &manifest.file_uuid))
+}
+
 fn derive_fek(svk: &[u8; 32], file_uuid: &Uuid) -> Zeroizing<[u8; 32]> {
     let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, svk);
     let mut okm = Zeroizing::new([0u8; 32]);
@@ -139,7 +173,7 @@ pub async fn upload_bytes(
         last_modified: i64,
     ) -> Result<FileManifest, String> {
         let file_uuid = Uuid::new_v4();
-        let manifest = FileManifest::new(
+        let mut manifest = FileManifest::new(
             file_uuid,
             plaintext.len() as u64,
             0, // FEK is independent of enc_key_gen; placeholder 0 per §2.2
@@ -150,8 +184,10 @@ pub async fn upload_bytes(
             .validate()
             .map_err(|e| format!("manifest validate: {e}"))?;
 
-        // 1. Encrypt the whole plaintext stream to chunk ciphertext.
+        // VTRFIX-SEC-M10: derive the FEK and wrap it under the SVK so the
+        // manifest carries a rewrappable envelope.
         let fek = derive_fek(svk, &file_uuid);
+        manifest.fek_wrapped = Some(wrap_fek(svk, &file_uuid, &fek));
         let mut ct = Vec::new();
         encrypt_file_stream(
             futures_util::io::Cursor::new(plaintext),
@@ -201,7 +237,8 @@ pub async fn upload_bytes(
         svk: &[u8; 32],
         manifest: &FileManifest,
     ) -> Result<Vec<u8>, String> {
-        let fek = derive_fek(svk, &manifest.file_uuid);
+        // VTRFIX-SEC-M10: prefer the wrapped FEK, fall back to derive.
+        let fek = resolve_fek(svk, manifest).ok_or_else(|| "FEK resolve failed".to_string())?;
         let mut ciphertext = Vec::new();
         for index in 0..manifest.total_chunks {
             let chunk = self

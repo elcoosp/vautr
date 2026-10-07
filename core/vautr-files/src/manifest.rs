@@ -32,6 +32,12 @@ pub struct FileManifest {
     pub content_type: String,
     pub last_modified: i64,
     pub status: AttachmentState,
+    /// VTRFIX-SEC-M10: the per-file FEK wrapped under the SVK, so attachments
+    /// survive an SVK rotation (the FEK itself does not change; only the
+    /// wrapper does). `None` on legacy manifests, which fall back to the
+    /// original HKDF-derived FEK (`derive_fek`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fek_wrapped: Option<Vec<u8>>,
 }
 
 impl FileManifest {
@@ -58,6 +64,7 @@ impl FileManifest {
             content_type,
             last_modified,
             status: AttachmentState::PendingUpload,
+            fek_wrapped: None,
         }
     }
 
