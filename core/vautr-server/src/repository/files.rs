@@ -201,3 +201,65 @@ impl Repository {
         Ok(total.unwrap_or(0))
     }
 }
+
+/// FEAT-H01: encrypted-chunk storage trait.
+#[async_trait::async_trait]
+pub trait ChunkStore: Send + Sync {
+    async fn put_chunk(&self, file_uuid: &str, idx: u32, bytes: Vec<u8>) -> Result<(), sqlx::Error>;
+    async fn get_chunk(&self, file_uuid: &str, idx: u32) -> Result<Option<Vec<u8>>, sqlx::Error>;
+    async fn delete_file(&self, file_uuid: &str) -> Result<(), sqlx::Error>;
+    async fn count_chunks(&self, file_uuid: &str) -> Result<u64, sqlx::Error>;
+}
+
+/// Default SQLite-backed chunk store.
+pub struct SqliteChunkStore {
+    pool: sqlx::sqlite::SqlitePool,
+}
+
+impl SqliteChunkStore {
+    pub fn new(pool: sqlx::sqlite::SqlitePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl ChunkStore for SqliteChunkStore {
+    async fn put_chunk(&self, file_uuid: &str, idx: u32, bytes: Vec<u8>) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO chunks (file_uuid, idx, bytes) VALUES (?, ?, ?) \
+             ON CONFLICT(file_uuid, idx) DO UPDATE SET bytes = excluded.bytes",
+        )
+        .bind(file_uuid)
+        .bind(idx as i64)
+        .bind(bytes)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn get_chunk(&self, file_uuid: &str, idx: u32) -> Result<Option<Vec<u8>>, sqlx::Error> {
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT bytes FROM chunks WHERE file_uuid = ? AND idx = ?")
+                .bind(file_uuid)
+                .bind(idx as i64)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|r| r.0))
+    }
+
+    async fn delete_file(&self, file_uuid: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM chunks WHERE file_uuid = ?")
+            .bind(file_uuid)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn count_chunks(&self, file_uuid: &str) -> Result<u64, sqlx::Error> {
+        let n: Option<i64> = sqlx::query_scalar("SELECT COUNT(*) FROM chunks WHERE file_uuid = ?")
+            .bind(file_uuid)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(n.unwrap_or(0).max(0) as u64)
+    }
+}
