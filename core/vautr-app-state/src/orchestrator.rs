@@ -1016,7 +1016,11 @@ impl VautrClient {
     /// writer. The export is **blocked** when the vault is locked or in a
     /// Read-Only gate (requires re-authentication) — reported as an
     /// `EpochMismatch` failure.
-    pub async fn export_vault(
+    // VTRFIX-BUG-M14 (tracked): export_vault currently buffers the entire
+// decrypted vault in memory. A streaming rewrite is deferred to a follow-up;
+// the current caps (MAX_ITEMS_PER_CHUNK et al.) bound peak memory for typical
+// vaults. See docs/issues/VTRFIX-LOG.md.
+pub async fn export_vault(
         &self,
         format: vautr_export::ExportFormat,
         path: &str,

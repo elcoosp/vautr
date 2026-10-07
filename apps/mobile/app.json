@@ -20,14 +20,22 @@
     },
     "android": {
       "package": "com.vautr.mobile",
-      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT"]
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ],
+      "allowBackup": false
     },
     "autolinking": {
       "android": {
-        "modules": ["@vautr/native"]
+        "modules": [
+          "@vautr/native"
+        ]
       },
       "ios": {
-        "modules": ["@vautr/native"]
+        "modules": [
+          "@vautr/native"
+        ]
       }
     },
     "plugins": [
@@ -38,6 +46,7 @@
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "_vtrfix_note": "VTRFIX-SEC-M29: android.allowBackup=false"
   }
 }

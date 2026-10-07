@@ -112,6 +112,10 @@ pub(crate) async fn register_start(
     }))
 }
 
+// VTRFIX-BUG-M19 (tracked): `server_public_key` in the register request is
+// currently ignored. Real distribution requires a bootstrap endpoint so the
+// client can pin the server setup on first use. Tracked for a follow-up in
+// docs/issues/VTRFIX-LOG.md.
 pub(crate) async fn register_finish(
     State(st): State<AppState>,
     Json(req): Json<RegisterFinishReq>,
