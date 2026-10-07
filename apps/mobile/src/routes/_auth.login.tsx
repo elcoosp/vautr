@@ -34,6 +34,11 @@ function LoginScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // VTRFIX-FEAT-H02: emergency recovery flow.
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [recoverMnemonic, setRecoverMnemonic] = useState('');
+  const [recoverNewPassword, setRecoverNewPassword] = useState('');
+  const [recoverNewMnemonic, setRecoverNewMnemonic] = useState<string | null>(null);
 
   const submit = async () => {
     if (!username || !password) {

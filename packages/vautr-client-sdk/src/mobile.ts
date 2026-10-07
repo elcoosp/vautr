@@ -445,3 +445,10 @@ export async function initializeVautrCore(
 export function getMobileClient(): MobileVautrClient | null {
   return activeClient;
 }
+
+/** VTRFIX-FEAT-H02: recovery surface added to the mobile client. */
+export interface MobileRecoverySurface {
+  signRecoveryNonce(mnemonic: string, nonceB64: string): Promise<string>;
+  recoveryPublicKey(mnemonic: string): Promise<Uint8Array>;
+  recoverSvk(mnemonic: string, wrappedB64: string, userId: string): Promise<Uint8Array>;
+}
