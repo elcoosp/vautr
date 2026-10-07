@@ -18,7 +18,13 @@
     "./mobile": {
       "types": "./dist/mobile.d.ts",
       "default": "./dist/mobile.js"
-    }
+    },
+    "./storage": "./src/storage.ts",
+    "./extension": "./src/extension.ts",
+    "./api": "./src/api.ts",
+    "./crypto": "./src/crypto.ts",
+    "./generator": "./src/generator.ts",
+    "./webauthn": "./src/webauthn.ts"
   },
   "files": [
     "dist"
