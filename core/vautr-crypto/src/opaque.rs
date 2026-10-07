@@ -27,6 +27,7 @@ use sha2::Sha512;
 #[derive(Clone, Copy)]
 pub struct VautrSuite;
 
+/// Argon2id KSF with the documented 64 MiB / t=3 / p=4 parameters.
 #[derive(Clone, Copy, Default)]
 pub struct VautrKsf;
 

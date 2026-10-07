@@ -44,7 +44,7 @@ pub fn parse_stream(
             let mut records: VecDeque<Result<ParseRecord, String>> = VecDeque::new();
             let mut line_no = 0u32;
             let mut buf = String::new();
-            let mut flush = |buf: &mut String,
+            let flush = |buf: &mut String,
                              line: u32,
                              records: &mut VecDeque<Result<ParseRecord, String>>| {
                 let trimmed = buf.trim();

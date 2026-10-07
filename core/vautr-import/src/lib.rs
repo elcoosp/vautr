@@ -10,12 +10,14 @@
 //! or hostile, and individual record failures are accumulated in an
 //! [`ImportReport`] rather than aborting the whole import.
 
+#[cfg(feature = "pipeline")]
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "pipeline")]
 use sea_orm::{DatabaseConnection, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "pipeline")]
 use zeroize::Zeroizing;
 
 pub mod error;

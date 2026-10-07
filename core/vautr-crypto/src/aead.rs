@@ -36,6 +36,7 @@ use zeroize::Zeroizing;
 /// random nonce — negligible and matching the documented migration policy).
 pub const ENVELOPE_MAGIC: [u8; 4] = [0x56, 0x41, 0x55, 0x54]; // "VAUT"
 pub const ENVELOPE_VERSION: u8 = 0x01;
+/// Suite identifier for XChaCha20-Poly1305 under the enveloped format.
 pub const ENVELOPE_SUITE_XCHACHA20POLY1305: u8 = 0x01;
 /// Bytes preceding the nonce in the enveloped format.
 pub const ENVELOPE_PREFIX_LEN: usize = 6; // magic(4) + ver(1) + suite(1)
