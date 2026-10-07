@@ -572,7 +572,7 @@ impl VautrClient {
                 receipt: 0,
                 original_state: crate::event_bus::RevertibleState::Deleted(DecryptedOverview {
                     uuid,
-                    title: String::new(),
+                    title: String::new(), // populated by the caller when known
                     subtitle: String::new(),
                     icon_key: String::new(),
                     urls: Vec::new(),

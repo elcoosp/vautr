@@ -116,7 +116,7 @@ pub async fn recent_overviews(
         SELECT uuid, overview_title, overview_subtitle,
                overview_icon_key, overview_urls, updated_at
         FROM item_overviews
-        ORDER BY updated_at DESC
+        ORDER BY updated_at DESC, created_at DESC /* VTRFIX-BUG-L01 */
         LIMIT ?
     "#;
     let stmt =

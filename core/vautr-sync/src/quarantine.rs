@@ -135,6 +135,7 @@ pub fn spawn_quarantine_reaper(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(QUARANTINE_TICK);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay); // VTRFIX-BUG-L14
         let mut consecutive_failures: u32 = 0;
         loop {
             interval.tick().await;
@@ -160,10 +161,17 @@ pub fn spawn_quarantine_reaper(
                 let mut guard = quarantine.lock().await;
                 evaluate(&mut guard, &meta)
             };
+            // VTRFIX-BUG-L04: keep reaping even if one event send fails.
+            // Track consecutive failures and abort only when a long streak
+            // suggests the subscriber is gone for good.
             for ev in events {
                 if tx.send(ev).await.is_err() {
-                    // No live subscriber (UI dropped). Stop the reaper.
-                    return;
+                    consecutive_failures = consecutive_failures.saturating_add(1);
+                    if consecutive_failures >= 5 {
+                        return;
+                    }
+                } else {
+                    consecutive_failures = 0;
                 }
             }
         }

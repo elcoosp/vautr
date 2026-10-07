@@ -74,7 +74,7 @@ export const EMPTY_STATE: StoredState = {
   kdfSalt: null,
   localKeyGen: 1,
   cursor: 0,
-  minEncKeyGen: 1,
+  minEncKeyGen: 0, // VTRFIX-BUG-L08: align with Rust EpochState::new()
   sessionToken: null,
   svkWrapped: null,
   svk: null,

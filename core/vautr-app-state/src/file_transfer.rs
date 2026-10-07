@@ -119,7 +119,9 @@ impl FileTransferWorker {
 
     /// Upload `plaintext` as a new attachment (§4.1). Returns the finalized
     /// manifest (status `Available`).
-    pub async fn upload_bytes(
+    // VTRFIX-BUG-L11: on failure the caller should DELETE the manifest; the
+// server-side DELETE route ships with FEAT-H01.
+pub async fn upload_bytes(
         &self,
         svk: &[u8; 32],
         plaintext: &[u8],

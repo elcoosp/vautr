@@ -65,7 +65,7 @@ pub fn prepare_search(raw: &str) -> PreparedSearch {
         if bare.is_empty() {
             continue;
         }
-        if bare.as_str().len() <= 2 && token.contains('*') {
+        if bare.as_str().chars().count() <= 2 /* VTRFIX-BUG-L03 */ && token.contains('*') {
             // A 1-2 char stem with a wildcard is useless noise; skip it but it
             // was already flagged as a scan above if leading.
             continue;

@@ -42,6 +42,7 @@ pub const TICK: Duration = Duration::from_secs(10);
 pub fn spawn_reaper(table: HandleTable) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(TICK);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay); // VTRFIX-BUG-L14
         loop {
             interval.tick().await;
             let now = Instant::now();
