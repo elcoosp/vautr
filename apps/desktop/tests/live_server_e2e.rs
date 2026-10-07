@@ -249,7 +249,8 @@ async fn fresh_user(pw: &str) -> (String, String, Arc<VautrClient>) {
         .expect("login should succeed");
 
     let db_path = temp_db_path();
-    let client = state::build_client(&db_path, &base, &login.session_token)
+    let token_str = login.session_token.as_deref().expect("session token");
+    let client = state::build_client(&db_path, &base, token_str)
         .await
         .expect("build_client should succeed");
 
@@ -272,7 +273,7 @@ async fn fresh_user(pw: &str) -> (String, String, Arc<VautrClient>) {
         )
         .await
         .expect("unlock should succeed");
-    (user, login.session_token, client)
+    (user, login.session_token.unwrap_or_default(), client)
 }
 
 /// Full end-to-end: register → login → unlock → add → search → reveal.
@@ -301,7 +302,7 @@ async fn full_auth_add_reveal_roundtrip() {
         .login(&user, pw, &reg.kdf_salt)
         .await
         .expect("login should succeed");
-    assert!(!login.session_token.is_empty(), "must have a session token");
+    assert!(login.session_token.is_some(), "must have a session token");
     assert!(!login.wrapped_svk.is_empty(), "must have a wrapped SVK");
     assert!(
         login.min_enc_key_gen >= 1,
@@ -310,7 +311,8 @@ async fn full_auth_add_reveal_roundtrip() {
 
     // ── Build real VautrClient with SQLite ─────────────────────────────
     let db_path = temp_db_path();
-    let client = state::build_client(&db_path, &base, &login.session_token)
+    let token_str = login.session_token.as_deref().expect("session token");
+    let client = state::build_client(&db_path, &base, token_str)
         .await
         .expect("build_client should succeed");
 
@@ -446,7 +448,7 @@ async fn projects_and_secrets_roundtrip() {
         .login(&user, pw, &reg.kdf_salt)
         .await
         .expect("login should succeed");
-    let token = login.session_token.clone();
+    let token = login.session_token.clone().expect("session token");
     let dek = derive_dek(pw, &reg.kdf_salt, &login.wrapped_svk);
 
     let api = ApiClient::new(&base);
