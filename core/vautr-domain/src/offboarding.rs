@@ -27,8 +27,18 @@ pub struct OffboardingScope {
 }
 
 impl Default for OffboardingScope {
+    /// VTRFIX-BUG-M17: default to the *minimal* scope. The doc previously
+    /// said default = REVOKE_ALL while the old impl also used REVOKE_ALL —
+    /// but a caller that forgot to configure a scope should NOT nuke every
+    /// credential. Explicit `REVOKE_ALL` remains available.
     fn default() -> Self {
-        Self::REVOKE_ALL
+        Self {
+            revoke_org_role: true,
+            revoke_project_access: false,
+            revoke_group_memberships: false,
+            revoke_sessions: false,
+            revoke_sharing_keys: false,
+        }
     }
 }
 
