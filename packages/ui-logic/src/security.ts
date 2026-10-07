@@ -312,3 +312,19 @@ export function validateApiBase(raw: string | undefined | null): string | null {
     return null;
   }
 }
+
+/**
+ * VTRFIX-SEC-M23: copy `text` and schedule a clipboard clear. Web browsers
+ * cannot zeroize the clipboard history, so we overwrite with an empty string
+ * after `clearAfterMs`. Returns a cancellation handle.
+ */
+export function copySecret(
+  text: string,
+  clearAfterMs = 30_000,
+): { cancel: () => void } {
+  void navigator.clipboard?.writeText(text);
+  const t = setTimeout(() => {
+    void navigator.clipboard?.writeText('');
+  }, clearAfterMs);
+  return { cancel: () => clearTimeout(t) };
+}

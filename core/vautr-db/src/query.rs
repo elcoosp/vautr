@@ -205,8 +205,12 @@ pub async fn list_enc_key_gens(
     // VTRFIX-BUG-C06: ORDER BY is mandatory — without it the rotation loop's
     // "advance the cursor to last+1" heuristic skipped items with lower gens
     // behind the cursor, permanently losing them.
+    // VTRFIX-BUG-M05: an overview row without a payload (metadata-only item)
+    // would decode NULL into a non-Option Vec<u8> and fail the whole query.
+    // Filter those rows out at SQL level — the caller only needs payloads.
     let sql = "SELECT o.uuid, o.enc_key_gen, p.payload \
-               FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid \
+               FROM item_overviews o INNER JOIN item_payloads p ON p.uuid = o.uuid \
+               WHERE p.payload IS NOT NULL \
                ORDER BY o.enc_key_gen ASC";
     let stmt = Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
     let rows = EncKeyGenRow::find_by_statement(stmt)

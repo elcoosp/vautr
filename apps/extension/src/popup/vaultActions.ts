@@ -101,3 +101,21 @@ export async function clearSvkForSw(): Promise<void> {
     // Non-critical.
   }
 }
+
+/**
+ * VTRFIX-SEC-M21: on lock/logout, clear the SVK from the SW session store and
+ * restrict chrome.storage.session access to trusted extension contexts.
+ */
+export async function secureLock(): Promise<void> {
+  await clearSvkForSw();
+  await clearCiphertextCache();
+  try {
+    const s = (browser.storage as unknown as { session?: { setAccessLevel?: (o: unknown) => Promise<void> } })
+      .session;
+    if (s?.setAccessLevel) {
+      await s.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+    }
+  } catch {
+    // best-effort: some browser versions lack this API
+  }
+}

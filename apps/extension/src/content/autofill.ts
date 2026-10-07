@@ -23,7 +23,12 @@ function fillActiveElement(secret: string): void {
   if (!el) {
     return;
   }
+  // VTRFIX-SEC-M22: refuse hidden, disabled, readonly, or off-screen targets.
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    if (el.disabled || el.readOnly) return;
+    if (el.offsetParent === null) return; // not visible
+    const t = (el as HTMLInputElement).type;
+    if (t && !['text', 'password', 'email', 'tel', 'url', 'search'].includes(t)) return;
     el.value = secret;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
