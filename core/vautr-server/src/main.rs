@@ -39,7 +39,7 @@ async fn main() {
     // limiting, then CORS. Tracing never captures bodies (no-plaintext rule).
     let app = build_router(state)
         .layer(middleware::cors())
-        .layer(middleware::rate_limiter())
+        .layer(middleware::per_route_rate_limiter())
         .layer(TraceLayer::new_for_http());
 
     // Bind primarily on 0.0.0.0:8080 (IPv4) so IPv4-first clients (reqwest,

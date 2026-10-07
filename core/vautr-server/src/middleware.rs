@@ -52,6 +52,114 @@ pub fn cors() -> CorsLayer {
     }
 }
 
+/// VTRFIX-SEC-M11/M12: route class for per-endpoint budgets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RouteClass {
+    /// `/auth/*` — CPU-expensive OPAQUE. Tight budget.
+    Auth,
+    /// `/sync/push-batch` — write-heavy.
+    SyncPush,
+    /// `/sync/*` (pull, pull-payloads).
+    SyncPull,
+    /// `/files/*`.
+    Files,
+    /// Everything else.
+    Default,
+}
+
+impl RouteClass {
+    /// Classify a request path.
+    pub fn of(path: &str) -> Self {
+        if path.starts_with("/auth/") {
+            RouteClass::Auth
+        } else if path.starts_with("/sync/push-batch") {
+            RouteClass::SyncPush
+        } else if path.starts_with("/sync/") {
+            RouteClass::SyncPull
+        } else if path.starts_with("/files/") {
+            RouteClass::Files
+        } else {
+            RouteClass::Default
+        }
+    }
+
+    /// `(max_requests, window_secs)` budget, overridable per-class from env.
+    fn budget(self) -> (u64, u64) {
+        let (def_max, def_win) = match self {
+            RouteClass::Auth => (10u64, 60u64),
+            RouteClass::SyncPush => (30, 60),
+            RouteClass::SyncPull => (600, 60),
+            RouteClass::Files => (120, 60),
+            RouteClass::Default => (300, 60),
+        };
+        let env_max = match self {
+            RouteClass::Auth => "VAUTR_RATE_AUTH_MAX",
+            RouteClass::SyncPush => "VAUTR_RATE_SYNC_PUSH_MAX",
+            RouteClass::SyncPull => "VAUTR_RATE_SYNC_PULL_MAX",
+            RouteClass::Files => "VAUTR_RATE_FILES_MAX",
+            RouteClass::Default => "VAUTR_RATE_DEFAULT_MAX",
+        };
+        let max = std::env::var(env_max)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def_max);
+        (max, def_win)
+    }
+}
+
+/// VTRFIX-SEC-M11/M12: per-route limiter. One shared map keyed by
+/// `(class, client)` so a burst on `/auth` cannot exhaust `/sync` budget.
+#[derive(Clone)]
+pub struct PerRouteRateLimiter {
+    inner: Arc<Mutex<RateState>>,
+}
+
+impl PerRouteRateLimiter {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(RateState::default())),
+        }
+    }
+
+    fn check(&self, class: RouteClass, client: &str) -> Result<RateInfo, RateLimited> {
+        let (max, window) = class.budget();
+        let key = format!("{class:?}|{client}");
+        let mut state = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let now = RateLimiter::now_secs();
+        let window_start = now - (now % window);
+        if state.windows.len() > 8192 {
+            state.windows.retain(|_, w| w.start_secs + window >= now);
+        }
+        let w = state.windows.entry(key).or_insert(Window {
+            start_secs: window_start,
+            count: 0,
+        });
+        if w.start_secs != window_start {
+            w.start_secs = window_start;
+            w.count = 0;
+        }
+        w.count += 1;
+        let reset = window_start + window;
+        if w.count > max {
+            Err(RateLimited {
+                retry_after_secs: reset.saturating_sub(now).max(1),
+            })
+        } else {
+            Ok(RateInfo {
+                limit: max,
+                remaining: max - w.count,
+                reset_unix_secs: reset,
+            })
+        }
+    }
+}
+
+impl Default for PerRouteRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Build the rate-limiter layer from env-configurable bounds.
 ///
 /// Env: `VAUTR_RATE_LIMIT_MAX` (default 100) and
@@ -360,3 +468,98 @@ pub async fn security_headers_middleware(
 // bucket keyed by client IP. Per-route budgets (auth 10/min, sync 600/min,
 // files 120/min) and X-Forwarded-For trust allowlists need a configuration
 // story (`TRUSTED_PROXIES` env). Tracked in docs/issues/VTRFIX-LOG.md.
+
+/// VTRFIX-SEC-M11/M12: per-route rate-limit layer.
+#[derive(Clone)]
+pub struct PerRouteRateLimitLayer {
+    limiter: PerRouteRateLimiter,
+}
+
+impl PerRouteRateLimitLayer {
+    pub fn new() -> Self {
+        Self {
+            limiter: PerRouteRateLimiter::new(),
+        }
+    }
+}
+
+impl Default for PerRouteRateLimitLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S> Layer<S> for PerRouteRateLimitLayer {
+    type Service = PerRouteRateLimitService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        PerRouteRateLimitService {
+            inner,
+            limiter: self.limiter.clone(),
+        }
+    }
+}
+
+/// Tower service applying per-route budgets.
+#[derive(Clone)]
+pub struct PerRouteRateLimitService<S> {
+    inner: S,
+    limiter: PerRouteRateLimiter,
+}
+
+impl<S> Service<Request<Body>> for PerRouteRateLimitService<S>
+where
+    S: Service<Request<Body>, Response = Response<Body>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = Response<Body>;
+    type Error = Infallible;
+    type Future =
+        Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let client = client_key(&req);
+        let class = RouteClass::of(req.uri().path());
+        match self.limiter.check(class, &client) {
+            Ok(info) => {
+                let mut inner = self.inner.clone();
+                Box::pin(async move {
+                    let mut resp = inner.call(req).await.unwrap_or_else(|never| match never {});
+                    let headers = resp.headers_mut();
+                    headers.insert("x-ratelimit-limit", info.limit.to_string().parse().unwrap());
+                    headers.insert(
+                        "x-ratelimit-remaining",
+                        info.remaining.to_string().parse().unwrap(),
+                    );
+                    headers.insert(
+                        "x-ratelimit-reset",
+                        info.reset_unix_secs.to_string().parse().unwrap(),
+                    );
+                    Ok(resp)
+                })
+            }
+            Err(limited) => {
+                tracing::warn!(
+                    retry_after_secs = limited.retry_after_secs,
+                    client = %client,
+                    class = ?class,
+                    "request rate limited (per-route)"
+                );
+                let resp = rate_limited_response(&limited);
+                Box::pin(async move { Ok(resp) })
+            }
+        }
+    }
+}
+
+/// Construct the per-route limiter layer.
+pub fn per_route_rate_limiter() -> PerRouteRateLimitLayer {
+    PerRouteRateLimitLayer::new()
+}
