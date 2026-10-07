@@ -100,6 +100,71 @@ pub fn unwrap_svk(wrapped: &[u8], kek: &[u8]) -> Result<Vec<u8>, String> {
     Ok(pt)
 }
 
+// ---------------------------------------------------------------------------
+// VTRFIX-SEC-M02: user-scoped AD wrap/unwrap (with legacy nil-AD fallback)
+// ---------------------------------------------------------------------------
+
+/// Wrap the SVK under a KEK with the server user id as the AEAD context.
+///
+/// `user_id` is a UUID string from `/account/status`. New wraps always use
+/// this value; the legacy `wrap_svk` (nil AD) remains for compatibility with
+/// blobs created before the migration.
+pub fn wrap_svk_with_ad(svk: &[u8], kek: &[u8], user_id: &str) -> Result<Vec<u8>, String> {
+    let kek = to_arr32(kek)?;
+    let svk = to_arr32(svk)?;
+    let user = uuid::Uuid::parse_str(user_id).map_err(|e| format!("user id: {e}"))?;
+    aead::encrypt(&kek, &user, SVK_AD_ENC_GEN, &svk).map_err(|e| e.to_string())
+}
+
+/// Unwrap the SVK from a user-scoped-AD blob.
+pub fn unwrap_svk_with_ad(wrapped: &[u8], kek: &[u8], user_id: &str) -> Result<Vec<u8>, String> {
+    let kek = to_arr32(kek)?;
+    let user = uuid::Uuid::parse_str(user_id).map_err(|e| format!("user id: {e}"))?;
+    let pt = aead::decrypt(&kek, &user, SVK_AD_ENC_GEN, wrapped)
+        .map_err(|e| format!("SVK unwrap failed: {e}"))?;
+    if pt.len() != 32 {
+        return Err("unwrapped SVK has wrong length".to_string());
+    }
+    Ok(pt)
+}
+
+/// Try the user-scoped AD first; on failure, retry with the legacy nil AD.
+/// Returns `(svk, used_legacy)` — the caller re-wraps on legacy success.
+pub fn unwrap_svk_with_ad_or_legacy(
+    wrapped: &[u8],
+    kek: &[u8],
+    user_id: &str,
+) -> Result<(Vec<u8>, bool), String> {
+    match unwrap_svk_with_ad(wrapped, kek, user_id) {
+        Ok(svk) => Ok((svk, false)),
+        Err(_) => match unwrap_svk(wrapped, kek) {
+            Ok(svk) => Ok((svk, true)),
+            Err(e) => Err(format!("unwrap failed under both new and legacy AD: {e}")),
+        },
+    }
+}
+
+#[wasm_bindgen]
+pub fn wrap_svk_with_ad_js(svk: Vec<u8>, kek: Vec<u8>, user_id: &str) -> Result<Vec<u8>, JsValue> {
+    wrap_svk_with_ad(&svk, &kek, user_id).map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn unwrap_svk_with_ad_or_legacy_js(
+    wrapped: Vec<u8>,
+    kek: Vec<u8>,
+    user_id: &str,
+) -> Result<JsValue, JsValue> {
+    let (svk, used_legacy) =
+        unwrap_svk_with_ad_or_legacy(&wrapped, &kek, user_id).map_err(|e| JsValue::from_str(&e))?;
+    let out = serde_wasm_bindgen::to_value(&serde_json::json!({
+        "svk": svk,
+        "used_legacy": used_legacy,
+    }))
+    .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    Ok(out)
+}
+
 /// Generate a 24-word BIP-39 recovery mnemonic (REQ-RECOVERY-01).
 pub fn generate_recovery_mnemonic() -> Result<String, String> {
     recovery::generate_recovery_mnemonic().map_err(|e| e.to_string())
