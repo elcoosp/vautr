@@ -92,6 +92,8 @@ pub fn build_router(state: AppState) -> Router {
         // Account & key management (api.md §5)
         .route("/account/status", get(account::account_status))
         .route("/account/rotate-key", post(account::account_rotate_key))
+        // VTRFIX-SEC-M02: replace only the MP-wrapped SVK blob (no epoch bump).
+        .route("/account/rekey-svk", post(account::account_rekey_svk))
         // Feature routers (Wave B): each is implemented in its own module.
         .merge(sharing::routes())
         .merge(files::routes())

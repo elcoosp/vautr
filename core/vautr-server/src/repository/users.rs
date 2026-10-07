@@ -115,3 +115,20 @@ impl Repository {
         Ok(())
     }
 }
+
+impl Repository {
+    /// VTRFIX-SEC-M02: update only the MP-wrapped SVK blob.
+    pub async fn update_svk_blob_only(
+        &self,
+        user_id: &str,
+        svk_ciphertext_blob: &[u8],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE users SET svk_ciphertext_blob = ?, updated_at = ? WHERE id = ?")
+            .bind(svk_ciphertext_blob)
+            .bind(crate::handlers::now_ms())
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}

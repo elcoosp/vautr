@@ -242,3 +242,54 @@ mod tests {
         assert_eq!(rows[0].action, "account_deleted");
     }
 }
+
+// ---------------------------------------------------------------------------
+// VTRFIX-SEC-M02: rekey the MP-wrapped SVK blob only
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+pub(crate) struct RekeySvkReq {
+    new_svk_ciphertext_blob: String,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct RekeySvkResp {
+    status: String,
+}
+
+/// `POST /account/rekey-svk` — replace the MP-wrapped SVK blob only. The SVK
+/// bytes are unchanged; only the wrapping (AEAD AD) is re-bound to the user.
+pub(crate) async fn account_rekey_svk(
+    State(st): State<AppState>,
+    auth: Bearer,
+    Json(req): Json<RekeySvkReq>,
+) -> Result<Json<RekeySvkResp>, ApiError> {
+    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let blob = decode_b64(&req.new_svk_ciphertext_blob)?;
+    if blob.is_empty() || blob.len() > 4096 {
+        return Err(ApiError::bad_request(
+            "invalid_blob_size",
+            "svk blob must be 1..=4096 bytes",
+        ));
+    }
+    st.repo
+        .update_svk_blob_only(&user_id, &blob)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    let _ = st
+        .repo
+        .audit_org_event(
+            Some(&user_id),
+            Some(&user_id),
+            "account.rekey_svk",
+            "account",
+            Some(&user_id),
+            None,
+            None,
+            now_ms(),
+        )
+        .await;
+    Ok(Json(RekeySvkResp {
+        status: "success".into(),
+    }))
+}

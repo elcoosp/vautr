@@ -46,6 +46,14 @@ pub(crate) struct RegisterFinishReq {
 pub(crate) struct StatusResp {
     status: String,
 }
+
+/// VTRFIX-SEC-M02: registration response carries the server-minted user id so
+/// the client can immediately re-wrap its SVK under the user-scoped AD.
+#[derive(Serialize)]
+pub(crate) struct RegisterFinishResp {
+    pub status: String,
+    pub user_id: String,
+}
 #[derive(Deserialize)]
 pub(crate) struct LoginStartReq {
     username: String,
@@ -115,7 +123,7 @@ pub(crate) async fn register_start(
 pub(crate) async fn register_finish(
     State(st): State<AppState>,
     Json(req): Json<RegisterFinishReq>,
-) -> Result<Json<StatusResp>, ApiError> {
+) -> Result<Json<RegisterFinishResp>, ApiError> {
     let setup_bytes = server_setup(&st.repo).await?;
     let _ = setup_bytes; // kept for the (future) public-key derivation
     // VTRFIX-BUG-M19: reject the all-zeros placeholder that every client used
@@ -174,8 +182,10 @@ pub(crate) async fn register_finish(
             )
             .await;
     }
-    Ok(Json(StatusResp {
+    // VTRFIX-SEC-M02: return the server-minted user_id.
+    Ok(Json(RegisterFinishResp {
         status: "success".into(),
+        user_id: user_id.clone(),
     }))
 }
 
