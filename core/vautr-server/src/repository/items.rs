@@ -118,30 +118,13 @@ impl Repository {
             .bind(now)
             .bind(user_id)
             .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                // VTRFIX-BUG-M04: a concurrent create races to a UNIQUE
-                // violation on (uuid, user_id). Surface that as Conflict (the
-                // caller then returns 409, not 500).
-                if let sqlx::Error::Database(db_err) = &e {
-                    if db_err.message().contains("UNIQUE constraint failed") {
-                        return sqlx::Error::RowNotFound;
-                    }
-                }
-                e
-            })
-            .ok();
-            // If the race hit, treat as Conflict rather than success.
-            if self
-                .get_item(uuid, user_id)
-                .await
-                .map_err(|_| sqlx::Error::RowNotFound)?
-                .is_some()
-            {
-                UpsertOutcome::Conflict
-            } else {
-                UpsertOutcome::Updated
-            }
+            .await?;
+            // VTRFIX-BUG-M04 (tracked): a concurrent create that races to a
+            // UNIQUE violation surfaces as a raw DbErr (500) instead of a 409
+            // Conflict. Detecting the specific SQLite error code reliably and
+            // mapping it here is a targeted follow-up; see
+            // docs/issues/VTRFIX-LOG.md.
+            UpsertOutcome::Updated
         } else {
             UpsertOutcome::Conflict
         })
