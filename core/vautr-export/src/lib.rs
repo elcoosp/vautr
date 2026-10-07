@@ -17,7 +17,7 @@ pub mod report;
 pub mod row;
 
 pub use error::ExportError;
-pub use export::{cancel_flag, count_total, export_rows};
+pub use export::{cancel_flag, count_total, export_rows, ExportWriter};
 pub use format::ExportFormat;
 pub use report::ExportReport;
 pub use row::{ExportRow, TotpExport};

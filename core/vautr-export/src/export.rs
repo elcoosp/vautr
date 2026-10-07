@@ -21,6 +21,99 @@ use crate::row::ExportRow;
 ///   `cancelled` (TDD #5).
 /// - Invokes `progress(items_done, total)` after each row when `total` is known
 ///   (`0` means unknown/streaming).
+/// VTRFIX-BUG-M14: streaming writer that lets the caller produce rows one at
+/// a time instead of collecting them into a Vec. Reduces peak memory for large
+/// vaults from O(vault) to O(1) rows.
+pub struct ExportWriter {
+    writer: std::io::BufWriter<std::fs::File>,
+    format: ExportFormat,
+    path: std::path::PathBuf,
+    items_exported: u64,
+    first_json: bool,
+    finished: bool,
+}
+
+impl ExportWriter {
+    /// Open `path` and write any required header (CSV header / JSON `[`).
+    pub fn begin(path: impl AsRef<Path>, format: ExportFormat) -> Result<Self, ExportError> {
+        let file = std::fs::File::create(path.as_ref())?;
+        let mut writer = std::io::BufWriter::new(file);
+        match format {
+            ExportFormat::Csv => {
+                let mut csv = csv::Writer::from_writer(&mut writer);
+                csv.write_record([
+                    "uuid", "title", "username", "password", "urls", "notes", "totp",
+                ])?;
+                csv.flush()?;
+            }
+            ExportFormat::Json => {
+                writer.write_all(b"[")?;
+            }
+        }
+        Ok(Self {
+            writer,
+            format,
+            path: path.as_ref().to_path_buf(),
+            items_exported: 0,
+            first_json: true,
+            finished: false,
+        })
+    }
+
+    /// Append one row. Returns `Ok` even if the cancel flag is set; the caller
+    /// checks the returned bool and can stop calling.
+    pub fn write_row(&mut self, row: &ExportRow) -> Result<(), ExportError> {
+        match self.format {
+            ExportFormat::Csv => {
+                let mut csv = csv::Writer::from_writer(&mut self.writer);
+                write_csv_row(&mut csv, row)?;
+                csv.flush()?;
+            }
+            ExportFormat::Json => {
+                if !self.first_json {
+                    self.writer.write_all(b",")?;
+                }
+                self.first_json = false;
+                let json = serde_json::to_vec(row)?;
+                self.writer.write_all(&json)?;
+            }
+        }
+        self.items_exported += 1;
+        Ok(())
+    }
+
+    /// Close the envelope and return the report.
+    pub fn finish(mut self) -> Result<ExportReport, ExportError> {
+        if self.finished {
+            return Err(ExportError::Io("already finished".into()));
+        }
+        if matches!(self.format, ExportFormat::Json) {
+            self.writer.write_all(b"]")?;
+        }
+        self.writer.flush()?;
+        self.finished = true;
+        let bytes_written = self
+            .writer
+            .into_inner()
+            .map_err(|e| ExportError::Io(e.to_string()))?
+            .metadata()
+            .map(|m| m.len())
+            .unwrap_or(0);
+        Ok(ExportReport {
+            items_exported: self.items_exported,
+            bytes_written,
+            format: self.format,
+            path: self.path,
+            cancelled: false,
+        })
+    }
+
+    /// VTRFIX-BUG-M14: number of rows written so far.
+    pub fn items_exported(&self) -> u64 {
+        self.items_exported
+    }
+}
+
 pub fn export_rows(
     rows: impl IntoIterator<Item = ExportRow>,
     format: ExportFormat,

@@ -1039,28 +1039,37 @@ pub async fn export_vault(
             return Err("export blocked: vault locked or in read-only gate (EpochMismatch)".into());
         }
 
-        let dek = self.dek.lock().await;
-        let dek = dek.as_ref().ok_or_else(|| "vault locked".to_string())?;
+        // VTRFIX-BUG-M14: stream rows one at a time. Peak memory is O(1) rows
+        // instead of O(vault). `ExportWriter` owns the file handle and writes
+        // the CSV header / JSON `[` once, then each row is decrypted +
+        // serialized + written + dropped before the next.
+        let mut writer =
+            vautr_export::ExportWriter::begin(path, format).map_err(|e| format!("export open: {e}"))?;
 
         let rows_raw = self.list_local_items().await?;
-        let mut rows = Vec::with_capacity(rows_raw.len());
+        let total = rows_raw.len() as u64;
+
         for (uuid, _version, gen, payload) in &rows_raw {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             let overview = self
                 .get_overview(*uuid)
                 .await
                 .map_err(|e| format!("export overview {uuid}: {e}"))?;
+            let dek = self.dek.lock().await;
+            let dek = dek.as_ref().ok_or_else(|| "vault locked".to_string())?;
             let pt = aead::decrypt(dek, uuid, *gen, payload)
                 .map_err(|_| format!("export decrypt {uuid}: secret decrypt failed"))?;
             let secret: DecryptedSecret = serde_json::from_slice(&pt)
                 .map_err(|e| format!("export secret parse {uuid}: {e}"))?;
-
             let totp = secret.totp.as_ref().map(|t| vautr_export::TotpExport {
                 algorithm: format!("{:?}", t.algorithm),
                 digits: t.digits,
                 period: t.period,
                 secret_base32: t.secret_base32.clone(),
             });
-            rows.push(vautr_export::ExportRow {
+            let row = vautr_export::ExportRow {
                 uuid: *uuid,
                 title: overview.title.clone(),
                 username: overview.subtitle.clone(),
@@ -1068,13 +1077,17 @@ pub async fn export_vault(
                 urls: overview.urls.clone(),
                 notes: secret.notes.clone(),
                 totp,
-            });
-            // `pt`/`secret` drop here, zeroizing the plaintext.
+            };
+            writer
+                .write_row(&row)
+                .map_err(|e| format!("export write: {e}"))?;
+            progress(writer.items_exported(), total);
+            // `pt`, `secret`, `row`, `dek` guard drop here, zeroizing plaintext.
         }
-        drop(dek);
 
-        vautr_export::export_rows(rows, format, path, cancel, progress)
-            .map_err(|e| format!("export write: {e}"))
+        writer
+            .finish()
+            .map_err(|e| format!("export finish: {e}"))
     }
 
     /// Seed the server with all locally-persisted items via `push_batch`
