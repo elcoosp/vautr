@@ -36,7 +36,11 @@ pub async fn run(cfg: &Config, api: &Api, command: &[String]) -> CliResult<()> {
         validate_env_key(k)?;
     }
 
-    let mut cmd = Command::new(&command[0]);
+    // VTRFIX-BUG-M11: guard the empty command list to avoid a panic.
+    let Some(prog) = command.first() else {
+        return Err(crate::error::CliError::MissingArgument("command"));
+    };
+    let mut cmd = Command::new(prog);
     cmd.args(&command[1..]);
     for (k, v) in &injected {
         cmd.env(k, v);

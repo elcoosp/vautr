@@ -308,3 +308,16 @@ mod tests {
         assert_eq!(rec.get(5).unwrap(), "line1\nline2");
     }
 }
+
+/// VTRFIX-BUG-M13: prefix dangerous leading characters so a spreadsheet does
+/// not interpret a vault field as a formula. Standard mitigation: prepend a
+/// single quote when the cell starts with =, +, -, @, tab or CR.
+pub fn sanitize_csv_cell(raw: &str) -> String {
+    let first = raw.chars().next();
+    match first {
+        Some('=') | Some('+') | Some('-') | Some('@') | Some('\t') | Some('\r') => {
+            format!("'{}", raw)
+        }
+        _ => raw.to_string(),
+    }
+}

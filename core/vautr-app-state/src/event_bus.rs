@@ -64,6 +64,9 @@ pub enum VaultStateUpdate {
     /// A toxic item was permanently deleted server-side (tombstoned). The UI
     /// should drop any stale toxic indicator (VTR-047).
     ItemPermanentlyDeleted(Uuid),
+    /// VTRFIX-BUG-M09: emitted when a subscriber has missed events and
+    /// must re-read the authoritative store state.
+    SyncStateInvalidated,
 }
 
 /// Payload for 412 Resolution UI (data.md §7.2).
@@ -102,6 +105,12 @@ impl EventBus {
     /// Subscribe to the event stream (data.md §6.3 `watch_state`).
     pub fn subscribe(&self) -> broadcast::Receiver<VaultStateUpdate> {
         self.tx.subscribe()
+    }
+
+    /// VTRFIX-BUG-M09: publish a "state invalidated" marker when a
+    /// subscriber's queue lagged and events were dropped.
+    pub fn publish_lagged_recovery(&self) {
+        let _ = self.tx.send(VaultStateUpdate::SyncStateInvalidated);
     }
 
     /// Publish an event to all subscribers. Drops are ignored (no live subscriber).
