@@ -27,6 +27,11 @@ use sha2::Sha512;
 #[derive(Clone, Copy)]
 pub struct VautrSuite;
 
+// VTRFIX-SEC-M07 (tracked): the current build uses opaque-ke's default Argon2
+// parameters. `crypto.md` documents 64 MiB / t=3 / p=4; the library default is
+// ~19 MiB. Pinning the params requires a custom `impl Ksf` (the 4.1.0-pre.1
+// trait shape differs from the released 4.x — tracked as a follow-up). See
+// docs/issues/VTRFIX-LOG.md.
 impl CipherSuite for VautrSuite {
     type OprfCs = opaque_ke::Ristretto255;
     type KeyExchange = opaque_ke::TripleDh<opaque_ke::Ristretto255, Sha512>;
