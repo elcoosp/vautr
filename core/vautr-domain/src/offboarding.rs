@@ -157,8 +157,15 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn scope_defaults_to_revoke_all() {
-        assert_eq!(OffboardingScope::default(), OffboardingScope::REVOKE_ALL);
+    fn scope_defaults_to_minimal_revocation() {
+        // VTRFIX-BUG-M17: default is minimal (role only), not REVOKE_ALL —
+        // a caller that forgets to set a scope must not nuke everything.
+        let d = OffboardingScope::default();
+        assert!(d.revoke_org_role);
+        assert!(!d.revoke_project_access);
+        assert!(!d.revoke_group_memberships);
+        assert!(!d.revoke_sessions);
+        assert!(!d.revoke_sharing_keys);
         assert!(OffboardingScope::REVOKE_ALL.revoke_org_role);
         assert!(!OffboardingScope::REVOKE_ALL.is_empty());
         assert!(OffboardingScope::NONE.is_empty());
