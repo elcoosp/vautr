@@ -621,6 +621,9 @@ impl VautrClient {
 
         // Safety: cap the number of pages so a buggy `has_more` cannot hang us.
         let mut pages = 0u32;
+        // VTRFIX-BUG-M07 (done): set on any per-item fetch/persist failure.
+        // Blocks the final cursor advance so the next sync retries that page.
+        let mut first_failure = false;
         loop {
             pages += 1;
             if pages > 10_000 {
@@ -639,10 +642,26 @@ impl VautrClient {
                     continue;
                 }
                 if !ov.deleted {
-                    if let Ok(Some(payload)) =
-                        engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await
-                    {
-                        self.persist_synced_item(&ov, payload).await?;
+                    match engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await {
+                        Ok(Some(payload)) => {
+                            if let Err(e) = self.persist_synced_item(&ov, payload).await {
+                                tracing::warn!(
+                                    uuid = %ov.uuid,
+                                    error = %e,
+                                    "sync: persist failed; cursor will not advance past this page"
+                                );
+                                first_failure = true;
+                            }
+                        }
+                        Ok(None) => { /* blacklisted: skip silently */ }
+                        Err(e) => {
+                            tracing::warn!(
+                                uuid = %ov.uuid,
+                                error = %e,
+                                "sync: payload fetch failed; cursor will not advance past this page"
+                            );
+                            first_failure = true;
+                        }
                     }
                 }
                 idx += 1;
@@ -658,11 +677,15 @@ impl VautrClient {
             }
         }
 
-        // VTRFIX-BUG-M07: cursor is persisted only after the entire walk
-        // completed. A per-page fetch failure currently leaves the failed item
-        // quarantined; the next sync retries. Fully-precise page-rewind on
-        // partial failure is tracked in docs/issues/VTRFIX-LOG.md.
-        self.cursor.store(engine.cursor(), Ordering::SeqCst);
+        // VTRFIX-BUG-M07 (done): only advance the persisted cursor when every
+        // item applied cleanly. On partial failure, keep the old cursor so the
+        // next sync retries the page — re-applying already-applied items is a
+        // safe idempotent upsert.
+        if !first_failure {
+            self.cursor.store(engine.cursor(), Ordering::SeqCst);
+        } else {
+            tracing::warn!("sync: partial failure; cursor NOT advanced");
+        }
 
         // Update epoch gate from the server's min_enc_key_gen.
         if let Ok((min_gen, _svk_blob)) = transport.account_status().await {
