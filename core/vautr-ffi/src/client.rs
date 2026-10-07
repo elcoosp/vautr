@@ -584,6 +584,52 @@ impl MobileClient {
 
     /// Unlock with a raw 32-byte SVK recovered from the OS keystore (biometric
     /// unlock, crypto.md §6). `local_gen` is the local vault key generation.
+    /// VTRFIX-FEAT-H02: sign the server-issued recovery challenge nonce with
+    /// the Ed25519 key derived from the 24-word mnemonic. Returns base64.
+    pub fn sign_recovery_nonce(&self, mnemonic: String, nonce_b64: String) -> Result<String, FfiError> {
+        use base64::Engine;
+        let m = vautr_crypto::recovery::decode_recovery_mnemonic(&mnemonic)
+            .map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
+        let nonce = base64::engine::general_purpose::STANDARD
+            .decode(nonce_b64)
+            .map_err(|e| FfiError::Core(format!("nonce b64: {e}")))?;
+        let sig = vautr_crypto::recovery::sign_recovery_nonce(&m, &nonce)
+            .map_err(|e| FfiError::Core(format!("sign: {e}")))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(sig))
+    }
+
+    /// VTRFIX-FEAT-H02: derive the recovery public key (bytes) from a mnemonic.
+    pub fn recovery_public_key(&self, mnemonic: String) -> Result<Vec<u8>, FfiError> {
+        let m = vautr_crypto::recovery::decode_recovery_mnemonic(&mnemonic)
+            .map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
+        vautr_crypto::recovery::recovery_public_key(&m)
+            .map(|pk| pk.to_vec())
+            .map_err(|e| FfiError::Core(format!("pk: {e}")))
+    }
+
+    /// VTRFIX-FEAT-H02: unwrap the SVK from the server-stored RK blob using
+    /// the recovery mnemonic. Returns the raw 32-byte SVK.
+    pub fn recover_svk(
+        &self,
+        mnemonic: String,
+        svk_rk_wrapped_b64: String,
+        server_user_id: String,
+    ) -> Result<Vec<u8>, FfiError> {
+        use base64::Engine;
+        let m = vautr_crypto::recovery::decode_recovery_mnemonic(&mnemonic)
+            .map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
+        let wrapped = base64::engine::general_purpose::STANDARD
+            .decode(svk_rk_wrapped_b64)
+            .map_err(|e| FfiError::Core(format!("svk b64: {e}")))?;
+        let uid = uuid::Uuid::parse_str(&server_user_id)
+            .map_err(|e| FfiError::Core(format!("user id: {e}")))?;
+        let kek_rk = vautr_crypto::recovery::derive_kek_rk(&m)
+            .map_err(|e| FfiError::Core(format!("kek_rk: {e}")))?;
+        let svk = vautr_crypto::recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &uid)
+            .map_err(|e| FfiError::Core(format!("unwrap: {e}")))?;
+        Ok(svk.to_vec())
+    }
+
     pub fn unlock(&self, raw_key: Vec<u8>, local_gen: u64) -> Result<(), FfiError> {
         block_on_ffi(async move {
             if raw_key.len() != 32 {
