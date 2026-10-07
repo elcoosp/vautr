@@ -40,7 +40,8 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
         // Hand the Recovery Key to the onboarding flow (shown once). sessionStorage
         // is cleared on popup close — never persisted in plaintext; the durable
         // copy is KEK-sealed in IndexedDB.
-        sessionStorage.setItem('vautr:pending-kit', recoveryMnemonic);
+        // VTRFIX-SEC-M24: mnemonic held in memory only — no sessionStorage persistence.
+      (globalThis as { __vautrPendingKit?: string }).__vautrPendingKit = recoveryMnemonic;
       }
       try {
         await client.login(username, password);

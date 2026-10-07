@@ -43,7 +43,8 @@ function RegisterPage() {
       // Hand the freshly-generated Recovery Key to the onboarding flow so it can
       // be shown once. Stored in sessionStorage (cleared on tab close) — never
       // persisted in plaintext; the durable copy is KEK-sealed in IndexedDB.
-      sessionStorage.setItem('vautr:pending-kit', recoveryMnemonic);
+      // VTRFIX-SEC-M24: mnemonic held in memory only — no sessionStorage persistence.
+      (globalThis as { __vautrPendingKit?: string }).__vautrPendingKit = recoveryMnemonic;
       await login(username.trim(), password);
       void navigate({ to: '/dashboard' });
     } catch (err) {
