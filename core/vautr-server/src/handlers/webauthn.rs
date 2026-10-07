@@ -57,6 +57,17 @@ impl WebauthnService {
     /// default suitable for development + the virtual-authenticator e2e.
     pub fn new() -> Self {
         let rp_id = std::env::var("VAUTR_WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".into());
+        // VTRFIX-SEC-M15: refuse to bring up WebAuthn with the localhost
+        // defaults in production — credentials would be bound to a test RP.
+        let prod = std::env::var("VAUTR_ENV")
+            .map(|v| matches!(v.as_str(), "prod" | "production"))
+            .unwrap_or(false);
+        if prod && rp_id == "localhost" {
+            panic!(
+                "VAUTR_ENV=production but VAUTR_WEBAUTHN_RP_ID is unset/localhost; \
+                 refusing to register credentials against a test RP"
+            );
+        }
         let origin = std::env::var("VAUTR_WEBAUTHN_ORIGIN")
             .unwrap_or_else(|_| "http://localhost:3000".into());
         let rp_origin = Url::parse(&origin)
@@ -369,12 +380,36 @@ pub(crate) async fn assert_verify(
     // Persist the counter for cloned-credential detection.
     let cred_id = b64url(res.cred_id().as_ref());
     let now = now_ms();
-    if let Some((serialized, _old_counter)) = st
+    if let Some((serialized, old_counter)) = st
         .repo
         .get_webauthn_credential(&user_id, &cred_id)
         .await
         .map_err(internal)?
     {
+        // VTRFIX-SEC-M15: reject a sign-count regression. A stored counter of
+        // 0 (authenticator that never implements counting) is allowed to stay
+        // at 0; anything else that goes backwards is a cloned-credential signal.
+        let new_counter = res.counter() as i64;
+        if old_counter > 0 && new_counter <= old_counter {
+            let _ = st
+                .repo
+                .audit_org_event(
+                    None,
+                    Some(&user_id),
+                    "webauthn.cloned_suspect",
+                    "webauthn",
+                    None,
+                    Some(&format!("stored={old_counter} new={new_counter}")),
+                    None,
+                    now,
+                )
+                .await;
+            return Err(ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                "webauthn_cloned_suspect",
+                "authenticator sign count regressed; credential may be cloned",
+            ));
+        }
         if let Ok(mut sk) = serde_json::from_slice::<SecurityKey>(&serialized) {
             sk.update_credential(&res);
             let new_serialized = serde_json::to_vec(&sk).map_err(internal)?;
@@ -382,7 +417,7 @@ pub(crate) async fn assert_verify(
                 .update_webauthn_counter(
                     &user_id,
                     &cred_id,
-                    res.counter() as i64,
+                    new_counter,
                     &new_serialized,
                     now,
                 )
