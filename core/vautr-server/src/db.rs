@@ -130,6 +130,15 @@ pub mod postgres {
     /// Postgres-compatible migrations. See the module-level docs and
     /// docs/SELF-HOSTING.md §"Database".
     pub async fn connect_pg(db_url: &str) -> Result<PgPool, DbError> {
+    // VTRFIX-FEAT-M04: Postgres is not yet supported — the migrations are
+    // SQLite-dialect only. Refuse rather than silently half-boot.
+    if std::env::var("VAUTR_ENABLE_PG_EXPERIMENTAL").ok().as_deref() != Some("1") {
+        return Err(sqlx::Error::Protocol(
+            "Postgres backend is not yet supported; set VAUTR_ENABLE_PG_EXPERIMENTAL=1 to opt in"
+                .into(),
+        ));
+    }
+
         let opts = PgConnectOptions::from_str(db_url)?;
         let pool = PgPoolOptions::new().connect_with(opts).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
