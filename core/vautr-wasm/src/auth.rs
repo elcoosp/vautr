@@ -518,3 +518,10 @@ mod tests {
         assert!(res.is_err(), "wrong password must fail");
     }
 }
+
+// VTRFIX-SEC-M02 (tracked): the MP-wrapped SVK currently uses
+// `Uuid::nil()` as the AD context (see `SVK_AD_USER` above). Changing it to
+// the real server user id requires a coordinated re-wrap migration: the
+// server must serve the new blob before clients can decode it, and old
+// clients must accept the legacy nil-AD blob for one release. Tracked in
+// docs/issues/VTRFIX-LOG.md.

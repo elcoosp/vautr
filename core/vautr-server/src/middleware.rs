@@ -355,3 +355,8 @@ pub async fn security_headers_middleware(
     );
     resp
 }
+
+// VTRFIX-SEC-M11/M12 (tracked): the rate limiter is currently a single global
+// bucket keyed by client IP. Per-route budgets (auth 10/min, sync 600/min,
+// files 120/min) and X-Forwarded-For trust allowlists need a configuration
+// story (`TRUSTED_PROXIES` env). Tracked in docs/issues/VTRFIX-LOG.md.

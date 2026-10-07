@@ -72,6 +72,11 @@ pub fn construct_file_ad(
 /// `Nonce = SHA-256(file_uuid_bytes ‖ chunk_index.to_be_bytes())[..24]`
 /// (file-storage.md §2.2). Unique per `(file_uuid, chunk_index)`, so resumable
 /// uploads recompute it without persisted state.
+// VTRFIX-SEC-M10 (tracked): callers must guarantee "one file_uuid =
+// one content" because the chunk nonce is derived deterministically from
+// (file_uuid, chunk_index). SVK rotation currently breaks file decryption
+// because the FEK is derived from the SVK; decoupling needs a manifest-level
+// `fek_wrapped` field. Tracked in docs/issues/VTRFIX-LOG.md.
 pub fn chunk_nonce(file_uuid: &Uuid, chunk_index: u32) -> [u8; NONCE_LEN] {
     let mut hasher = Sha256::new();
     hasher.update(file_uuid.as_bytes());
@@ -147,3 +152,8 @@ fn random_nonce() -> [u8; 24] {
 pub fn zeroizing_key(bytes: [u8; 32]) -> Zeroizing<[u8; 32]> {
     Zeroizing::new(bytes)
 }
+
+// VTRFIX-SEC-M03 (tracked): the documented crypto-agility envelope
+// (magic + version + suite) is not yet prepended to ciphertexts. Adding it
+// requires a versioned read path so existing stored blobs continue to
+// decode. Tracked in docs/issues/VTRFIX-LOG.md.
