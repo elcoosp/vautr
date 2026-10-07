@@ -269,6 +269,54 @@ impl Updater {
         Ok(pkg)
     }
 
+    /// VTRFIX-SEC-M30: stage the verified bytes to a private, random path
+    /// (0600 on unix), re-verify the on-disk bytes, then hand the path to the
+    /// installer. Closes the previous verify→write→execute TOCTOU window.
+    pub fn stage_and_install(
+        &self,
+        package: &[u8],
+        signature_hex: &str,
+        version: &str,
+    ) -> Result<std::path::PathBuf, UpdateError> {
+        use std::io::Write;
+
+        // 1. Random filename in the OS temp dir (no predictable guess-and-swap).
+        let dir = std::env::temp_dir().join(format!("vautr-update-{}", uuid_like()));
+        std::fs::create_dir_all(&dir).map_err(|e| UpdateError::Source(format!("mkdir: {e}")))?;
+        let path = dir.join(format!(
+            "vautr-update-{}.bin",
+            version.replace(['.', '/'], "_")
+        ));
+
+        // 2. Write with 0600 (unix), fsync.
+        {
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            let mut f = opts
+                .open(&path)
+                .map_err(|e| UpdateError::Source(format!("open: {e}")))?;
+            f.write_all(package)
+                .map_err(|e| UpdateError::Source(format!("write: {e}")))?;
+            f.sync_all()
+                .map_err(|e| UpdateError::Source(format!("fsync: {e}")))?;
+        }
+
+        // 3. Re-verify the bytes on disk immediately before handing off.
+        let on_disk =
+            std::fs::read(&path).map_err(|e| UpdateError::Source(format!("read-back: {e}")))?;
+        if !self.verify_signature(&on_disk, signature_hex) {
+            let _ = std::fs::remove_file(&path);
+            return Err(UpdateError::SignatureInvalid);
+        }
+
+        Ok(path)
+    }
+
     /// Build the platform installer invocation for a downloaded package.
     /// Best-effort: returns the command to run; the caller executes it in a
     /// background process and restarts the app on success.
@@ -540,4 +588,16 @@ mod tests {
         // Wrong length -> false.
         assert!(!updater.verify_signature(pkg, "abcd"));
     }
+}
+
+/// Cheap, collision-resistant suffix for a staging dir (uses the OS RNG where
+/// possible; falls back to nanos + pid).
+fn uuid_like() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    format!("{nanos:x}-{pid:x}")
 }

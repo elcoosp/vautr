@@ -1728,20 +1728,21 @@ impl DesktopView {
             let updater = updater::Updater::new(env!("CARGO_PKG_VERSION"), true);
             match updater.download_and_verify(&info).await {
                 Ok(bytes) => {
-                    let path = std::env::temp_dir().join(format!(
-                        "vautr-update-{}.bin",
-                        info.version.replace(['.', '/'], "_")
-                    ));
-                    if std::fs::write(&path, &bytes).is_err() {
-                        let t = view_entity.clone();
-                        let _ = cx.update_entity::<DesktopView, _>(&t, |this, cx| {
-                            this.toast_error("Failed to stage the update package.", cx);
-                        });
-                        return;
+                    // VTRFIX-SEC-M30: stage to a private random path AND
+                    // re-verify the on-disk bytes before install.
+                    match updater.stage_and_install(&bytes, &info.signature, &info.version) {
+                        Ok(path) => {
+                            let _ = updater::Updater::install_command(&path).status();
+                            // The installer takes over; the new version reports
+                            // itself on next launch (TDD #5).
+                        }
+                        Err(e) => {
+                            let t = view_entity.clone();
+                            let _ = cx.update_entity::<DesktopView, _>(&t, |this, cx| {
+                                this.toast_error(format!("Failed to stage update: {e}"), cx);
+                            });
+                        }
                     }
-                    let _ = updater::Updater::install_command(&path).status();
-                    // The installer (e.g. `open`/`msiexec`) takes over; the new
-                    // version reports itself on next launch (TDD #5).
                 }
                 Err(updater::UpdateError::SignatureInvalid) => {
                     let t = view_entity.clone();
