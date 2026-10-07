@@ -21,6 +21,9 @@ pub enum SourceKind {
     BitwardenJson,
     /// 1Password `.1pux` (or generic `.zip`) archive containing a JSON export.
     Zip1pux,
+    /// VTRFIX-BUG-M18: 1Password Interchange Format (`.1pif`) — line-delimited
+    /// JSON records separated by `***...***` marker rows. NOT a ZIP archive.
+    Pif1Password,
 }
 
 impl SourceKind {
@@ -35,7 +38,8 @@ impl SourceKind {
         match ext.as_str() {
             "csv" => SourceKind::Csv,
             "json" => SourceKind::BitwardenJson,
-            "zip" | "1pux" | "1pif" => SourceKind::Zip1pux,
+            "zip" | "1pux" => SourceKind::Zip1pux,
+            "1pif" => SourceKind::Pif1Password,
             _ => SourceKind::Csv,
         }
     }

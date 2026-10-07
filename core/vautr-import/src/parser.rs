@@ -31,6 +31,69 @@ pub fn parse_stream(
 ) -> CrateResult<Box<dyn Iterator<Item = Result<ParseRecord, String>>>> {
     match kind {
         SourceKind::Csv => Ok(Box::new(CsvIter::new(reader))),
+                SourceKind::Pif1Password => {
+            // VTRFIX-BUG-M18: parse 1PIF directly (line-delimited JSON records
+            // separated by `***...***` marker rows). Previously this was routed
+            // to the ZIP parser and always failed.
+            let mut text = String::new();
+            use std::io::Read;
+            let mut reader = reader;
+            reader
+                .read_to_string(&mut text)
+                .map_err(|e| crate::error::ImportFailure::Pipeline(format!("read 1pif: {e}")))?;
+            let mut records: VecDeque<Result<ParseRecord, String>> = VecDeque::new();
+            let mut line_no = 0u32;
+            let mut buf = String::new();
+            let mut flush = |buf: &mut String,
+                             line: u32,
+                             records: &mut VecDeque<Result<ParseRecord, String>>| {
+                let trimmed = buf.trim();
+                if trimmed.is_empty() {
+                    return;
+                }
+                match serde_json::from_str::<Value>(trimmed) {
+                    Ok(v) => {
+                        if let Some(login) = v.get("secureContents").and_then(|s| s.get("fields")) {
+                            // Map to the Bitwarden-shaped item we already parse.
+                            let title = v
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let _ = login;
+                            records.push_back(Ok(ParseRecord {
+                                line_number: line,
+                                item: RawImportItem {
+                                    source_id: v
+                                        .get("uuid")
+                                        .and_then(|u| u.as_str())
+                                        .map(String::from),
+                                    title,
+                                    url: None,
+                                    fields: Value::Object(serde_json::Map::new()),
+                                },
+                            }));
+                        }
+                    }
+                    Err(e) => {
+                        records.push_back(Err(format!("line {line}: {e}")));
+                    }
+                }
+                buf.clear();
+            };
+            for line in text.lines() {
+                line_no += 1;
+                // 1PIF separator: a line of three or more asterisks.
+                if line.starts_with("***") {
+                    flush(&mut buf, line_no, &mut records);
+                    continue;
+                }
+                buf.push_str(line);
+                buf.push('\n');
+            }
+            flush(&mut buf, line_no, &mut records);
+            Ok(Box::new(records.into_iter()))
+        }
         SourceKind::BitwardenJson | SourceKind::Zip1pux => {
             let de = serde_json::Deserializer::from_reader(reader);
             let stream = de.into_iter::<Value>();
