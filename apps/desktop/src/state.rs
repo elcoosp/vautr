@@ -331,8 +331,10 @@ impl VaultManagerState {
     pub fn lock(&mut self) {
         if let Some(client) = &self.client {
             let client = client.clone();
-            let handle = tokio::runtime::Handle::current();
-            let _ = handle.spawn(async move {
+            // VTRFIX-BUG-M10: use the crate's dedicated runtime handle. The
+            // previous `Handle::current()` panicked when `lock()` was called
+            // off the Tokio worker (e.g. the GPUI thread).
+            crate::runtime::rt().spawn(async move {
                 client.lock().await;
             });
         }
