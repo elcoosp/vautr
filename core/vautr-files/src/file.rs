@@ -59,7 +59,10 @@ pub async fn encrypt_file_stream(
         let chunk = &plaintext[..n];
         let nonce = aead::chunk_nonce(file_uuid, chunk_index);
         let ad = aead::construct_file_ad(file_uuid, enc_key_gen, chunk_index);
-        let envelope = aead::encrypt_with_nonce(key, &nonce, &ad, chunk)?;
+        // VTRFIX-SEC-M03: use the *raw* nonce-first envelope here — the streaming
+        // chunk protocol reads NONCE_LEN bytes to resume; adding the
+        // agility prefix would break the on-wire chunk format.
+        let envelope = aead::encrypt_with_nonce_raw(key, &nonce, &ad, chunk)?;
         output.write_all(&envelope).await?;
         output.flush().await?;
 
