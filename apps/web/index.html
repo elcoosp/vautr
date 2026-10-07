@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Vautr web client" />
+    <!-- VTRFIX-SEC-M25: defense-in-depth CSP. Full protection is delivered by
+         the Caddy header (frame-ancestors can only be set as a header). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    />
     <title>Vautr</title>
   </head>
   <body>
