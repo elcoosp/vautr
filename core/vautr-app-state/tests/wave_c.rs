@@ -501,7 +501,8 @@ async fn e2e_recovery_rotate() {
         )
         .await
         .expect("complete recovery");
-    assert!(!new_rk.is_empty());
+    assert!(!new_rk.0.is_empty(), "new mnemonic present");
+    assert!(!new_rk.1.is_empty(), "new MP-wrapped SVK present");
     assert!(!recovered.recovery_pending());
 }
 
