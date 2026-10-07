@@ -105,3 +105,46 @@ mod tests {
         assert!(unwrap_svk_with_rk(&wrapped, &bad_kek, &user_id).is_err());
     }
 }
+
+// ---------------------------------------------------------------------------
+// VTRFIX-FEAT-H02: Ed25519 recovery-auth signing key
+// ---------------------------------------------------------------------------
+//
+// The RK mnemonic doubles as a BIP-39 seed from which we derive an Ed25519
+// keypair via HKDF("vautr-rk-auth"). The server registers the public key and
+// the client proves possession by signing the challenge nonce. Keeping this
+// in `vautr-crypto` lets both the wasm (web/extension) and app-state (mobile/
+// desktop) surfaces share one implementation.
+
+use sha2::Sha256;
+use ed25519_dalek::{Signer, SigningKey};
+/// HKDF info string for the RK-auth Ed25519 key (`"vautr-rk-auth"`).
+const RK_AUTH_INFO: &[u8] = b"vautr-rk-auth";
+
+/// Derive the Ed25519 recovery-auth signing key from a BIP-39 mnemonic.
+pub fn derive_recovery_signing_key(mnemonic: &Mnemonic) -> Result<Zeroizing<[u8; 32]>> {
+    let seed = mnemonic.to_seed("");
+    let hk = Hkdf::<Sha256>::new(None, &seed[..]);
+    let mut okm = Zeroizing::new([0u8; 32]);
+    hk.expand(RK_AUTH_INFO, &mut *okm)
+        .map_err(|_| CryptoError::AuthError("hkdf rk-auth".into()))?;
+    Ok(okm)
+}
+
+/// The public verifying key bytes corresponding to a recovery mnemonic.
+pub fn recovery_public_key(mnemonic: &Mnemonic) -> Result<[u8; 32]> {
+    let sk_bytes = derive_recovery_signing_key(mnemonic)?;
+    let sk = SigningKey::from_bytes(&sk_bytes);
+    Ok(sk.verifying_key().to_bytes())
+}
+
+/// Sign a challenge nonce with the recovery-auth key; returns the 64-byte
+/// Ed25519 signature.
+pub fn sign_recovery_nonce(
+    mnemonic: &Mnemonic,
+    nonce: &[u8],
+) -> Result<[u8; 64]> {
+    let sk_bytes = derive_recovery_signing_key(mnemonic)?;
+    let sk = SigningKey::from_bytes(&sk_bytes);
+    Ok(sk.sign(nonce).to_bytes())
+}
