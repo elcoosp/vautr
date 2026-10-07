@@ -181,7 +181,9 @@ export function ItemDetail({ uuid, onBack }: ItemDetailProps) {
                 aria-live="polite"
                 className="flex-1 rounded-md border border-border bg-surface-raised px-3 py-2 font-mono text-text"
               >
-                {masked ? '••••••••••' : '••••••••••'}
+                {/* VTRFIX-SEC-L12: the plaintext never enters React state (SEC-L08),
+                    so a real reveal cannot be rendered here — see copy path. */}
+                {masked ? '••••••••••' : 'Press Copy to reveal'}
               </span>
               <button
                 type="button"
