@@ -564,12 +564,13 @@ export class VautrWebClient {
       );
       svk = r.svk;
       if (r.usedLegacy) {
-        // One-time transparent re-wrap: the client re-uploads the SVK under
-        // the new AD so future logins take the fast path.
+        // VTRFIX-SEC-M02: transparent one-time re-wrap. The SVK bytes are
+        // unchanged; only the wrapping AEAD AD is re-bound to the user id.
+        // The dedicated route touches only `svk_ciphertext_blob` — the epoch
+        // gate and the RK-wrapped blob are untouched.
         try {
           const rewrapped = this.crypto.wrapSvkWithAd(svk, kek, userId);
-          await this.api.request('POST', '/account/rotate-key', {
-            new_min_enc_key_gen: status.min_enc_key_gen,
+          await this.api.request('POST', '/account/rekey-svk', {
             new_svk_ciphertext_blob: toBase64(rewrapped),
           });
         } catch {
