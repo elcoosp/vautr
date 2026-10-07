@@ -263,3 +263,27 @@ impl ChunkStore for SqliteChunkStore {
         Ok(n.unwrap_or(0).max(0) as u64)
     }
 }
+
+impl Repository {
+    /// Mark a single chunk `uploaded` for `user_id`.
+    pub async fn set_chunk_uploaded(
+        &self,
+        file_uuid: &str,
+        idx: i64,
+        user_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        // Owner check inline: only update when the manifest belongs to user.
+        sqlx::query(
+            "UPDATE file_chunks SET status = 'uploaded' \
+             WHERE file_uuid = ? AND chunk_index = ? \
+               AND EXISTS (SELECT 1 FROM file_manifests WHERE file_uuid = ? AND owner_user_id = ?)",
+        )
+        .bind(file_uuid)
+        .bind(idx)
+        .bind(file_uuid)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+}

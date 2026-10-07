@@ -335,6 +335,11 @@ pub fn routes() -> Router<AppState> {
         .route("/files/{file_uuid}/upload/status", get(upload_status))
         .route("/files/{file_uuid}/upload/complete", post(upload_complete))
         .route("/files/{file_uuid}/download", get(download))
+        // VTRFIX-FEAT-H01: real chunk transfer (replaces the mock presigned URLs).
+        .route(
+            "/files/{file_uuid}/chunks/{idx}",
+            axum::routing::put(upload_chunk).get(download_chunk),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -626,4 +631,118 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
+}
+
+// ---------------------------------------------------------------------------
+// VTRFIX-FEAT-H01: real chunk transfer
+// ---------------------------------------------------------------------------
+
+/// One-chunk upload body (base64 ciphertext). The client encrypts each chunk
+/// with the per-file FEK; the server never sees plaintext.
+#[derive(serde::Deserialize)]
+pub(crate) struct UploadChunkReq {
+    /// base64 of the AEAD-sealed chunk bytes.
+    bytes: String,
+}
+
+/// `PUT /files/{file_uuid}/chunks/{idx}` — store one encrypted chunk and mark
+/// its per-chunk row `uploaded`.
+async fn upload_chunk(
+    State(st): State<AppState>,
+    Path((file_uuid, idx)): Path<(Uuid, u32)>,
+    auth: Bearer,
+    Json(req): Json<UploadChunkReq>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let uuid = file_uuid.to_string();
+
+    // Caller must own the manifest.
+    let Some(manifest) = st
+        .repo
+        .get_file_manifest(&uuid, &user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "file not found",
+        ));
+    };
+    if idx >= manifest.total_chunks as u32 {
+        return Err(ApiError::bad_request(
+            "invalid_chunk_index",
+            "chunk index out of range",
+        ));
+    }
+    let bytes = super::decode_b64(&req.bytes)?;
+    let store = crate::repository::files::SqliteChunkStore::new(st.repo.pool().clone());
+    use crate::repository::files::ChunkStore;
+    store
+        .put_chunk(&uuid, idx, bytes)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    st.repo
+        .set_chunk_uploaded(&uuid, idx as i64, &user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "file_uuid": uuid,
+        "idx": idx,
+        "status": "uploaded",
+    })))
+}
+
+/// `GET /files/{file_uuid}/chunks/{idx}` — stream one encrypted chunk back.
+async fn download_chunk(
+    State(st): State<AppState>,
+    Path((file_uuid, idx)): Path<(Uuid, u32)>,
+    auth: Bearer,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::body::Body;
+    use axum::response::IntoResponse;
+
+    let user_id = auth_user(&st.repo, &auth.0).await?;
+    let uuid = file_uuid.to_string();
+
+    let Some(manifest) = st
+        .repo
+        .get_file_manifest(&uuid, &user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "file not found",
+        ));
+    };
+    if manifest.status != "Available" {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "not_available",
+            "file not fully uploaded",
+        ));
+    }
+    let store = crate::repository::files::SqliteChunkStore::new(st.repo.pool().clone());
+    use crate::repository::files::ChunkStore;
+    let Some(bytes) = store
+        .get_chunk(&uuid, idx)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "chunk_not_found",
+            "chunk not stored",
+        ));
+    };
+    Ok((
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/octet-stream".to_string(),
+        )],
+        Body::from(bytes),
+    )
+        .into_response())
 }
