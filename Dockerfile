@@ -17,7 +17,7 @@
 # =============================================================================
 
 # ---- Build stage ----------------------------------------------------------
-FROM rust:1.94-bookworm AS builder
+FROM rust:1.99-bookworm AS builder
 WORKDIR /build
 
 # Copy the whole source context so the Cargo workspace resolves all members.
