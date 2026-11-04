@@ -37,3 +37,12 @@ test-instrumentation = []
 [dev-dependencies]
 hex = "0.4"
 proptest = "1"
+
+# VTRFIX-FEAT-H03: on wasm32-unknown-unknown, getrandom needs a JS-backed RNG.
+# Both major versions appear in this crate's graph (0.2 via bip39/rand_core,
+# 0.4 via the newer AEAD stack). Declaring them as direct dependencies here
+# with the right feature unifies those features across the whole build, so
+# the wasm target resolves without further per-crate changes.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
