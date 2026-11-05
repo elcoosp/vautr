@@ -152,7 +152,14 @@ mod tests {
     fn shared_project_carries_org_and_optional_team_scope() {
         let org = Uuid::new_v4();
         let team = Uuid::new_v4();
-        let p = Project::shared(Uuid::new_v4(), "Secrets", org, Some(team), Uuid::new_v4(), 5);
+        let p = Project::shared(
+            Uuid::new_v4(),
+            "Secrets",
+            org,
+            Some(team),
+            Uuid::new_v4(),
+            5,
+        );
         assert_eq!(p.kind, ProjectKind::Shared);
         assert!(p.scope.is_scoped());
         assert_eq!(p.scope.org_id, Some(org));
