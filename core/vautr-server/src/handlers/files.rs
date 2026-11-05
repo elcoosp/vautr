@@ -167,7 +167,19 @@ async fn upload_initiate(
             now_ms(),
         )
         .await
-        .map_err(|e| ApiError::internal(&e.to_string()))?;
+        .map_err(|e| match e {
+            // VTRFIX (MEDIUM): another tenant already owns this file_uuid (the
+            // repository no longer re-points the row at a new owner). Surface a
+            // 409 instead of silently taking the upload over.
+            crate::repository::files::UpsertFileManifestError::OwnerConflict => ApiError::new(
+                StatusCode::CONFLICT,
+                "file_owner_conflict",
+                "file already claimed by another owner",
+            ),
+            crate::repository::files::UpsertFileManifestError::Db(e) => {
+                ApiError::internal(&e.to_string())
+            }
+        })?;
 
     let upload_id = Uuid::new_v4().to_string();
     let presigned_urls = presign_chunk_urls(&uuid, req.total_chunks as i64);
@@ -253,6 +265,26 @@ async fn upload_complete(
         }));
     }
 
+    // VTRFIX (MEDIUM): completeness gate. `PendingUpload → Available` used to
+    // happen unconditionally (and `set_all_chunks_uploaded` then marked every
+    // — including never-received — chunk `uploaded`), so a client could commit
+    // a truncated/corrupt upload. Only flip when every chunk row reports
+    // `uploaded`.
+    let uploaded = st
+        .repo
+        .count_chunks_uploaded(&uuid, &user_id)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    if uploaded != manifest.total_chunks {
+        return Err(ApiError::bad_request(
+            "chunks_incomplete",
+            &format!(
+                "received {} of {} chunks; upload the remaining chunks before completing",
+                uploaded, manifest.total_chunks
+            ),
+        ));
+    }
+
     let flipped = st
         .repo
         .set_file_status(&uuid, &user_id, "PendingUpload", "Available")
@@ -278,10 +310,9 @@ async fn upload_complete(
         return Err(ApiError::internal("file in unexpected upload state"));
     }
 
-    st.repo
-        .set_all_chunks_uploaded(&uuid, &user_id)
-        .await
-        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // All chunks were verified `uploaded` above; nothing to backfill here.
+    // (The previous unconditional `set_all_chunks_uploaded` call was removed —
+    // it marked un-received chunks as uploaded, masking data loss.)
 
     Ok(Json(CompleteResp {
         file_uuid: uuid,
@@ -482,7 +513,32 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
 
-        // 4. Complete -> Available, persisted to the manifest.
+        // 3b. VTRFIX: complete WITHOUT the chunks uploaded is rejected (400
+        // `chunks_incomplete`) — the manifest must not flip prematurely.
+        let (status, json) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/complete"),
+            "tok1",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json["error"], "chunks_incomplete");
+        assert_eq!(json["message"].as_str().unwrap().contains("0 of 3"), true);
+
+        // 4. Upload every chunk, then complete -> Available, persisted.
+        for idx in 0..3u32 {
+            let (status, _) = call(
+                &router,
+                "PUT",
+                &format!("/files/{fuuid}/chunks/{idx}"),
+                "tok1",
+                Some(json!({ "bytes": "Y2h1bms=" })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "chunk {idx} upload");
+        }
         let (status, json) = call(
             &router,
             "POST",
@@ -546,6 +602,171 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    /// VTRFIX (MEDIUM): completing before all chunks arrive must fail with 400
+    /// `chunks_incomplete` carrying received/total in the message.
+    #[tokio::test]
+    async fn complete_with_missing_chunks_rejected() {
+        let state = test_state().await;
+        let router = super::routes().with_state(state);
+        let fuuid = Uuid::new_v4().to_string();
+
+        let (status, _) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/initiate"),
+            "tok1",
+            Some(initiate_body(4)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        // Only chunk 1 of 4 arrives.
+        let (status, _) = call(
+            &router,
+            "PUT",
+            &format!("/files/{fuuid}/chunks/1"),
+            "tok1",
+            Some(json!({ "bytes": "Y2h1bms=" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, json) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/complete"),
+            "tok1",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json["error"], "chunks_incomplete");
+        let msg = json["message"].as_str().unwrap();
+        assert!(
+            msg.contains("1 of 4"),
+            "message must carry received/total: {msg}"
+        );
+
+        // Manifest is still PendingUpload; the remaining chunks complete it.
+        let (status, _) = call(
+            &router,
+            "GET",
+            &format!("/files/{fuuid}/download"),
+            "tok1",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        for idx in [0u32, 2, 3] {
+            let (status, _) = call(
+                &router,
+                "PUT",
+                &format!("/files/{fuuid}/chunks/{idx}"),
+                "tok1",
+                Some(json!({ "bytes": "Y2h1bms=" })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        let (status, json) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/complete"),
+            "tok1",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "Available");
+    }
+
+    /// VTRFIX (MEDIUM): a second tenant re-initiating an in-flight upload must
+    /// get 409 `file_owner_conflict`, not take the manifest over.
+    #[tokio::test]
+    async fn cross_tenant_reinitiate_conflicts() {
+        let state = test_state().await;
+        let now = now_ms();
+        state
+            .repo
+            .create_user(
+                "u2",
+                "b@example.com",
+                &[0u8; 32],
+                &[1u8; 16],
+                &[2u8; 48],
+                &[3u8; 48],
+                now,
+            )
+            .await
+            .expect("create user 2");
+        sqlx::query(
+            "INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(crate::repository::sessions::hash_session_token("tok2"))
+        .bind("u2")
+        .bind(now + 60_000)
+        .bind(now)
+        .execute(state.repo.pool())
+        .await
+        .expect("session 2");
+        let router = super::routes().with_state(state.clone());
+        let fuuid = Uuid::new_v4().to_string();
+
+        // u1 starts an in-flight upload.
+        let (status, _) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/initiate"),
+            "tok1",
+            Some(initiate_body(2)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        // u2 re-initiating the same file_uuid is a takeover attempt -> 409.
+        let (status, json) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/initiate"),
+            "tok2",
+            Some(initiate_body(2)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(json["error"], "file_owner_conflict");
+
+        // u2 still cannot see or complete the file.
+        let (status, _) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/complete"),
+            "tok2",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // The legitimate path still works: u1 re-initiates its OWN pending
+        // upload (manifest reset, chunks re-armed).
+        let (status, _) = call(
+            &router,
+            "POST",
+            &format!("/files/{fuuid}/upload/initiate"),
+            "tok1",
+            Some(initiate_body(2)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // Ownership unchanged.
+        let manifest = state
+            .repo
+            .get_file_manifest(&fuuid, "u1")
+            .await
+            .expect("repo")
+            .expect("manifest still owned by u1");
+        assert_eq!(manifest.status, "PendingUpload");
     }
 
     #[tokio::test]
