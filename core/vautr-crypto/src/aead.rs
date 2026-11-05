@@ -150,7 +150,13 @@ pub fn encrypt_with_nonce_raw(
     let cipher = XChaCha20Poly1305::new(key.into());
     let n: XNonce = nonce.as_slice().try_into().expect("nonce len");
     let ct = cipher
-        .encrypt(&n, Payload { msg: plaintext, aad: ad })
+        .encrypt(
+            &n,
+            Payload {
+                msg: plaintext,
+                aad: ad,
+            },
+        )
         .map_err(|_| CryptoError::Internal("encryption failed".into()))?;
     let mut out = Vec::with_capacity(NONCE_LEN + ct.len());
     out.extend_from_slice(nonce);
@@ -168,21 +174,23 @@ pub fn decrypt(key: &[u8; 32], uuid: &Uuid, enc_key_gen: u64, envelope: &[u8]) -
 /// Decrypt an envelope produced by [`encrypt_with_nonce`] using an explicit AD.
 pub fn decrypt_with_ad(key: &[u8; 32], ad: &[u8], envelope: &[u8]) -> Result<Vec<u8>> {
     // VTRFIX-SEC-M03: detect the enveloped format by magic+version+suite.
-    let (nonce_offset, check_len) = if envelope.len() >= ENVELOPE_PREFIX_LEN
-        && envelope[..4] == ENVELOPE_MAGIC
-    {
-        // Reject unknown version/suite rather than silently treating them as
-        // legacy (fail closed per the audit's crypto-agility contract).
-        if envelope[4] != ENVELOPE_VERSION {
-            return Err(CryptoError::UnsupportedSuite);
-        }
-        if envelope[5] != ENVELOPE_SUITE_XCHACHA20POLY1305 {
-            return Err(CryptoError::UnsupportedSuite);
-        }
-        (ENVELOPE_PREFIX_LEN, ENVELOPE_PREFIX_LEN + NONCE_LEN + TAG_LEN)
-    } else {
-        (0usize, NONCE_LEN + TAG_LEN)
-    };
+    let (nonce_offset, check_len) =
+        if envelope.len() >= ENVELOPE_PREFIX_LEN && envelope[..4] == ENVELOPE_MAGIC {
+            // Reject unknown version/suite rather than silently treating them as
+            // legacy (fail closed per the audit's crypto-agility contract).
+            if envelope[4] != ENVELOPE_VERSION {
+                return Err(CryptoError::UnsupportedSuite);
+            }
+            if envelope[5] != ENVELOPE_SUITE_XCHACHA20POLY1305 {
+                return Err(CryptoError::UnsupportedSuite);
+            }
+            (
+                ENVELOPE_PREFIX_LEN,
+                ENVELOPE_PREFIX_LEN + NONCE_LEN + TAG_LEN,
+            )
+        } else {
+            (0usize, NONCE_LEN + TAG_LEN)
+        };
     if envelope.len() < check_len {
         return Err(CryptoError::MalformedCiphertext);
     }
