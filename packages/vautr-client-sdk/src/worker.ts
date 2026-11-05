@@ -55,8 +55,9 @@ function serializeAction(action: CoreAction): string {
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  // VTRFIX-SEC-L03: reject cross-origin messages.
-  if (event.origin && event.origin !== self.location.origin) {
+  // VTRFIX-SEC-L03 / VTRFIX-K: reject cross-origin messages STRICTLY. An empty
+  // `event.origin` must not slip through the old truthy guard.
+  if (event.origin !== self.location.origin) {
     return;
   }
   const request = event.data;
