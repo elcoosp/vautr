@@ -42,24 +42,31 @@ async fn main() {
         .layer(middleware::per_route_rate_limiter())
         .layer(TraceLayer::new_for_http());
 
-    // Bind primarily on 0.0.0.0:8080 (IPv4) so IPv4-first clients (reqwest,
-    // the desktop client, the mobile simulator reaching the host via its LAN
-    // IP) can connect. On macOS a [::] listener is IPv6-only and does NOT
-    // accept IPv4-mapped ::ffff addresses, so reqwest fails with "error
-    // sending request for url" even though the server is up (VTR-097). Fall
-    // back to [::]:8080 only if 0.0.0.0 is unavailable. The bind port is
-    // overridable via VAUTR_PORT (default 8080) so e2e can avoid the
-    // well-known port when needed.
+    // Bind on 0.0.0.0:8080 (IPv4) so IPv4-first clients (reqwest, the desktop
+    // client, the mobile simulator reaching the host via its LAN IP) can
+    // connect. On macOS a [::] listener is IPv6-only and does NOT accept
+    // IPv4-mapped ::ffff addresses, so reqwest fails with "error sending
+    // request for url" even though the server is up (VTR-097) — hence IPv4
+    // first. The bind port is overridable via VAUTR_PORT (default 8080) so
+    // e2e can avoid the well-known port when needed.
     let port: u16 = std::env::var("VAUTR_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8080);
     let bind_addr = format!("0.0.0.0:{port}");
+    // VTRFIX (LOW): fail fast. The previous code silently fell back to
+    // `[::]:0` (random port!) when `0.0.0.0:{port}` was unavailable, leaving
+    // operators with a server nobody could find. Surface the bind error and
+    // exit with a clear message instead.
     let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(l) => l,
-        Err(_) => tokio::net::TcpListener::bind("[::]:0")
-            .await
-            .expect("failed to bind 0.0.0.0:8080 or [::]:8080"),
+        Err(e) => {
+            eprintln!(
+                "vautr-server: failed to bind {bind_addr}: {e} \
+                 (free the port, or set VAUTR_PORT to another port)"
+            );
+            std::process::exit(1);
+        }
     };
     tracing::info!("vautr-server listening on :{port} (IPv4-first, VTR-097)");
 
