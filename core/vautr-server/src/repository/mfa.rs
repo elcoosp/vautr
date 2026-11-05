@@ -556,11 +556,7 @@ impl Repository {
     }
 
     /// Record one failed TOTP attempt. After 5 failures, lock for 15 min.
-    pub async fn register_totp_failure(
-        &self,
-        user_id: &str,
-        now: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn register_totp_failure(&self, user_id: &str, now: i64) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE users SET \
                totp_fail_count = totp_fail_count + 1, \
