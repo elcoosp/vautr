@@ -133,3 +133,27 @@ pub mod quarantine {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+/// `PendingDelete` entity: tombstone deletes recorded locally at commit time
+/// and flushed to the server on the next `push_local_changes`/offline flush.
+/// VTRFIX (sync delete round-trip): without this table a local delete only
+/// removed rows locally — the server (and every other device) kept the item
+/// forever, because no caller ever produced the transport's `payload: None`
+/// tombstone shape.
+pub mod pending_delete {
+    use sea_orm::entity::prelude::*;
+
+    #[sea_orm::model]
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "pending_deletes")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub uuid: String,
+        /// The item's server version at delete time (tombstone OCC target).
+        pub version: i64,
+        /// The item's key generation at delete time (tombstone enc_key_gen).
+        pub enc_key_gen: i64,
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
