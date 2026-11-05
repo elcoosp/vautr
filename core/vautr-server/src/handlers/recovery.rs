@@ -99,6 +99,17 @@ pub(crate) struct StatusResp {
     status: String,
 }
 
+/// VTRFIX (MEDIUM): the reclaim token is hashed at rest, so the RAW token must
+/// be handed to the caller exactly once (in production it would be delivered
+/// via the emailed verification link). `reclaim_token` is omitted on every
+/// non-success path (same status shape → no enumeration).
+#[derive(Serialize)]
+pub(crate) struct ReclaimResp {
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reclaim_token: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -133,17 +144,27 @@ pub(crate) async fn recover_challenge(
 
 /// Verify an Ed25519 signature over the challenge nonce against the stored RK
 /// public key. On success, issue a short-lived, one-time recovery session token.
+///
+/// VTRFIX (MEDIUM): every failure mode returns the SAME uniform
+/// 400 `verification_failed` response. The previous distinct errors
+/// (`not_found`, `rk_not_configured`, `invalid_rk_key`, `no_challenge`,
+/// `challenge_expired`, signature failures) let an attacker probe whether an
+/// email is registered / has a recovery key configured (user enumeration).
 pub(crate) async fn recover_verify(
     State(st): State<AppState>,
     Json(req): Json<VerifyReq>,
 ) -> Result<Json<VerifyResp>, ApiError> {
+    // Uniform rejection for EVERY failure mode (enumeration defense).
+    const VERIFICATION_FAILED: fn() -> ApiError =
+        || ApiError::bad_request("verification_failed", "verification failed");
+
     let Some(user) = st
         .repo
         .get_user_by_email(&req.email)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     else {
-        return Err(ApiError::bad_request("not_found", "unknown user"));
+        return Err(VERIFICATION_FAILED());
     };
     let Some(pk_bytes) = st
         .repo
@@ -151,16 +172,10 @@ pub(crate) async fn recover_verify(
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
     else {
-        return Err(ApiError::bad_request(
-            "rk_not_configured",
-            "no recovery key registered for this account",
-        ));
+        return Err(VERIFICATION_FAILED());
     };
     if pk_bytes.len() != 32 {
-        return Err(ApiError::bad_request(
-            "invalid_rk_key",
-            "malformed recovery key",
-        ));
+        return Err(VERIFICATION_FAILED());
     }
     // VTRFIX-SEC-H09: verify against the STORED nonce (single-use).
     let (stored_nonce, expires_at) = st
@@ -168,47 +183,33 @@ pub(crate) async fn recover_verify(
         .get_recovery_challenge(&user.id)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
-        .ok_or_else(|| {
-            ApiError::bad_request("no_challenge", "call /account/recover/challenge first")
-        })?;
+        .ok_or_else(VERIFICATION_FAILED)?;
     if now_ms() > expires_at {
         let _ = st.repo.delete_recovery_challenge(&user.id).await;
-        return Err(ApiError::bad_request(
-            "challenge_expired",
-            "challenge expired; request a new one",
-        ));
+        return Err(VERIFICATION_FAILED());
     }
     // Optional echo: if supplied, must match the stored nonce.
     if let Some(echo) = req.nonce.as_deref() {
         if decode_b64(echo)? != stored_nonce {
-            return Err(ApiError::unauthorized());
+            return Err(VERIFICATION_FAILED());
         }
     }
     let nonce = stored_nonce.clone();
     let sig_bytes = decode_b64(&req.signature)?;
     if sig_bytes.len() != 64 {
-        return Err(ApiError::bad_request(
-            "invalid_signature",
-            "signature must be 64 bytes",
-        ));
+        return Err(VERIFICATION_FAILED());
     }
     let mut pk_arr = [0u8; 32];
     pk_arr.copy_from_slice(&pk_bytes);
     let Ok(verifying_key) = VerifyingKey::from_bytes(&pk_arr) else {
-        return Err(ApiError::bad_request(
-            "invalid_rk_key",
-            "malformed recovery key",
-        ));
+        return Err(VERIFICATION_FAILED());
     };
     let Ok(signature) = Signature::from_slice(&sig_bytes) else {
-        return Err(ApiError::bad_request(
-            "invalid_signature",
-            "malformed signature",
-        ));
+        return Err(VERIFICATION_FAILED());
     };
     // Signature over the exact challenge nonce bytes.
     if verifying_key.verify_strict(&nonce, &signature).is_err() {
-        return Err(ApiError::unauthorized());
+        return Err(VERIFICATION_FAILED());
     }
 
     // VTRFIX-SEC-H09: single-use — consume the challenge NOW, before
@@ -292,7 +293,7 @@ pub(crate) async fn recover_complete(
 pub(crate) async fn reclaim(
     State(st): State<AppState>,
     Json(req): Json<ReclaimReq>,
-) -> Result<Json<StatusResp>, ApiError> {
+) -> Result<Json<ReclaimResp>, ApiError> {
     // VTRFIX-SEC-H10: reclaim must not be triggerable by an unauthenticated
     // attacker who merely knows the email. Require proof of RK possession
     // (a valid Ed25519 signature over the server-issued challenge nonce).
@@ -304,8 +305,9 @@ pub(crate) async fn reclaim(
         .map_err(|e| ApiError::internal(&e.to_string()))?
     else {
         // Unknown email: same 202 shape, no state change.
-        return Ok(Json(StatusResp {
+        return Ok(Json(ReclaimResp {
             status: "verification_required".into(),
+            reclaim_token: None,
         }));
     };
 
@@ -351,8 +353,9 @@ pub(crate) async fn reclaim(
 
     if !proof_ok {
         // Same response shape as success — no state change, no enumeration.
-        return Ok(Json(StatusResp {
+        return Ok(Json(ReclaimResp {
             status: "verification_required".into(),
+            reclaim_token: None,
         }));
     }
 
@@ -365,8 +368,11 @@ pub(crate) async fn reclaim(
         .store_reclaim(&user.id, &token, now + RECLAIM_SUSPENSION_MS)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
-    Ok(Json(StatusResp {
+    // VTRFIX (MEDIUM): only the SHA-256 of `token` is persisted; the raw token
+    // is returned once (in production it would be in the emailed link).
+    Ok(Json(ReclaimResp {
         status: "verification_required".into(),
+        reclaim_token: Some(token),
     }))
 }
 
@@ -585,7 +591,8 @@ mod tests {
         );
     }
 
-    /// A signature made with the wrong key must be rejected.
+    /// A signature made with the wrong key must be rejected with the SAME
+    /// uniform response as every other failure (VTRFIX: no enumeration).
     #[tokio::test]
     async fn recovery_verify_rejects_wrong_signature() {
         let state = test_state().await;
@@ -633,7 +640,62 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let v = json_body(resp).await;
+        assert_eq!(v["error"], "verification_failed");
+    }
+
+    /// VTRFIX (MEDIUM): every recover/verify failure mode returns the identical
+    /// uniform 400 `verification_failed` (no user enumeration).
+    #[tokio::test]
+    async fn recovery_verify_errors_are_uniform() {
+        let state = test_state().await;
+        let app = feature_router(state.clone());
+
+        async fn do_verify(app: &axum::Router, email: &str, sig: &str) -> axum::response::Response {
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/account/recover/verify")
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(
+                            serde_json::json!({ "email": email, "signature": sig }).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+        }
+        let sig = b64(&[0u8; 64]);
+
+        // Unknown email.
+        let resp = do_verify(&app, "ghost@example.com", &sig).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let v = json_body(resp).await;
+        assert_eq!(v["error"], "verification_failed");
+
+        // Known email WITHOUT an RK configured.
+        seed_user(&state, "norkey@example.com").await;
+        let resp = do_verify(&app, "norkey@example.com", &sig).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let v = json_body(resp).await;
+        assert_eq!(v["error"], "verification_failed");
+
+        // Known email WITH an RK but no challenge issued.
+        let uid = seed_user(&state, "rk@example.com").await;
+        state
+            .repo
+            .set_rk_public_key(
+                &uid,
+                &test_signing_key(9).verifying_key().to_bytes().to_vec(),
+            )
+            .await
+            .unwrap();
+        let resp = do_verify(&app, "rk@example.com", &sig).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let v = json_body(resp).await;
+        assert_eq!(v["error"], "verification_failed");
     }
 
     /// Reclaim lifecycle: initiate → confirm → suspension cleared.
@@ -691,16 +753,31 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        // Look up the token the way the emailed link would (repo read).
-        let row = sqlx::query_as::<_, (Option<String>, Option<i64>)>(
-            "SELECT reclaim_token, suspended_until FROM users WHERE id = ?",
-        )
-        .bind(&user_id)
-        .fetch_one(state.repo.pool())
-        .await
-        .unwrap();
-        let (token, suspended) = row;
-        let token = token.unwrap();
+        // VTRFIX (MEDIUM): the reclaim token is hashed at rest, so the raw
+        // token now comes from the (one-time) reclaim response.
+        let reclaim_json = json_body(resp).await;
+        let token = reclaim_json["reclaim_token"]
+            .as_str()
+            .expect("reclaim response carries the raw token once")
+            .to_string();
+
+        // The DB must NOT contain the raw reclaim token (hash-only at rest).
+        let raw_in_db: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE reclaim_token = ?")
+                .bind(&token)
+                .fetch_one(state.repo.pool())
+                .await
+                .unwrap();
+        assert_eq!(raw_in_db, 0, "raw reclaim token must not be stored");
+
+        // Vault is suspended for the grace period.
+        let row =
+            sqlx::query_as::<_, (Option<i64>,)>("SELECT suspended_until FROM users WHERE id = ?")
+                .bind(&user_id)
+                .fetch_one(state.repo.pool())
+                .await
+                .unwrap();
+        let suspended = row.0;
         assert!(
             suspended.unwrap() > now_ms(),
             "vault suspended for grace period"
