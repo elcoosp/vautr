@@ -37,8 +37,8 @@ pub fn decrypt_secret_with_svk_core(
     let svk = Zeroizing::new(to_arr32(svk)?);
     let dek = key_tree::derive_dek(&svk).map_err(|e| e.to_string())?;
     let item_uuid = uuid::Uuid::parse_str(uuid).map_err(|e| e.to_string())?;
-    let pt =
-        aead::decrypt(&dek, &item_uuid, enc_key_gen, payload).map_err(|e| format!("decrypt: {e}"))?;
+    let pt = aead::decrypt(&dek, &item_uuid, enc_key_gen, payload)
+        .map_err(|e| format!("decrypt: {e}"))?;
     let json: serde_json::Value =
         serde_json::from_slice(&pt).map_err(|e| format!("json parse: {e}"))?;
     let password = json["password"]
