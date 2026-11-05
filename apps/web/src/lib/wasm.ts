@@ -96,6 +96,47 @@ export function open_mnemonic_js(kek: Uint8Array, ciphertext: Uint8Array): Uint8
   return (raw as any).open_mnemonic_js(kek, ciphertext);
 }
 
+// --- VTRFIX-FEAT-H02: recovery-auth Ed25519 key (core/vautr-wasm/src/auth.rs) ---
+export function sign_recovery_nonce_js(mnemonic: string, nonce_b64: string): string {
+  return (raw as any).sign_recovery_nonce_js(mnemonic, nonce_b64);
+}
+
+export function recovery_public_key_js(mnemonic: string): Uint8Array {
+  return (raw as any).recovery_public_key_js(mnemonic);
+}
+
+export function recover_svk_js(
+  mnemonic: string,
+  svk_rk_wrapped_b64: string,
+  server_user_id: string,
+): Uint8Array {
+  return (raw as any).recover_svk_js(mnemonic, svk_rk_wrapped_b64, server_user_id);
+}
+
+// --- VTRFIX-SEC-M02: user-scoped AD wrap/unwrap (core/vautr-wasm/src/auth.rs) ---
+export function wrap_svk_with_ad_js(
+  svk: Uint8Array,
+  kek: Uint8Array,
+  user_id: string,
+): Uint8Array {
+  return (raw as any).wrap_svk_with_ad_js(svk, kek, user_id);
+}
+
+export function unwrap_svk_with_ad_or_legacy_js(
+  wrapped: Uint8Array,
+  kek: Uint8Array,
+  user_id: string,
+): { svk: Uint8Array; used_legacy: boolean } {
+  const r = (raw as any).unwrap_svk_with_ad_or_legacy_js(wrapped, kek, user_id) as {
+    svk: Uint8Array | number[];
+    used_legacy: boolean;
+  };
+  return {
+    svk: r.svk instanceof Uint8Array ? r.svk : new Uint8Array(r.svk),
+    used_legacy: r.used_legacy,
+  };
+}
+
 export function opaque_register_start_js(password: string): {
   message: Uint8Array;
   state: Uint8Array;
