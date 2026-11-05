@@ -18,17 +18,18 @@ import {
   Settings2,
   Share2,
 } from 'lucide-react-native';
-import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, ScrollView, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
 import { ThemedIcon } from '../../components/ui/icon';
 import { useToast } from '../../components/ui/toast';
-import { requireBiometric } from '../../lib/biometrics';
+import { describeBiometricDenial, requireBiometric } from '../../lib/biometrics';
 import { isLocalVaultActive, services } from '../../lib/client';
 import { useSession } from '../../lib/session';
+import { useVaultLock, VAULT_IDLE_LOCK_MS } from '../../lib/vaultLock';
 
 export const Route = createFileRoute('/_app')({
   component: AppShell,
@@ -86,10 +87,32 @@ function NavItem({ icon: Icon, label, onPress }: NavItemProps) {
 
 function AppShell() {
   const username = useSession((s) => s.username);
-  const [locked, setLocked] = useState(false);
+  // VTRFIX-SEC-C06: the lock state lives in a small zustand store so protected
+  // child surfaces (e.g. the settings Emergency Kit reveal) can read it too.
+  const locked = useVaultLock((s) => s.locked);
+  const setLocked = useVaultLock((s) => s.setLocked);
   const router = useRouter();
   const toast = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Real idle-lock: timestamp the last backgrounding; if the app comes back to
+  // the foreground after VAULT_IDLE_LOCK_MS, re-lock the vault.
+  const backgroundedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        const since = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (since !== null && Date.now() - since >= VAULT_IDLE_LOCK_MS) {
+          setLocked(true);
+        }
+      } else if (state !== 'unknown') {
+        // 'background' (both platforms) and 'inactive' (iOS transitions).
+        backgroundedAtRef.current = Date.now();
+      }
+    });
+    return () => sub.remove();
+  }, [setLocked]);
 
   // Bottom tab bar: the primary destinations. Everything else (account,
   // security, tokens, import/export, shares) lives in the left drawer so the
@@ -113,7 +136,8 @@ function AppShell() {
       toast.show({ title: 'Unlocked', description: 'Vault unlocked with biometrics.' });
     } else {
       toast.show({
-        title: 'Authentication cancelled',
+        title: 'Unlock failed',
+        description: describeBiometricDenial(gate.reason, 'unlocking the vault'),
         variant: 'destructive',
       });
     }
