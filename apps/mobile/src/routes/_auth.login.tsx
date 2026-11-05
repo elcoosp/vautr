@@ -130,7 +130,7 @@ function LoginScreen() {
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
-                    textContentType="oneTimeCode"
+                    textContentType="password"
                     autoComplete="off"
                     placeholder="Enter master password"
                   />
@@ -145,7 +145,7 @@ function LoginScreen() {
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       secureTextEntry
-                      textContentType="oneTimeCode"
+                      textContentType="newPassword"
                       autoComplete="off"
                       placeholder="Confirm master password"
                     />
