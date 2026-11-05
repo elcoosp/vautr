@@ -95,7 +95,7 @@ async function main() {
   await api('POST', '/auth/register/finish', {
     username,
     registration_finish: btoaBytes(regUpload),
-    server_public_key: btoaBytes(new Uint8Array(32)),
+    server_public_key: regStartResp.server_public_key,
     kdf_salt: btoaBytes(salt),
     svk_ciphertext_blob: btoaBytes(svkWrapped),
     svk_ciphertext_blob_rk: btoaBytes(svkRkWrapped),
