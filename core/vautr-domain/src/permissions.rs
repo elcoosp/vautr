@@ -220,8 +220,13 @@ mod tests {
         assert_eq!(AccessGrantee::User { id: u }.id(), u);
         assert_eq!(AccessGrantee::Group { id: g }.id(), g);
 
-        let grant =
-            ProjectAccessGrant::new(Uuid::new_v4(), AccessGrantee::User { id: u }, ProjectPermission::CanEdit, g, 7);
+        let grant = ProjectAccessGrant::new(
+            Uuid::new_v4(),
+            AccessGrantee::User { id: u },
+            ProjectPermission::CanEdit,
+            g,
+            7,
+        );
         assert_eq!(grant.permission, ProjectPermission::CanEdit);
         assert!(!grant.hide_password);
     }
@@ -230,7 +235,10 @@ mod tests {
     fn grantee_serde_discriminated_union() {
         let g = AccessGrantee::User { id: Uuid::nil() };
         let json = serde_json::to_string(&g).unwrap();
-        assert_eq!(json, r#"{"type":"user","id":"00000000-0000-0000-0000-000000000000"}"#);
+        assert_eq!(
+            json,
+            r#"{"type":"user","id":"00000000-0000-0000-0000-000000000000"}"#
+        );
         let back: AccessGrantee = serde_json::from_str(&json).unwrap();
         assert_eq!(back, g);
     }
