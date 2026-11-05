@@ -1,7 +1,9 @@
 # Client Feature Parity Matrix
 
-Last reconciled: 2026-08-16 (post VTR-099/101/102/103 UI recompose + VTR-104
-mobile uniffi core link + VTR-105 web key-rotation). Scope: the four clients
+Last reconciled: 2026-11-04 (audit pass: mobile reveal ⚠️, ConflictModal ✗,
+vautr-ffi register/login corrected; prior reconciliation 2026-08-16 post
+VTR-099/101/102/103 UI recompose + VTR-104 mobile uniffi core link + VTR-105
+web key-rotation). Scope: the four clients
 shipping from this repo — **web**, **desktop** (GPUI), **extension**,
 **mobile** (React Native) — plus the shared **Rust core**
 (`vautr-app-state`, `vautr-sync`, `vautr-ffi`, `vautr-db`, `vautr-crypto`) that
@@ -17,8 +19,8 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 | Capability | core | web | desktop | extension | mobile |
 |---|---|---|---|---|---|
 | Local vault (FFI / orchestrator) | ✅ | ✗ HTTP client | ✅ vautr-app-state | ✗ HTTP client | ✅ FFI linked (VTR-104); `getMobileClient()` non-null on device/sim |
-| Secure secret reveal (opaque handle → native overlay) | ✅ | ✅ handle-based (VTR-062) | ✅ (GPUI, plaintext local) | ✅ transient wasm copy (VTR-062 follow-up) | ✅ `SecretOverlay` via `getMobileClient` (native-linked VTR-104) |
-| Conflict modal (VTR-056) | ✅ `ConflictDetected` | ✅ | ✅ (VTR-063) | ✅ (VTR-064) | ✅ `conflictQueue` (native-linked) |
+| Secure secret reveal (opaque handle → native overlay) | ✅ | ✅ handle-based (VTR-062) | ✅ (GPUI, plaintext local) | ✅ transient wasm copy (VTR-062 follow-up) | ⚠️ `SecretOverlay` wired via `getMobileClient` (JS forwards the opaque handle to `renderInOverlay`), but the native overlay *render* has not landed yet — no plaintext display until it does (VTR-104 follow-up) |
+| Conflict modal (VTR-056) | ✅ `ConflictDetected` | ✅ | ✅ (VTR-063) | ✅ (VTR-064) | ✗ no `ConflictModal`/`conflictQueue` on mobile (planned) |
 | Import / export (VTR-039) | ✅ | ✅ | ✅ | ✅ (VTR-064) | ✅ |
 | Machine accounts (VTR-047) | ✅ | ✅ | ✅ | ✅ (VTR-064) | ✅ |
 | Tokens (VTR-047) | ✅ | ✅ | ✅ | ✅ (VTR-064) | ✅ |
@@ -31,18 +33,27 @@ Legend: ✅ full · ⚠️ partial / wired-but-conditional · ✗ missing
 
 1. **Mobile native module (post-auth surface) is now linked (VTR-104).** The
    `vautr-ffi` uniffi core builds for `aarch64-apple-ios-sim` and links via the
-   `VautrNativeModule` pod, so `getMobileClient()` is non-null: the secure
-   `SecretOverlay` reveal path, native sharing (`MobileSharingClient`), and
-   `sync`/`watch_state` are live on device/simulator. **Caveat (open):** account
-   *creation / first unlock* still cannot run on RN/Hermes — the OPAQUE PAKE +
-   KDF + SVK/KEK/recovery crypto lives in the `vautr-wasm` crate, which targets a
-   JS engine with WebAssembly; Hermes has no WASM, and `vautr-ffi`'s
-   `MobileClient` expects those keys to be supplied by the client (it has no
-   register/login of its own). Until OPAQUE is ported into `vautr-ffi` (a
-   follow-up VTR), mobile register/login fails fast with a clear "use web or
-   desktop" message rather than a silent empty error. (The `VautrNativeBridge`
-   surface and Swift bindings are in place and ready to accept `register`/
-   `login` once the Rust side exposes them.)
+   `VautrNativeModule` pod, so `getMobileClient()` is non-null: native sharing
+   (`MobileSharingClient`) and `sync`/`watch_state` are live on
+   device/simulator. **Audit corrections:**
+   - `vautr-ffi`'s `MobileClient` **does** expose its own `register`/`login`
+     (OPAQUE runs natively; see `core/vautr-ffi/src/client.rs`) and
+     `apps/mobile/lib/auth.ts` delegates to them when the core is linked. The
+     earlier claim that it "has no register/login of its own … fails fast" was
+     incorrect.
+   - The mobile `SecretOverlay` reveal is ⚠️ partial (see matrix): the JS side
+     forwards the opaque handle to `renderInOverlay`, but the native overlay
+     render itself has not landed, so no plaintext is shown yet.
+   - Mobile has **no ConflictModal / conflictQueue** — the matrix previously
+     marked it ✅; corrected to ✗ (planned).
+   - Item *creation* and item *sharing* are gated OFF in the mobile UI
+     (`_app.projects.$projectId.secrets.new.tsx`, `_app.shares.tsx`) because
+     the linked native module exposes no item encryption — posting the raw
+     value would break zero-knowledge. The screens keep their UI but disable
+     the submit actions behind an explanatory notice.
+   - Biometric gates (`requireBiometric`) now **fail closed**: devices without
+     biometric hardware get `{success: false, reason: 'no_hardware'}` instead
+     of silently passing the gate.
 
 2. **Web/extension reveal is server-backed, not wasm-decrypt-in-tab.** Both now
    avoid plaintext-in-JS-state (web = opaque wasm handle + `performAction`;
