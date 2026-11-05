@@ -1,9 +1,18 @@
 # Litestream config for the vautr server (SQLite WAL replication).
 # Credentials are provided via env: LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY
+#
+# VTRFIX (MEDIUM): litestream does NOT support shell-style `:-` fallbacks in
+# its config — the previous `${VAUTR_LITESTREAM_URL:-s3://vautr-backups/vautr.db}`
+# was passed through verbatim and replication failed. The URL is now a plain
+# env expansion: set VAUTR_LITESTREAM_URL (e.g.
+#   export VAUTR_LITESTREAM_URL=s3://your-bucket/vautr.db
+# via docker-compose.prod.yml) before starting the backup sidecar, or replace
+# the line below with a literal replica URL such as:
+#   s3://vautr-backups/vautr.db
 dbs:
   - path: /data/vautr.db
     replicas:
-      - url: ${VAUTR_LITESTREAM_URL:-s3://vautr-backups/vautr.db}
+      - url: ${VAUTR_LITESTREAM_URL}
         retention: 24h
         retention-check-interval: 1h
         snapshot-interval: 12h
