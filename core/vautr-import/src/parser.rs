@@ -31,7 +31,7 @@ pub fn parse_stream(
 ) -> CrateResult<Box<dyn Iterator<Item = Result<ParseRecord, String>>>> {
     match kind {
         SourceKind::Csv => Ok(Box::new(CsvIter::new(reader))),
-                SourceKind::Pif1Password => {
+        SourceKind::Pif1Password => {
             // VTRFIX-BUG-M18: parse 1PIF directly (line-delimited JSON records
             // separated by `***...***` marker rows). Previously this was routed
             // to the ZIP parser and always failed.
@@ -44,23 +44,82 @@ pub fn parse_stream(
             let mut records: VecDeque<Result<ParseRecord, String>> = VecDeque::new();
             let mut line_no = 0u32;
             let mut buf = String::new();
-            let flush = |buf: &mut String,
-                             line: u32,
-                             records: &mut VecDeque<Result<ParseRecord, String>>| {
-                let trimmed = buf.trim();
-                if trimmed.is_empty() {
-                    return;
-                }
-                match serde_json::from_str::<Value>(trimmed) {
-                    Ok(v) => {
-                        if let Some(login) = v.get("secureContents").and_then(|s| s.get("fields")) {
-                            // Map to the Bitwarden-shaped item we already parse.
+            let flush =
+                |buf: &mut String,
+                 line: u32,
+                 records: &mut VecDeque<Result<ParseRecord, String>>| {
+                    let trimmed = buf.trim();
+                    if trimmed.is_empty() {
+                        return;
+                    }
+                    match serde_json::from_str::<Value>(trimmed) {
+                        Ok(v) => {
+                            // Map to the same Bitwarden-shaped `fields` object the
+                            // CSV/Bitwarden parsers emit (translate.rs reads
+                            // username/password/notes/totp from it).
+                            // VTRFIX (silent data loss): the previous mapping
+                            // extracted `secureContents.fields` and then discarded
+                            // it (`let _ = login`), importing every 1PIF item as a
+                            // blank row while the report counted a success.
+                            let secure = v.get("secureContents");
+                            let fields_arr = secure
+                                .and_then(|s| s.get("fields"))
+                                .and_then(|f| f.as_array())
+                                .cloned()
+                                .unwrap_or_default();
+                            let mut fields = serde_json::Map::new();
+                            for f in &fields_arr {
+                                let value = f.get("value").and_then(|v| v.as_str());
+                                let Some(value) = value else {
+                                    continue;
+                                };
+                                if value.is_empty() {
+                                    continue;
+                                }
+                                let designation = f
+                                    .get("designation")
+                                    .and_then(|d| d.as_str())
+                                    .unwrap_or_default()
+                                    .to_ascii_lowercase();
+                                let name = f
+                                    .get("name")
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or_default()
+                                    .to_ascii_lowercase();
+                                if designation == "username" || name == "username" {
+                                    fields.insert("username".into(), Value::String(value.into()));
+                                } else if designation == "password" || name == "password" {
+                                    fields.insert("password".into(), Value::String(value.into()));
+                                } else if name.contains("totp") || value.starts_with("otpauth://") {
+                                    fields.insert("totp".into(), Value::String(value.into()));
+                                }
+                            }
+                            if let Some(notes) = secure
+                                .and_then(|s| s.get("notesPlain"))
+                                .and_then(|n| n.as_str())
+                                .filter(|n| !n.is_empty())
+                            {
+                                fields.insert("notes".into(), Value::String(notes.into()));
+                            }
+                            let url = v
+                                .get("location")
+                                .and_then(|l| l.as_str())
+                                .filter(|l| !l.is_empty())
+                                .map(String::from)
+                                .or_else(|| {
+                                    v.get("urls")
+                                        .and_then(|u| u.as_array())
+                                        .and_then(|a| a.first())
+                                        .and_then(|u| u.get("url"))
+                                        .and_then(|u| u.as_str())
+                                        .filter(|u| !u.is_empty())
+                                        .map(String::from)
+                                });
                             let title = v
                                 .get("title")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or_default()
                                 .to_string();
-                            let _ = login;
                             records.push_back(Ok(ParseRecord {
                                 line_number: line,
                                 item: RawImportItem {
@@ -69,18 +128,17 @@ pub fn parse_stream(
                                         .and_then(|u| u.as_str())
                                         .map(String::from),
                                     title,
-                                    url: None,
-                                    fields: Value::Object(serde_json::Map::new()),
+                                    url,
+                                    fields: Value::Object(fields),
                                 },
                             }));
                         }
+                        Err(e) => {
+                            records.push_back(Err(format!("line {line}: {e}")));
+                        }
                     }
-                    Err(e) => {
-                        records.push_back(Err(format!("line {line}: {e}")));
-                    }
-                }
-                buf.clear();
-            };
+                    buf.clear();
+                };
             for line in text.lines() {
                 line_no += 1;
                 // 1PIF separator: a line of three or more asterisks.
@@ -131,9 +189,7 @@ pub struct CsvIter {
 
 impl CsvIter {
     pub fn new(reader: Box<dyn BufRead>) -> Self {
-        let mut reader = csv::ReaderBuilder::new()
-            .flexible(true)
-            .from_reader(reader);
+        let mut reader = csv::ReaderBuilder::new().flexible(true).from_reader(reader);
         let headers = reader
             .headers()
             .map(|h| h.iter().map(|s| s.to_ascii_lowercase()).collect())
@@ -158,7 +214,9 @@ impl CsvIter {
 
     /// Look up a CSV cell and trim surrounding whitespace (presentation only).
     fn field_trim(&self, rec: &csv::StringRecord, keys: &[&str]) -> Option<String> {
-        self.field_raw(rec, keys).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        self.field_raw(rec, keys)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
     }
 
     fn map_record(&mut self, rec: &csv::StringRecord) -> ParseRecord {
@@ -217,7 +275,10 @@ impl Iterator for CsvIter {
 
 /// Map a single Bitwarden JSON item object to a [`RawImportItem`].
 fn parse_bitwarden_item(item: &Value, line: u32) -> Result<ParseRecord, String> {
-    let source_id = item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let source_id = item
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let title = item
         .get("name")
         .and_then(|v| v.as_str())
@@ -240,7 +301,10 @@ fn parse_bitwarden_item(item: &Value, line: u32) -> Result<ParseRecord, String> 
         .and_then(|l| l.get("password"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let notes = item.get("notes").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let notes = item
+        .get("notes")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     // VTRFIX-BUG-H08: Bitwarden stores TOTP at `login.totp` (either a bare
     // base32 secret or a full otpauth:// URI). Preserve it for the translator.
     let totp = login
@@ -278,6 +342,55 @@ mod tests {
     use super::*;
     use crate::source::SourceKind;
     use std::io::Cursor;
+
+    /// VTRFIX regression: 1PIF records must map `secureContents.fields`
+    /// (designation/name/value), `notesPlain`, and the location into the same
+    /// Bitwarden-shaped `fields` object every other parser emits — the old
+    /// mapping discarded them and imported blank rows.
+    #[test]
+    fn parses_1pif_fields_not_blank() {
+        let rec1 = serde_json::json!({
+            "uuid": "A1",
+            "title": "GitHub",
+            "location": "https://github.com",
+            "secureContents": {
+                "notesPlain": "work account",
+                "fields": [
+                    {"designation": "username", "name": "username", "value": "octocat"},
+                    {"designation": "password", "name": "password", "value": " hunter2 "},
+                    {"name": "TOTP Authenticator", "value": "otpauth://totp/x?secret=ABC"}
+                ]
+            }
+        });
+        let sample = format!(
+            "******\n{}\n******\n",
+            serde_json::to_string(&rec1).unwrap()
+        );
+        let recs: Vec<Result<ParseRecord, String>> = parse_stream(
+            Box::new(Cursor::new(sample.into_bytes())),
+            SourceKind::Pif1Password,
+        )
+        .expect("parse")
+        .collect();
+        assert_eq!(recs.len(), 1);
+        let rec = recs.into_iter().next().unwrap().expect("ok");
+        assert_eq!(rec.item.title, "GitHub");
+        assert_eq!(rec.item.url.as_deref(), Some("https://github.com"));
+        let f = &rec.item.fields;
+        assert_eq!(f.get("username").and_then(|v| v.as_str()), Some("octocat"));
+        assert_eq!(
+            f.get("password").and_then(|v| v.as_str()),
+            Some(" hunter2 ")
+        );
+        assert_eq!(
+            f.get("totp").and_then(|v| v.as_str()),
+            Some("otpauth://totp/x?secret=ABC")
+        );
+        assert_eq!(
+            f.get("notes").and_then(|v| v.as_str()),
+            Some("work account")
+        );
+    }
 
     #[test]
     fn parses_csv_stream() {
