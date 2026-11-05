@@ -80,10 +80,23 @@ pub struct ConflictEvent {
 
 /// Used for surgical UI reverts on `MutationFailed` (data.md §5.3 / §3 Delete flow).
 /// SECURITY: only ever carries an `Overview`, never the `DecryptedSecret`.
-#[derive(Clone, Debug)]
+///
+/// VTRFIX (telemetry.md §1.3 Debug Ban): manual `Debug` — `Saved` renders only
+/// the item uuid; a derived impl would print the whole `DomainModel` (and
+/// through it the secret) into any event log.
+#[derive(Clone)]
 pub enum RevertibleState {
     Saved(DomainModel),
     Deleted(DecryptedOverview),
+}
+
+impl std::fmt::Debug for RevertibleState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RevertibleState::Saved(m) => f.debug_tuple("Saved").field(&m.uuid).finish(),
+            RevertibleState::Deleted(o) => f.debug_tuple("Deleted").field(o).finish(),
+        }
+    }
 }
 
 /// A monotonic task identifier (data.md §6.1). Passed to JS as a string.
