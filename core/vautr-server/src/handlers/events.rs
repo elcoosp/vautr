@@ -106,11 +106,22 @@ pub fn event_channel() -> broadcast::Sender<VaultEvent> {
     broadcast::channel(EVENT_CHANNEL_CAPACITY).0
 }
 
+/// VTRFIX (LOW): how often the SSE stream re-validates the bearer session.
+/// The stream used to be a never-ending `unfold` that authenticated once at
+/// connect; a revoked/expired session (or a suspended account) could keep
+/// listening forever.
+const SESSION_REVALIDATE_SECS: u64 = 300; // 5 minutes
+
 /// SSE stream of vault events for the authenticated user.
 ///
-/// Each frame is a JSON [`VaultEvent`]. The stream is never-ending; axum's SSE
-/// machinery handles client disconnect. We also emit an initial `hello` frame so
+/// Each frame is a JSON [`VaultEvent`]. We also emit an initial `hello` frame so
 /// the client can confirm the subscription is live.
+///
+/// VTRFIX (LOW): the bearer session is re-validated every
+/// [`SESSION_REVALIDATE_SECS`] inside the stream loop. When the session is
+/// revoked/expired (or the account got suspended), one final `error` event is
+/// emitted and the stream closes — the client must re-authenticate to
+/// resubscribe.
 pub(crate) async fn events_stream(
     State(st): State<AppState>,
     auth: Bearer,
@@ -121,27 +132,72 @@ pub(crate) async fn events_stream(
     let rx = st.events.subscribe(&user_id);
     let hello = Event::default().data("{\"type\":\"hello\"}");
 
+    let token = auth.0.clone();
+    let repo = st.repo.clone();
+    let revalidate = Duration::from_secs(SESSION_REVALIDATE_SECS);
+
     // Build an SSE stream: an initial `hello` frame, then each broadcast event.
     // Lagged/closed errors are skipped (the reaper re-emits tombstones, so a
     // missed frame is recovered on the next scan).
-    let event_stream = stream::unfold(rx, |mut rx| async move {
-        loop {
-            match rx.recv().await {
-                Ok(ev) => {
-                    return Some((
-                        Ok::<_, Infallible>(Event::default().data(ev.to_sse_data())),
-                        rx,
-                    ));
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return None,
+    //
+    // State: (receiver, raw bearer token, repo, next re-validation instant,
+    // `closing` flag). On a failed re-validation we emit one final `error`
+    // event, set `closing`, and terminate the stream on the next poll.
+    let event_stream = stream::unfold(
+        (
+            rx,
+            token,
+            repo,
+            tokio::time::Instant::now() + revalidate,
+            false,
+        ),
+        move |(mut rx, token, repo, mut next_check, mut closing)| async move {
+            if closing {
+                return None;
             }
-        }
-    });
+            loop {
+                let now = tokio::time::Instant::now();
+                if now >= next_check {
+                    // VTRFIX (LOW): re-validate the session (existence, expiry,
+                    // suspension) every 5 minutes.
+                    next_check = now + revalidate;
+                    if auth_user(&repo, &token).await.is_err() {
+                        closing = true;
+                        let ev = Event::default()
+                            .event("error")
+                            .data(
+                                "{\"error\":\"session_invalid\",\
+                                 \"message\":\"session revoked or expired; reconnect to continue\"}",
+                            );
+                        return Some((
+                            Ok::<_, Infallible>(ev),
+                            (rx, token, repo, next_check, closing),
+                        ));
+                    }
+                    continue;
+                }
+                // Wait for the next event, but wake up no later than the next
+                // re-validation deadline so a quiet stream is still checked.
+                match tokio::time::timeout(next_check - now, rx.recv()).await {
+                    Ok(Ok(ev)) => {
+                        return Some((
+                            Ok(Event::default().data(ev.to_sse_data())),
+                            (rx, token, repo, next_check, closing),
+                        ));
+                    }
+                    Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
+                    Ok(Err(broadcast::error::RecvError::Closed)) => return None,
+                    Err(_elapsed) => continue, // re-validation due
+                }
+            }
+        },
+    );
 
     let stream = stream::once(async move { Ok::<_, Infallible>(hello) }).chain(event_stream);
 
-    Ok(Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::new()).into_response())
+    Ok(Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::new())
+        .into_response())
 }
 
 /// Interval between server reaper scans.
@@ -224,7 +280,10 @@ mod tests {
     #[test]
     fn vault_event_sse_data_shape() {
         let id = Uuid::new_v4();
-        let ev = VaultEvent::ItemPermanentlyDeleted { user_id: "u1".into(), uuid: id };
+        let ev = VaultEvent::ItemPermanentlyDeleted {
+            user_id: "u1".into(),
+            uuid: id,
+        };
         let json = ev.to_sse_data();
         assert!(json.contains("\"type\":\"item_permanently_deleted\""));
         assert!(json.contains(&id.to_string()));
@@ -240,7 +299,10 @@ mod tests {
             vec![Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()]
         );
         for u in tombstoned {
-            let _ = tx.send(VaultEvent::ItemPermanentlyDeleted { user_id: "u1".into(), uuid: u });
+            let _ = tx.send(VaultEvent::ItemPermanentlyDeleted {
+                user_id: "u1".into(),
+                uuid: u,
+            });
         }
         let got = rx.recv().await.unwrap();
         match got {
