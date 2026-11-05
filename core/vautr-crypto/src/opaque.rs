@@ -19,9 +19,9 @@ use opaque_ke::{
     ClientRegistrationFinishParameters, ServerLogin, ServerLoginParameters, ServerRegistration,
     ServerSetup,
 };
-use zeroize::Zeroizing;
 use rand::rngs::OsRng;
 use sha2::Sha512;
+use zeroize::Zeroizing;
 
 /// Vautr OPAQUE ciphersuite: Ristretto255 + Triple-DH + Argon2 KSF.
 #[derive(Clone, Copy)]
@@ -40,8 +40,8 @@ impl opaque_ke::ksf::Ksf for VautrKsf {
         opaque_ke::errors::InternalError,
     > {
         use opaque_ke::argon2::{Algorithm, Argon2, Params, Version};
-        let params =
-            Params::new(64 * 1024, 3, 4, None).map_err(|_| opaque_ke::errors::InternalError::KsfError)?;
+        let params = Params::new(64 * 1024, 3, 4, None)
+            .map_err(|_| opaque_ke::errors::InternalError::KsfError)?;
         let a2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
         let mut out: opaque_ke::generic_array::GenericArray<u8, L> =
             opaque_ke::generic_array::GenericArray::default();
@@ -76,8 +76,7 @@ pub fn generate_server_setup() -> Result<Zeroizing<Vec<u8>>> {
 /// Reconstruct a [`ServerSetup`] from bytes produced by
 /// [`generate_server_setup`]. Fails closed on tampered/truncated input.
 pub fn server_setup_from_bytes(bytes: &[u8]) -> Result<ServerSetup<VautrSuite>> {
-    ServerSetup::<VautrSuite>::deserialize(bytes)
-        .map_err(|e| CryptoError::AuthError(e.to_string()))
+    ServerSetup::<VautrSuite>::deserialize(bytes).map_err(|e| CryptoError::AuthError(e.to_string()))
 }
 
 fn load_server_setup(bytes: &[u8]) -> Result<ServerSetup<VautrSuite>> {
