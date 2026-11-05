@@ -3,6 +3,33 @@
  * HTML document holding the 24-word Recovery Key. ZK: the mnemonic is passed in
  * from local storage (KEK-sealed at rest) and never sent to the server.
  */
+
+// --- Emergency Kit hand-off (auth → onboarding), VTRFIX-SEC-M24 ---
+// The freshly-generated Recovery Key is passed in memory only (never
+// sessionStorage/localStorage); the durable copy is KEK-sealed in IndexedDB.
+
+interface PendingKitGlobal {
+  __vautrPendingKit?: string;
+}
+
+/** Store the pending Emergency Kit mnemonic (written once, at registration). */
+export function setPendingEmergencyKit(mnemonic: string): void {
+  (globalThis as PendingKitGlobal).__vautrPendingKit = mnemonic;
+}
+
+/**
+ * Take (and clear) the pending Emergency Kit mnemonic, or `null` when no kit
+ * is pending (e.g. the onboarding tour is replayed later).
+ */
+export function takePendingEmergencyKit(): string | null {
+  const g = globalThis as PendingKitGlobal;
+  const kit = g.__vautrPendingKit ?? null;
+  if (kit !== null) {
+    delete g.__vautrPendingKit;
+  }
+  return kit;
+}
+
 export function renderKitHtml(mnemonic: string, email: string): string {
   const words = mnemonic.split(/\s+/).filter(Boolean);
   const wordRows = words
