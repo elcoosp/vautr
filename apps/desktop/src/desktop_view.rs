@@ -113,6 +113,40 @@ footer{{margin-top:32px;color:#888;font-size:12px}}</style></head>\
     )
 }
 
+/// VTRFIX-SEC-M: write `bytes` to `path` (create or truncate) with mode 0o600
+/// on unix. Used for plaintext vault exports (never world-readable).
+fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    f.write_all(bytes)?;
+    f.sync_all().ok();
+    Ok(())
+}
+
+/// VTRFIX-SEC-M: create `path` exclusively (fails if it already exists — never
+/// clobbers) with mode 0o600 on unix, and write `bytes`.
+fn write_new_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    f.write_all(bytes)?;
+    f.sync_all().ok();
+    Ok(())
+}
+
 /// Which login form mode is active (mirrors the web UnlockScreen).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LoginMode {
@@ -199,6 +233,12 @@ pub struct DesktopView {
     confirm_password_input: Entity<InputState>,
     /// Keep subscriptions alive with the view.
     _subscriptions: Vec<Subscription>,
+    /// VTRFIX-UX-M: pending TOTP challenge after `login` returned
+    /// `mfa_required` (VTRFIX-SEC-C03). When set, the login form shows a
+    /// 6-digit code field and submits via `do_complete_login_mfa`.
+    login_pending_mfa: Option<crate::auth_client::MfaChallenge>,
+    /// VTRFIX-UX-M: backing input for the login TOTP code field.
+    login_totp_input: Entity<InputState>,
 
     // ── Login form extra ─────────────────────────────────────────────────
     /// Typed form-state machine for the login/register/restore form.
@@ -344,6 +384,10 @@ pub struct DesktopView {
     /// registered during the paint phase, so they're set up in `render()`, not
     /// in `new()` (registering in `new()` trips GPUI's `debug_assert_paint`).
     key_handlers_registered: bool,
+    /// VTRFIX-SEC-M: epoch counter for the timed clipboard clear — incremented
+    /// on every copy; the 30s clearer only wipes the clipboard when the epoch
+    /// it captured is still the newest.
+    clipboard_copy_epoch: u64,
 
     // ── Secrets overview section ────────────────────────────────────────
     secrets_rows: Vec<(api_client::ProjectDto, api_client::SecretDto)>,
@@ -430,6 +474,8 @@ impl DesktopView {
         let offboard_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("User UUID to revoke all access"));
         let mfa_code_input = cx.new(|cx| InputState::new(window, cx).placeholder("000000"));
+        let login_totp_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("000000"));
         let confirm_text_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Type to confirm"));
         let settings_name_input = cx.new(|cx| {
@@ -526,6 +572,8 @@ impl DesktopView {
             password_input,
             confirm_password_input,
             _subscriptions,
+            login_pending_mfa: None,
+            login_totp_input,
             login_state: FormState::Idle,
             login_mode: LoginMode::Login,
             server_url: base_url(),
@@ -601,6 +649,7 @@ impl DesktopView {
             secrets_rows: Vec::new(),
             conflict_queue: Vec::new(),
             key_handlers_registered: false,
+            clipboard_copy_epoch: 0,
             secrets_loading: false,
             secrets_error: None,
             secrets_revealed: std::collections::HashMap::new(),
@@ -720,7 +769,20 @@ impl DesktopView {
                         auto_update_enabled: true,
                         recovery_mnemonic_enc: sealed_b64,
                     };
-                    let _ = cfg.save();
+                    // VTRFIX-BUG-M: a failed config save means the KDF salt is
+                    // lost forever (permanent lockout) — propagate the error to
+                    // the form instead of ignoring it.
+                    if let Err(e) = cfg.save() {
+                        this.update(cx, |this, cx| {
+                            this.login_state = FormState::Error(format!(
+                                "Saving local config failed ({e}); \
+                                 the KDF salt would be lost — aborting registration."
+                            ));
+                            cx.notify();
+                        })
+                        .ok();
+                        return;
+                    }
 
                     // Log in immediately so a session token is minted and the
                     // vault client is built — otherwise `is_unlocked()` stays
@@ -739,12 +801,11 @@ impl DesktopView {
                         }
                     };
                     if login.mfa_required.is_some() {
+                        // VTRFIX-UX-M: no dead-end — surface the TOTP field and
+                        // verify inline via `do_complete_login_mfa`.
                         this.update(cx, |this, cx| {
-                            this.login_state = FormState::Error(
-                                "Registered, but a second factor is required to log in. \
-                                 Use the web or CLI client to complete TOTP verification."
-                                    .into(),
-                            );
+                            this.login_pending_mfa = login.mfa_required.clone();
+                            this.login_state = FormState::Idle;
                             cx.notify();
                         })
                         .ok();
@@ -806,13 +867,14 @@ impl DesktopView {
                     return;
                 }
             };
-            if login.mfa_required.is_some() {
+            // VTRFIX-UX-M: a TOTP challenge no longer dead-ends on "use the web
+            // or CLI" — show the inline code field and verify with
+            // `complete_login_totp` (VTRFIX-SEC-C03), then continue the normal
+            // post-login path.
+            if let Some(mfa) = login.mfa_required {
                 this.update(cx, |this, cx| {
-                    this.login_state = FormState::Error(
-                        "A second factor is required for this account. \
-                         Use the web or CLI client to complete TOTP verification."
-                            .into(),
-                    );
+                    this.login_pending_mfa = Some(mfa);
+                    this.login_state = FormState::Idle;
                     cx.notify();
                 })
                 .ok();
@@ -830,6 +892,78 @@ impl DesktopView {
                 cx,
             )
             .await;
+        })
+        .detach();
+    }
+
+    /// Complete a login that paused on the server's TOTP challenge
+    /// (VTRFIX-UX-M / VTRFIX-SEC-C03): verify the 6-digit code with
+    /// [`AuthClient::complete_login_totp`], then continue the normal
+    /// post-login path (`apply_login`).
+    fn do_complete_login_mfa(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(mfa) = self.login_pending_mfa.clone() else {
+            return;
+        };
+        let username = self.username(cx);
+        let password = self.password(cx);
+        let code = self.login_totp_input.read(cx).value().to_string();
+        let server_url = self.server_url.clone();
+
+        if code.trim().is_empty() {
+            self.login_state =
+                FormState::Error("Enter the 6-digit code from your authenticator app.".into());
+            cx.notify();
+            return;
+        }
+
+        let kdf_salt = match VaultConfig::load().and_then(|c| c.kdf_salt_bytes().ok()) {
+            Some(s) => s,
+            None => {
+                self.login_state =
+                    FormState::Error("No local KDF salt found. Please register first.".into());
+                cx.notify();
+                return;
+            }
+        };
+
+        self.login_state = FormState::Submitting("Verifying code…".into());
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let _rt = crate::runtime::enter(); // tokio reactor for reqwest in this block
+            let auth = AuthClient::new(&server_url);
+            let login = match auth
+                .complete_login_totp(
+                    &username,
+                    &password,
+                    &mfa.pending_token,
+                    code.trim(),
+                    &kdf_salt,
+                )
+                .await
+            {
+                Ok(l) => l,
+                Err(e) => {
+                    this.update(cx, |this, cx| {
+                        this.login_state =
+                            FormState::Error(format!("TOTP verification failed: {e}"));
+                        cx.notify();
+                    })
+                    .ok();
+                    return;
+                }
+            };
+            if login.mfa_required.is_some() {
+                // Server demanded another factor; surface the field again.
+                this.update(cx, |this, cx| {
+                    this.login_pending_mfa = login.mfa_required.clone();
+                    this.login_state = FormState::Idle;
+                    cx.notify();
+                })
+                .ok();
+                return;
+            }
+            Self::apply_login(this.clone(), login, password.clone(), server_url.clone(), cx).await;
         })
         .detach();
     }
@@ -891,11 +1025,23 @@ impl DesktopView {
             let mp = Zeroizing::new(password);
 
             let dek: Zeroizing<[u8; 32]> = match (|| -> Result<Zeroizing<[u8; 32]>, String> {
-                if wrapped_svk.len() != 32 {
+                // VTRFIX-BUG-H: the server's `svk_ciphertext_blob` (saved in the
+                // session by `save_session`) is the MP-wrapped AEAD envelope
+                // (~60 bytes), NOT a raw key — the old code required it to be
+                // exactly 32 bytes and used it directly, so "restore saved
+                // session" could never succeed. Mirror `apply_login`: MP → MK
+                // (KDF salt from config) → KEK → AEAD unwrap → 32-byte SVK,
+                // then continue through the raw-key path.
+                let mk = kdf::derive_master_key(&mp, &kdf_salt).map_err(|e| format!("MK: {e}"))?;
+                let kek = key_tree::derive_kek(&mk).map_err(|e| format!("KEK: {e}"))?;
+                let svk_bytes = aead::decrypt(&kek, &Uuid::nil(), 0, &wrapped_svk)
+                    .map_err(|_| "SVK unwrap failed".to_string())?;
+                if svk_bytes.len() != 32 {
                     return Err("malformed SVK".into());
                 }
                 let mut svk = Zeroizing::new([0u8; 32]);
-                svk.copy_from_slice(&wrapped_svk);
+                svk.copy_from_slice(&svk_bytes);
+                // VTR-040: pin the SVK into RAM (best-effort).
                 let _ = lock_secret_memory(svk.as_slice());
                 key_tree::derive_dek(&svk).map_err(|e| format!("DEK: {e}"))
             })() {
@@ -1088,6 +1234,7 @@ impl DesktopView {
             this.dek = Some(dek);
             this.token = Some(session_token.clone());
             this.recovery_mnemonic = sealed_mnemonic;
+            this.login_pending_mfa = None;
             let _ = state::save_session(&state::PersistedSession {
                 token: session_token.clone(),
                 wrapped_svk_b64: B64.encode(&login.wrapped_svk),
@@ -1732,9 +1879,12 @@ impl DesktopView {
                     // re-verify the on-disk bytes before install.
                     match updater.stage_and_install(&bytes, &info.signature, &info.version) {
                         Ok(path) => {
-                            let _ = updater::Updater::install_command(&path).status();
-                            // The installer takes over; the new version reports
-                            // itself on next launch (TDD #5).
+                            // VTRFIX-SEC-M: launch the installer DETACHED — the
+                            // previous `.status()` blocked the GPUI thread for
+                            // the whole install (minutes on Linux). The installer
+                            // takes over; the new version reports itself on next
+                            // launch (TDD #5).
+                            let _ = updater::Updater::install_command(&path).spawn();
                         }
                         Err(e) => {
                             let t = view_entity.clone();
@@ -1886,6 +2036,7 @@ impl DesktopView {
         self.client = None;
         self.dek = None;
         self.token = None;
+        self.login_pending_mfa = None;
         state::clear_session();
         self.toast_info("Vault locked", cx);
         self.projects = ProjectsState::new();
@@ -2520,11 +2671,33 @@ impl DesktopView {
 
     fn do_copy_generator(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.generator_password.is_empty() {
-            cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                self.generator_password.clone(),
-            ));
+            // VTRFIX-SEC-M: timed clipboard clear — the generated password is
+            // wiped from the clipboard ~30s later unless a newer copy happened.
+            self.copy_with_timed_clear(self.generator_password.clone(), cx);
             self.push_toast(ToastKind::Info, "Password copied to clipboard", 3, cx);
         }
+    }
+
+    /// VTRFIX-SEC-M: best-effort timed clipboard clear. Copies `text` to the
+    /// clipboard, then — ~30s later — overwrites the clipboard with an empty
+    /// string UNLESS a newer copy happened in the meantime (guarded by the
+    /// incrementing `clipboard_copy_epoch`). Never blocks the UI: the clear
+    /// runs on a spawned task using the file's `async_io::Timer` pattern.
+    fn copy_with_timed_clear(&mut self, text: String, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        self.clipboard_copy_epoch += 1;
+        let epoch = self.clipboard_copy_epoch;
+        cx.spawn(async move |this, cx| {
+            async_io::Timer::after(Duration::from_secs(30)).await;
+            this.update(cx, |this, cx| {
+                if this.clipboard_copy_epoch == epoch {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(String::new()));
+                    this.push_toast(ToastKind::Info, "Clipboard cleared", 3, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     // ── MFA (canonical screen) ──────────────────────────────────────────
@@ -3258,21 +3431,26 @@ impl DesktopView {
             this.update(cx, |this, cx| {
                 this.import_busy = false;
                 match result {
-                    Ok(bytes) => match std::fs::write(&path, &bytes) {
-                        Ok(()) => {
-                            this.import_text = format!(
-                                "Vault exported ({} items / {} bytes) to {}",
-                                String::from_utf8_lossy(&bytes).matches("\"uuid\"").count(),
-                                bytes.len(),
-                                path
-                            );
-                            cx.notify();
+                    Ok(bytes) => {
+                        // VTRFIX-SEC-M: the export is the DECRYPTED vault in
+                        // plaintext JSON — write it mode 0o600 (unix) so other
+                        // local users cannot read it.
+                        match write_private(std::path::Path::new(&path), &bytes) {
+                            Ok(()) => {
+                                this.import_text = format!(
+                                    "Vault exported ({} items / {} bytes) to {}",
+                                    String::from_utf8_lossy(&bytes).matches("\"uuid\"").count(),
+                                    bytes.len(),
+                                    path
+                                );
+                                cx.notify();
+                            }
+                            Err(e) => {
+                                this.import_text = format!("Write failed: {e}");
+                                cx.notify();
+                            }
                         }
-                        Err(e) => {
-                            this.import_text = format!("Write failed: {e}");
-                            cx.notify();
-                        }
-                    },
+                    }
                     Err(e) => {
                         this.import_text = format!("Export failed: {e}");
                         cx.notify();
@@ -3412,16 +3590,23 @@ impl DesktopView {
         let status = self.login_state.message();
         let has_error = self.login_state.is_error();
         let busy = self.login_state.busy();
+        // VTRFIX-UX-M: when a login is paused on the server's TOTP challenge,
+        // the submit button verifies the code instead of re-running OPAQUE.
+        let mfa_pending = self.login_pending_mfa.is_some();
 
         let subtitle = match mode {
             LoginMode::Login => "Unlock your vault to view saved items.",
             LoginMode::Register => "Create a new zero-knowledge vault.",
         };
-        let submit_label = match (mode, busy) {
-            (LoginMode::Login, true) => "Unlocking…",
-            (LoginMode::Register, true) => "Creating…",
-            (LoginMode::Login, false) => "Unlock vault",
-            (LoginMode::Register, false) => "Create vault",
+        let submit_label = if mfa_pending {
+            "Verify code"
+        } else {
+            match (mode, busy) {
+                (LoginMode::Login, true) => "Unlocking…",
+                (LoginMode::Register, true) => "Creating…",
+                (LoginMode::Login, false) => "Unlock vault",
+                (LoginMode::Register, false) => "Create vault",
+            }
         };
         let submit_caption = match (mode, busy) {
             (LoginMode::Login, _) => "Register an account",
@@ -3514,6 +3699,20 @@ impl DesktopView {
                                         .w_full()
                                         .mask_toggle(),
                                 )
+                            })
+                            // VTRFIX-UX-M: TOTP code field — shown only while a
+                            // login is paused on the server's `mfa_required`
+                            // challenge; verified via `do_complete_login_mfa`.
+                            .when(mfa_pending, |this| {
+                                this.mt_2()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme::TEXT)
+                                            .child("Two-factor code"),
+                                    )
+                                    .child(Input::new(&self.login_totp_input).w_full())
                             }),
                     )
                     // Status / error.
@@ -3530,9 +3729,16 @@ impl DesktopView {
                             .w_full()
                             .label(submit_label)
                             .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
-                                match this.login_mode {
-                                    LoginMode::Login => this.do_login(window, cx),
-                                    LoginMode::Register => this.do_register(window, cx),
+                                // VTRFIX-UX-M: while a TOTP challenge is pending,
+                                // submit verifies the code; otherwise normal
+                                // login/register dispatch.
+                                if this.login_pending_mfa.is_some() {
+                                    this.do_complete_login_mfa(window, cx);
+                                } else {
+                                    match this.login_mode {
+                                        LoginMode::Login => this.do_login(window, cx),
+                                        LoginMode::Register => this.do_register(window, cx),
+                                    }
                                 }
                             })),
                     )
@@ -3664,11 +3870,72 @@ impl DesktopView {
                         .h_full()
                         .relative()
                         .child(content)
+                        // VTRFIX-BUG-H: register the window-level key handlers
+                        // (escape-to-close + last_activity activity clock)
+                        // UNCONDITIONALLY. This canvas previously lived inside
+                        // the tour-gated `.when(touring, ...)` branch below, so
+                        // in normal operation `last_activity` was never updated
+                        // (the 5s auto-lock ticker fired 300s after login even
+                        // while the user typed) and escape-to-close was dead.
+                        // GPUI only permits `on_key_event` during the paint
+                        // phase — do NOT move the registration out of paint.
+                        .child(
+                            canvas(
+                                // Prepaint: nothing to capture.
+                                move |_bounds: Bounds<Pixels>, _window, _cx: &mut App| {},
+                                // Paint: register window-level key handlers
+                                // ONCE. GPUI only permits `on_key_event` during
+                                // the paint phase (not in `new()` or `render()`),
+                                // so this is the correct place.
+                                move |_bounds, (), window, cx: &mut App| {
+                                    let needs = !entity.read(cx).key_handlers_registered;
+                                    if needs {
+                                        entity.update(cx, |this, _cx| {
+                                            this.key_handlers_registered = true;
+                                        });
+                                        let esc_entity = entity.clone();
+                                        window.on_key_event(move |event: &gpui::KeyDownEvent, _phase, window, cx| {
+                                            if event.keystroke.key.as_str() == "escape" {
+                                                cx.update_entity::<DesktopView, _>(&esc_entity, |this, cx| {
+                                                    if this.vault_adding
+                                                        || this.pending_delete.is_some()
+                                                        || this.pending_delete_project.is_some()
+                                                        || this.pending_delete_secret.is_some()
+                                                        || this.pending_offboard.is_some()
+                                                        || this.pending_create_project
+                                                    {
+                                                        this.vault_adding = false;
+                                                        this.pending_delete = None;
+                                                        this.pending_delete_project = None;
+                                                        this.pending_delete_secret = None;
+                                                        this.pending_offboard = None;
+                                                        this.pending_create_project = false;
+                                                        this.confirm_text_input
+                                                            .update(cx, |s, cx| s.set_value("", window, cx));
+                                                        cx.notify();
+                                                    }
+                                                });
+                                            }
+                                        });
+                                        let act_entity = entity.clone();
+                                        window.on_key_event(move |_event: &gpui::KeyDownEvent, _phase, _window, cx| {
+                                            cx.update_entity::<DesktopView, _>(&act_entity, |this, _cx| {
+                                                this.last_activity = Instant::now();
+                                            });
+                                        });
+                                    }
+                                },
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
                         // VTR-078: while the tour is active, measure this
                         // content surface's post-layout bounds so the tour
                         // overlay can draw a true element-anchored highlight
                         // ring + position the card next to it. Only notify on
                         // change to avoid a layout↔paint notification loop.
+                        // (Tour-gated; key-handler registration lives on the
+                        // unconditional canvas above.)
                         .when(touring, |d| {
                             d.child(
                                 canvas(
@@ -3693,48 +3960,10 @@ impl DesktopView {
                                         }
                                         () as ()
                                     },
-                                    // Paint: register window-level key handlers
-                                    // ONCE. GPUI only permits `on_key_event` during
-                                    // the paint phase (not in `new()` or `render()`),
-                                    // so this is the correct place.
-                                    move |_bounds, (), window, cx: &mut App| {
-                                        let needs = !entity.read(cx).key_handlers_registered;
-                                        if needs {
-                                            entity.update(cx, |this, _cx| {
-                                                this.key_handlers_registered = true;
-                                            });
-                                            let esc_entity = entity.clone();
-                                            window.on_key_event(move |event: &gpui::KeyDownEvent, _phase, window, cx| {
-                                                if event.keystroke.key.as_str() == "escape" {
-                                                    cx.update_entity::<DesktopView, _>(&esc_entity, |this, cx| {
-                                                        if this.vault_adding
-                                                            || this.pending_delete.is_some()
-                                                            || this.pending_delete_project.is_some()
-                                                            || this.pending_delete_secret.is_some()
-                                                            || this.pending_offboard.is_some()
-                                                            || this.pending_create_project
-                                                        {
-                                                            this.vault_adding = false;
-                                                            this.pending_delete = None;
-                                                            this.pending_delete_project = None;
-                                                            this.pending_delete_secret = None;
-                                                            this.pending_offboard = None;
-                                                            this.pending_create_project = false;
-                                                            this.confirm_text_input
-                                                                .update(cx, |s, cx| s.set_value("", window, cx));
-                                                            cx.notify();
-                                                        }
-                                                    });
-                                                }
-                                            });
-                                            let act_entity = entity.clone();
-                                            window.on_key_event(move |_event: &gpui::KeyDownEvent, _phase, _window, cx| {
-                                                cx.update_entity::<DesktopView, _>(&act_entity, |this, _cx| {
-                                                    this.last_activity = Instant::now();
-                                                });
-                                            });
-                                        }
-                                    },
+                                    // Paint: nothing — the key handlers are
+                                    // registered once by the unconditional
+                                    // canvas above.
+                                    move |_bounds, (), _window, _cx: &mut App| {},
                                 )
                                 .absolute()
                                 .inset_0(),
@@ -7564,7 +7793,10 @@ impl DesktopView {
                                         .label("Copy")
                                         .on_click(cx.listener(|this, _: &gpui::ClickEvent, _window, cx| {
                                             if let Some(m) = &this.recovery_mnemonic {
-                                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(m.clone()));
+                                                // VTRFIX-SEC-M: the recovery key must
+                                                // not linger in the clipboard — use
+                                                // the epoch-guarded timed clear.
+                                                this.copy_with_timed_clear(m.clone(), cx);
                                             }
                                         })),
                                 )
@@ -7593,6 +7825,11 @@ impl DesktopView {
     }
 
     /// Write the Emergency Kit as a printable HTML file to ~/Downloads.
+    ///
+    /// VTRFIX-SEC-M: the kit contains the plaintext Recovery Key, so it is
+    /// written mode 0o600 (unix), `create_new` (never clobbers an existing
+    /// file — an existing target surfaces an error), and the filename carries
+    /// a timestamp so repeated saves don't overwrite an earlier kit.
     fn do_save_kit(&mut self, cx: &mut Context<Self>) {
         let Some(mnemonic) = self.recovery_mnemonic.clone() else {
             return;
@@ -7603,10 +7840,20 @@ impl DesktopView {
         let html = render_kit_html(&mnemonic, &username);
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
         let dir = std::path::Path::new(&home).join("Downloads");
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("vautr-emergency-kit.html");
-        let msg = match std::fs::write(&path, html) {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            self.settings_text = format!("Could not create Downloads: {e}");
+            cx.notify();
+            return;
+        }
+        let path = dir.join(format!(
+            "vautr-emergency-kit-{}.html",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        ));
+        let msg = match write_new_private(&path, html.as_bytes()) {
             Ok(()) => format!("Emergency Kit saved to {}", path.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                format!("Could not save kit: {} already exists", path.display())
+            }
             Err(e) => format!("Could not save kit: {e}"),
         };
         self.settings_text = msg;
