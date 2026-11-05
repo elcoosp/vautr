@@ -175,7 +175,13 @@ mod tests {
     fn revoke_all_request_starts_pending() {
         let user = Uuid::new_v4();
         let admin = Uuid::new_v4();
-        let req = OffboardingRequest::revoke_all(Uuid::new_v4(), user, admin, Some("left company".to_string()), 5);
+        let req = OffboardingRequest::revoke_all(
+            Uuid::new_v4(),
+            user,
+            admin,
+            Some("left company".to_string()),
+            5,
+        );
         assert_eq!(req.user_id, user);
         assert_eq!(req.requested_by, admin);
         assert_eq!(req.status, OffboardingStatus::Pending);
