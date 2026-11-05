@@ -1,5 +1,5 @@
 import type { DecryptedOverview } from '@vautr/client-sdk';
-import { createItemCiphertextStore } from '@vautr/client-sdk/extension';
+import { CIPHERTEXT_STORAGE_KEY, createItemCiphertextStore } from '@vautr/client-sdk/extension';
 import type { VautrWebClient } from '@vautr/client-sdk/real';
 import * as browser from 'webextension-polyfill';
 import { localArea, sessionArea } from '../lib/extensionStorage';
@@ -79,10 +79,14 @@ export async function copySecret(client: VautrWebClient, item: DecryptedOverview
  * VTRFIX-SEC-C05 / VTRFIX-SEC-L11: clear the local ciphertext mirror on
  * logout/lock so no vault blobs linger in `chrome.storage.local` past the
  * session. Autofill will re-cache on next unlock.
+ *
+ * VTRFIX-G: use the SDK's exported `CIPHERTEXT_STORAGE_KEY` ('vautrCiphertext')
+ * — the previously hardcoded 'vautr:ciphertexts' never matched the store, so
+ * nothing was actually cleared.
  */
 export async function clearCiphertextCache(): Promise<void> {
   try {
-    await localArea.remove('vautr:ciphertexts');
+    await localArea.remove(CIPHERTEXT_STORAGE_KEY);
   } catch {
     // Non-critical.
   }
