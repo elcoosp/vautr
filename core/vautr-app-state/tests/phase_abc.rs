@@ -40,8 +40,9 @@ impl Transport for MockTransport {
     fn pull(
         &self,
         _cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>>
-    {
+    ) -> Pin<
+        Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>,
+    > {
         let st = self.state.lock().unwrap().clone();
         Box::pin(async move {
             let overviews = st
@@ -77,8 +78,10 @@ impl Transport for MockTransport {
         &self,
         items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)>,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<PushOutcome>, TransportError>> + Send>> {
-        let _ = items;
-        Box::pin(async move { Ok(vec![]) })
+        // VTRFIX: the old mock returned `Ok(vec![])`, which masked outcome/
+        // length mismatches (the engine now rejects that contract break) and
+        // let rotate_key discard un-pushed items. Return one outcome per item.
+        Box::pin(async move { Ok(items.iter().map(|_| PushOutcome::Applied).collect()) })
     }
 
     fn account_status(
@@ -265,7 +268,18 @@ async fn phase_c_rotate_key() {
     let env = aead::encrypt(&dek, &uuid, 1, &pt).expect("encrypt");
     insert_item(&db, uuid, 1, env).await;
 
-    client.unlock_with_raw_key(svk, 1).await;
+    // VTRFIX: rotation now requires a master-password unlock (the rotated
+    // blob must be wrapped under the MP-derived KEK so the next login can
+    // unwrap it). Unlock through the MP path, mirroring the desktop flow.
+    let mp = Zeroizing::new("test-master".to_string());
+    let kdf_salt = [7u8; 32];
+    let mk = vautr_crypto::kdf::derive_master_key(&mp, &kdf_salt).expect("mk");
+    let kek = key_tree::derive_kek(&mk).expect("kek");
+    let wrapped_svk = aead::encrypt(&kek, &Uuid::nil(), 0, &*svk).expect("wrap");
+    client
+        .unlock_with_password(mp, &kdf_salt, &wrapped_svk, Uuid::nil(), 1)
+        .await
+        .expect("unlock");
 
     let state = MockState {
         pull: vec![],
@@ -298,6 +312,25 @@ async fn phase_c_rotate_key() {
     let plain = aead::decrypt(&new_dek, &uuid, 2, &material.1).expect("decrypt");
     let secret2: DecryptedSecret = serde_json::from_slice(&plain).expect("parse");
     assert_eq!(&*secret2.password, "rotate-me");
+
+    // VTRFIX regression: the blob the server stored must unwrap under the
+    // SAME master password on a fresh client (the rotation used to wrap it
+    // under a KEK derived from the new SVK — no unlock path could ever derive
+    // that, bricking the account after the first rotation).
+    let rotated_blob = rotated[0].1.clone();
+    let client2 = VautrClient::new(fresh_db().await);
+    client2
+        .unlock_with_password(
+            Zeroizing::new("test-master".to_string()),
+            &kdf_salt,
+            &rotated_blob,
+            Uuid::nil(),
+            2,
+        )
+        .await
+        .expect("re-unlock with the same MP after rotation");
+    let svk2 = client2.current_svk().await.expect("svk after rotation");
+    assert_eq!(*svk2, *client.current_svk().await.unwrap());
 
     // Local epoch gate updated.
     assert_eq!(client.current_key_gen(), 2);
