@@ -116,8 +116,8 @@ mod tests {
 // in `vautr-crypto` lets both the wasm (web/extension) and app-state (mobile/
 // desktop) surfaces share one implementation.
 
-use sha2::Sha256;
 use ed25519_dalek::{Signer, SigningKey};
+use sha2::Sha256;
 /// HKDF info string for the RK-auth Ed25519 key (`"vautr-rk-auth"`).
 const RK_AUTH_INFO: &[u8] = b"vautr-rk-auth";
 
@@ -140,10 +140,7 @@ pub fn recovery_public_key(mnemonic: &Mnemonic) -> Result<[u8; 32]> {
 
 /// Sign a challenge nonce with the recovery-auth key; returns the 64-byte
 /// Ed25519 signature.
-pub fn sign_recovery_nonce(
-    mnemonic: &Mnemonic,
-    nonce: &[u8],
-) -> Result<[u8; 64]> {
+pub fn sign_recovery_nonce(mnemonic: &Mnemonic, nonce: &[u8]) -> Result<[u8; 64]> {
     let sk_bytes = derive_recovery_signing_key(mnemonic)?;
     let sk = SigningKey::from_bytes(&sk_bytes);
     Ok(sk.sign(nonce).to_bytes())
