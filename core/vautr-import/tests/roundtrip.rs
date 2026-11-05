@@ -16,7 +16,10 @@ fn csv_preserves_whitespace_in_passwords_and_username() {
     assert_eq!(records.len(), 1);
     let fields = records[0].item.fields.as_object().unwrap();
     // Username preserved with whitespace
-    assert_eq!(fields.get("username").and_then(|v| v.as_str()), Some(" u1 "));
+    assert_eq!(
+        fields.get("username").and_then(|v| v.as_str()),
+        Some(" u1 ")
+    );
     // Password preserved with whitespace
     assert_eq!(
         fields.get("password").and_then(|v| v.as_str()),
@@ -32,11 +35,9 @@ fn csv_preserves_whitespace_in_passwords_and_username() {
 #[test]
 fn bitwarden_json_preserves_totp() {
     let json = r#"{"items":[{"id":"a1","name":"GitHub","login":{"username":"u","password":"p","totp":"JBSWY3DPEHPK3PXP","uris":[{"uri":"https://github.com"}]}}]}"#;
-    let iter = vautr_import::parser::parse_stream(
-        Box::new(Cursor::new(json)),
-        SourceKind::BitwardenJson,
-    )
-    .expect("parse");
+    let iter =
+        vautr_import::parser::parse_stream(Box::new(Cursor::new(json)), SourceKind::BitwardenJson)
+            .expect("parse");
     let records: Vec<_> = iter.collect::<Result<Vec<_>, _>>().expect("collect");
     assert_eq!(records.len(), 1);
     let fields = records[0].item.fields.as_object().unwrap();
