@@ -51,14 +51,23 @@ impl VaultConfig {
     }
 
     /// Persist to the default config path.
+    ///
+    /// VTRFIX-SEC-M: the config holds the KDF salt and the KEK-sealed recovery
+    /// mnemonic — write it mode 0o600 (unix) via an atomic temp+rename,
+    /// mirroring `save_session` below.
     pub fn save(&self) -> Result<(), String> {
         let path = config_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            }
         }
         let json =
             serde_json::to_string_pretty(self).map_err(|e| format!("serialize config: {e}"))?;
-        std::fs::write(&path, json).map_err(|e| format!("write config: {e}"))
+        write_private_atomic(&path, json.as_bytes()).map_err(|e| format!("write config: {e}"))
     }
 
     /// Decode the stored base64 KDF salt to bytes.
@@ -365,12 +374,32 @@ pub async fn build_client(
     // Ensure the parent directory exists.
     if let Some(parent) = std::path::Path::new(db_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("create db dir: {e}"))?;
+        // VTRFIX-SEC-M: the vault DB holds encrypted blobs and local key
+        // material; restrict the containing directory to the current user
+        // (best-effort — never fails the connect).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+        }
     }
 
     let db_url = format!("sqlite://{}?mode=rwc", db_path);
     let db = Database::connect(&db_url)
         .await
         .map_err(|e| format!("db connect: {e}"))?;
+
+    // VTRFIX-SEC-M: best-effort 0o600 on the vault DB file (sqlite creates it
+    // with the process umask, commonly world-readable). Ignore errors on
+    // non-unix; the gate keeps Windows builds compiling.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(
+            std::path::Path::new(db_path),
+            std::fs::Permissions::from_mode(0o600),
+        );
+    }
 
     // Initialize the schema (idempotent via IF NOT EXISTS).
     vautr_db::migrate::init(&db)
