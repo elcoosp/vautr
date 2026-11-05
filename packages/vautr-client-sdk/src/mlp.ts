@@ -153,7 +153,7 @@ export class VautrMlpClient {
    */
   auditList(query?: AuditListQuery): Promise<AuditEntry[]> {
     const qs = auditQueryString(query);
-    return this.api.request<AuditEntry[]>('GET', `/audit${encodeURIComponent(qs)}`);
+    return this.api.request<AuditEntry[]>('GET', `/audit${qs}`);
   }
 
   backupRestore(request: {
@@ -408,5 +408,8 @@ function auditQueryString(query?: AuditListQuery): string {
   set('limit', query.limit);
   set('offset', query.offset);
   const s = params.toString();
-  return s ? `?${encodeURIComponent(s)}` : '';
+  // `URLSearchParams.toString()` already percent-encodes each value; do NOT
+  // `encodeURIComponent` the joined string on top (double-encoding broke the
+  // `/audit?user_id=...` endpoint).
+  return s ? `?${s}` : '';
 }
