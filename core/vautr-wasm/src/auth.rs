@@ -342,8 +342,8 @@ pub fn sign_recovery_nonce_js(mnemonic: &str, nonce_b64: &str) -> Result<String,
     let nonce = base64::engine::general_purpose::STANDARD
         .decode(nonce_b64)
         .map_err(|e| JsValue::from_str(&format!("nonce b64: {e}")))?;
-    let sig = recovery::sign_recovery_nonce(&m, &nonce)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let sig =
+        recovery::sign_recovery_nonce(&m, &nonce).map_err(|e| JsValue::from_str(&e.to_string()))?;
     Ok(base64::engine::general_purpose::STANDARD.encode(sig))
 }
 
@@ -373,8 +373,7 @@ pub fn recover_svk_js(
         .map_err(|e| JsValue::from_str(&format!("svk b64: {e}")))?;
     let user_id = uuid::Uuid::parse_str(server_user_id)
         .map_err(|e| JsValue::from_str(&format!("user id: {e}")))?;
-    let kek_rk =
-        recovery::derive_kek_rk(&m).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let kek_rk = recovery::derive_kek_rk(&m).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let svk = recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &user_id)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
     Ok(svk.to_vec())
