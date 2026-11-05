@@ -6,9 +6,7 @@
 use sea_orm::{Database, DatabaseConnection, EntityTrait, FromQueryResult, TransactionTrait};
 use uuid::Uuid;
 
-use vautr_import::{
-    import_file, import_items, RawImportItem, ImportFailureReason, VaultKeys,
-};
+use vautr_import::{import_file, import_items, ImportFailureReason, RawImportItem, VaultKeys};
 
 /// Open a fresh in-memory sqlite DB with the schema bootstrapped.
 async fn connect() -> DatabaseConnection {
@@ -28,12 +26,12 @@ struct CountRow {
 /// Count overview rows (plaintext hot data) in the DB.
 async fn overview_count(db: &DatabaseConnection) -> u32 {
     let sql = "SELECT COUNT(*) AS n FROM item_overviews";
-    let stmt = sea_orm::Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::Sqlite,
-        sql,
-        [],
-    );
-    let row = CountRow::find_by_statement(stmt).one(db).await.unwrap().unwrap();
+    let stmt = sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
+    let row = CountRow::find_by_statement(stmt)
+        .one(db)
+        .await
+        .unwrap()
+        .unwrap();
     row.n as u32
 }
 
@@ -44,7 +42,8 @@ fn write_csv(count: usize) -> std::path::PathBuf {
     let path = file.path().to_path_buf();
     {
         let mut wtr = csv::WriterBuilder::new().from_writer(file.as_file_mut());
-        wtr.write_record(["name", "url", "username", "password"]).unwrap();
+        wtr.write_record(["name", "url", "username", "password"])
+            .unwrap();
         for i in 0..count {
             wtr.write_record([
                 format!("Item {i}"),
@@ -90,7 +89,11 @@ async fn smoke_import_1000_csv_rows_completes() {
         "SELECT COUNT(*) AS n FROM items_fts WHERE items_fts MATCH 'Item'",
         [],
     );
-    let hits = CountRow::find_by_statement(stmt).one(&db).await.unwrap().unwrap();
+    let hits = CountRow::find_by_statement(stmt)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(hits.n, 1000);
 }
 
@@ -108,7 +111,9 @@ async fn malformed_input_does_not_panic() {
     )
     .unwrap();
 
-    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {}).await.unwrap();
+    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {})
+        .await
+        .unwrap();
     // It must not panic and must degrade gracefully: some rows import while
     // malformed rows accumulate as errors (not all records succeed).
     assert!(report.total_parsed >= 2);
@@ -171,7 +176,10 @@ async fn dedup_skips_existing_title_url() {
     assert_eq!(report.skipped_count, 1);
     assert_eq!(report.success_count, 1);
     // The duplicate surfaces as a DuplicateSkip error too (per §5.1).
-    assert!(report.errors.iter().any(|e| e.reason == ImportFailureReason::DuplicateSkip));
+    assert!(report
+        .errors
+        .iter()
+        .any(|e| e.reason == ImportFailureReason::DuplicateSkip));
     // Pre-seeded (1) + fresh (1) = 2 rows.
     assert_eq!(overview_count(&db).await, 2);
 }
@@ -191,7 +199,9 @@ async fn imports_bitwarden_json() {
     )
     .unwrap();
 
-    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {}).await.unwrap();
+    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {})
+        .await
+        .unwrap();
     assert_eq!(report.total_parsed, 2);
     assert_eq!(report.success_count, 2);
     assert!(report.errors.is_empty());
@@ -243,7 +253,9 @@ async fn imports_1pux_zip_archive() {
         zip.finish().unwrap();
     }
 
-    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {}).await.unwrap();
+    let report = import_file(path.to_str().unwrap(), &db, &keys, |_| {})
+        .await
+        .unwrap();
     assert_eq!(report.total_parsed, 1);
     assert_eq!(report.success_count, 1);
     assert!(report.errors.is_empty());
