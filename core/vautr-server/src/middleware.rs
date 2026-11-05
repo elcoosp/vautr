@@ -48,7 +48,10 @@ pub fn cors() -> CorsLayer {
                 axum::http::Method::DELETE,
                 axum::http::Method::OPTIONS,
             ])
-            .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE])
+            .allow_headers([
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::CONTENT_TYPE,
+            ])
     }
 }
 
@@ -230,7 +233,10 @@ impl RateLimiter {
     }
 
     fn check_at(&self, key: &str, now_secs: u64) -> Result<RateInfo, RateLimited> {
-        let mut state = self.inner.lock().unwrap();
+        // VTRFIX (LOW): a poisoned mutex (a panic while holding the lock) used
+        // to panic every later caller via `.unwrap()`. Recover like the
+        // per-route variant: take the (still coherent) inner data.
+        let mut state = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let window_start = now_secs - (now_secs % self.window_secs);
 
         // Opportunistically bound the map so a burst of distinct IPs can't grow
