@@ -40,10 +40,7 @@ impl HttpTransport {
 
     /// Read the current token. Never returns "" after a successful set_token.
     fn auth(&self) -> String {
-        self.token
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        self.token.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -157,10 +154,7 @@ impl Transport for HttpTransport {
         &self,
         cursor: u64,
     ) -> Pin<
-        Box<
-            dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>>
-                + Send,
-        >,
+        Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>,
     > {
         let client = self.client.clone();
         let base = self.base.clone();
