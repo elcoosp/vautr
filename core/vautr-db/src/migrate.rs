@@ -91,6 +91,40 @@ CREATE TRIGGER IF NOT EXISTS overviews_au AFTER UPDATE ON item_overviews BEGIN
 END;
 "#;
 
+/// FTS5 virtual table + triggers DDL (idempotent). Part of migration 1 and
+/// re-applied verbatim by [`recreate_fts_schema`] after `rebuild_fts` drops
+/// the index — `run_migrations` no longer re-runs applied migrations, so the
+/// rebuild path must recreate the FTS objects itself.
+pub const FTS_SCHEMA: &str = r#"
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+    uuid UNINDEXED, overview_title, overview_subtitle, overview_urls,
+    content='item_overviews', content_rowid='rowid', tokenize="unicode61"
+);
+
+CREATE TRIGGER IF NOT EXISTS overviews_ai AFTER INSERT ON item_overviews BEGIN
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
+END;
+
+CREATE TRIGGER IF NOT EXISTS overviews_ad AFTER DELETE ON item_overviews BEGIN
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
+END;
+
+CREATE TRIGGER IF NOT EXISTS overviews_au AFTER UPDATE ON item_overviews BEGIN
+    INSERT INTO items_fts(items_fts, rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES ('delete', old.rowid, old.uuid, old.overview_title, old.overview_subtitle, old.overview_urls);
+    INSERT INTO items_fts(rowid, uuid, overview_title, overview_subtitle, overview_urls)
+    VALUES (new.rowid, new.uuid, new.overview_title, new.overview_subtitle, new.overview_urls);
+END;
+"#;
+
+/// Re-create the FTS5 index objects (after a drop/rebuild). Idempotent.
+pub async fn recreate_fts_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(FTS_SCHEMA).await?;
+    Ok(())
+}
+
 /// A single, ordered schema migration. `up` is applied once when the current
 /// recorded version is below `version`; `down` (if present) is the inverse used
 /// by `rollback_to` for disaster recovery / downgrade testing.
@@ -104,22 +138,37 @@ pub struct Migration {
 /// Ordered list of all migrations. The first entry is the baseline client
 /// schema (migration 1). Append new migrations here with strictly increasing
 /// `version` values — never edit an already-shipped `up`/`down`.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "baseline_client_schema",
-    up: SCHEMA,
-    down: Some(
-        "DROP TRIGGER IF EXISTS overviews_au; \
-         DROP TRIGGER IF EXISTS overviews_ad; \
-         DROP TRIGGER IF EXISTS overviews_ai; \
-         DROP TABLE IF EXISTS items_fts; \
-         DROP TABLE IF EXISTS quarantine; \
-         DROP TABLE IF EXISTS local_blacklist; \
-         DROP TABLE IF EXISTS sync_meta; \
-         DROP TABLE IF EXISTS item_payloads; \
-         DROP TABLE IF EXISTS item_overviews;",
-    ),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "baseline_client_schema",
+        up: SCHEMA,
+        down: Some(
+            "DROP TRIGGER IF EXISTS overviews_au; \
+             DROP TRIGGER IF EXISTS overviews_ad; \
+             DROP TRIGGER IF EXISTS overviews_ai; \
+             DROP TABLE IF EXISTS items_fts; \
+             DROP TABLE IF EXISTS quarantine; \
+             DROP TABLE IF EXISTS local_blacklist; \
+             DROP TABLE IF EXISTS sync_meta; \
+             DROP TABLE IF EXISTS item_payloads; \
+             DROP TABLE IF EXISTS item_overviews;",
+        ),
+    },
+    Migration {
+        version: 2,
+        name: "pending_deletes",
+        // VTRFIX (sync delete round-trip): local deletes must be recorded so
+        // the next push can emit real tombstones (payload: None) to the
+        // server. Idempotent DDL per the load-bearing invariant below.
+        up: "CREATE TABLE IF NOT EXISTS pending_deletes (\
+                uuid TEXT PRIMARY KEY, \
+                version INTEGER NOT NULL, \
+                enc_key_gen INTEGER NOT NULL \
+            ) STRICT;",
+        down: Some("DROP TABLE IF EXISTS pending_deletes;"),
+    },
+];
 
 /// Highest migration version defined in this build.
 pub fn latest_version() -> u32 {
@@ -146,7 +195,23 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
         ) STRICT;",
     )
     .await?;
+    // VTRFIX-BUG-M02 (closed): consult the bookkeeping table and skip already
+    // applied versions — the first non-idempotent migration would previously
+    // have been silently re-executed on every boot. Versions are read through
+    // the underlying sqlx pool (sea-orm 2.x `query_all` expects a
+    // StatementBuilder, not raw SQL); a fresh DB yields an empty set.
+    let applied: std::collections::HashSet<i64> = {
+        let pool = db.get_sqlite_connection_pool();
+        let versions: Vec<i64> = sea_orm::sqlx::query_scalar("SELECT version FROM migrations")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+        versions.into_iter().collect()
+    };
     for m in MIGRATIONS.iter() {
+        if applied.contains(&(m.version as i64)) {
+            continue;
+        }
         db.execute_unprepared(m.up).await?;
         db.execute_unprepared(&format!(
             "INSERT OR IGNORE INTO migrations (version, name, applied_at) \
