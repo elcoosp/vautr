@@ -34,10 +34,7 @@ pub trait Transport: Send + Sync {
         &self,
         cursor: u64,
     ) -> Pin<
-        Box<
-            dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>>
-                + Send,
-        >,
+        Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>,
     >;
 
     /// Fetch a single item payload by uuid and the expected local `version`
@@ -157,9 +154,7 @@ impl Engine {
     /// Metadata-first pull. Returns `(next_cursor, overviews, has_more)`.
     /// The internal cursor is advanced on success so callers can loop without
     /// passing the position manually.
-    pub async fn pull(
-        &self,
-    ) -> Result<(u64, Vec<PulledOverview>, bool), TransportError> {
+    pub async fn pull(&self) -> Result<(u64, Vec<PulledOverview>, bool), TransportError> {
         let (next, overviews, has_more) = self.transport.as_ref().pull(self.cursor).await?;
         Ok((next, overviews, has_more))
     }
@@ -196,6 +191,16 @@ impl Engine {
     ) -> Result<Vec<(Uuid, PushOutcome)>, TransportError> {
         let uuids: Vec<Uuid> = items.iter().map(|i| i.0).collect();
         let outcomes = self.transport.as_ref().push_batch(items).await?;
+        // VTRFIX: a short outcomes array used to silently drop the results for
+        // the tail of the batch (zip truncates) — the caller then treated
+        // un-pushed items as applied. Fail loudly on the contract break.
+        if outcomes.len() != uuids.len() {
+            return Err(TransportError::Other(format!(
+                "push_batch: transport returned {} outcomes for {} items",
+                outcomes.len(),
+                uuids.len()
+            )));
+        }
         Ok(uuids.into_iter().zip(outcomes).collect())
     }
 
