@@ -10,7 +10,6 @@ import { services } from './lib/client';
 import { useSession } from './lib/session';
 import { OnboardingFlow } from './src/onboarding/OnboardingFlow';
 import { router } from './src/router';
-import { TourOverlay } from './src/tour/TourOverlay';
 
 /**
  * App root. Boots by restoring any persisted OPAQUE session token onto the API
@@ -74,7 +73,9 @@ export function App() {
       <OnboardingFlow>
         <RouterProvider router={router} />
       </OnboardingFlow>
-      <TourOverlay />
+      {/* VTRFIX-BUG-M07: TourOverlay is mounted once, in src/routes/__root.tsx
+          (the router root) — a second mount here double-registered replay
+          listeners and rendered two overlapping modals. */}
       {/* RN-primitives portal host: required for Dialog/Sheet/Select portals
           (drawer, bottom sheet, dropdowns) to have a render target. Without it
           they mount but render into nothing, so the drawer never appears.
