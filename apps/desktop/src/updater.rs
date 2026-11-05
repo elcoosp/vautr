@@ -335,16 +335,12 @@ impl Updater {
         }
         #[cfg(target_os = "linux")]
         {
-            // Prefer the system package manager for .deb; fall back to xdg-open.
-            if path.extension().and_then(|e| e.to_str()) == Some("deb") {
-                let mut cmd = std::process::Command::new("apt-get");
-                cmd.args(["install", "-y", &path.to_string_lossy()]);
-                cmd
-            } else {
-                let mut cmd = std::process::Command::new("xdg-open");
-                cmd.arg(path);
-                cmd
-            }
+            // VTRFIX-SEC-M: `apt-get install` requires root and would block the
+            // caller for minutes; opening the .deb via xdg-open hands it to the
+            // desktop installer (Software Center) instead, which is unprivileged.
+            let mut cmd = std::process::Command::new("xdg-open");
+            cmd.arg(path);
+            cmd
         }
     }
 }
