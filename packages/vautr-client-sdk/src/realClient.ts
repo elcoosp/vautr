@@ -64,6 +64,8 @@ interface PushBatchResult {
   version?: number;
   enc_key_gen?: number;
   updated_at?: number;
+  /** Server-side row state echoed on `conflict` results (sync.rs PushResult). */
+  current_server_state?: { version: number; enc_key_gen: number } | null;
 }
 
 interface AccountStatus {
@@ -337,7 +339,8 @@ export class VautrWebClient {
           signal: abort.signal,
         });
         if (!res.ok || !res.body) {
-          if (!closed) setTimeout(() => void connect(), 2000);
+          // VTRFIX-J: exponential backoff instead of a flat 2s hammer.
+          if (!closed) setTimeout(() => void connect(), nextDelay());
           return;
         }
         const reader = res.body.getReader();
@@ -362,7 +365,9 @@ export class VautrWebClient {
                   type: string;
                   uuid?: string;
                 };
-                this.onServerEvent(ev);
+                // VTRFIX-J: onServerEvent is async — never let a rejection
+                // surface as an unhandled promise rejection.
+                void this.onServerEvent(ev).catch(() => {});
               } catch {
                 // Ignore malformed frames (e.g. comment lines, keep-alive).
               }
@@ -373,7 +378,8 @@ export class VautrWebClient {
         if (closed || (err instanceof DOMException && err.name === 'AbortError')) return;
       } finally {
         abort = null;
-        if (!closed) setTimeout(() => void connect(), 2000);
+        // VTRFIX-J: exponential backoff instead of a flat 2s hammer.
+        if (!closed) setTimeout(() => void connect(), nextDelay());
       }
     };
 
@@ -436,11 +442,13 @@ export class VautrWebClient {
 
     // OPAQUE registration (api.md §3.1).
     const start = this.crypto.opaqueRegisterStart(password);
-    const startResp = await this.api.request<{ registration_response: string }>(
-      'POST',
-      '/auth/register/start',
-      { username, registration_start: toBase64(start.message) },
-    );
+    const startResp = await this.api.request<{
+      registration_response: string;
+      /** VTRFIX: the server distributes its own public key here; it must be
+       * echoed verbatim in the register/finish call (the server rejects stubs
+       * and mismatched keys). */
+      server_public_key: string;
+    }>('POST', '/auth/register/start', { username, registration_start: toBase64(start.message) });
     const upload = this.crypto.opaqueRegisterFinish(
       start.state,
       fromBase64(startResp.registration_response),
@@ -450,7 +458,7 @@ export class VautrWebClient {
     await this.api.request('POST', '/auth/register/finish', {
       username,
       registration_finish: toBase64(upload),
-      server_public_key: toBase64(new Uint8Array(32)),
+      server_public_key: startResp.server_public_key,
       kdf_salt: toBase64(kdfSalt),
       svk_ciphertext_blob: toBase64(svkWrapped),
       svk_ciphertext_blob_rk: toBase64(svkRkWrapped),
@@ -1172,6 +1180,14 @@ export class VautrWebClient {
         );
         const updated = new Map<string, number>();
         const conflicts: ConflictEvent[] = [];
+        // VTRFIX-BUG-C12 (infinite conflict loop): on a conflict the server
+        // reports its current row state; adopt it as the base for the next
+        // push so the re-push targets the version the server actually holds
+        // (update applies when `version = target_version`, then increments —
+        // items.rs `upsert_item_occ`), landing the local edit at
+        // `serverVersion + 1` per data.md §7.2 instead of re-sending the same
+        // stale target_version forever.
+        const retarget = new Map<string, number>();
         for (const r of resp.results) {
           if (r.status === 'success' && r.version !== undefined) {
             updated.set(r.uuid, r.version);
@@ -1179,10 +1195,14 @@ export class VautrWebClient {
             // 412 / version-mismatch from the server (data.md §7.2). Surface it
             // to the UI as a conflict for human resolution.
             const local = pending.find((i) => i.uuid === r.uuid);
+            const serverVersion = r.current_server_state?.version ?? r.version;
+            if (serverVersion !== undefined) {
+              retarget.set(r.uuid, serverVersion);
+            }
             conflicts.push({
               uuid: r.uuid,
               localVersion: String(local?.version ?? 0),
-              serverVersion: String(r.version ?? (local?.version ?? 0) + 1),
+              serverVersion: String(serverVersion ?? (local?.version ?? 0) + 1),
               isToxic: r.status === 'toxic' || r.status === 'unreadable',
             });
           }
@@ -1197,7 +1217,7 @@ export class VautrWebClient {
           const applied = appliedVersion !== undefined;
           await this.store.putItem({
             ...item,
-            version: appliedVersion ?? item.version,
+            version: appliedVersion ?? retarget.get(item.uuid) ?? item.version,
             pending: !applied,
           });
         }
