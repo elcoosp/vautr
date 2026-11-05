@@ -10,6 +10,8 @@ use std::io::BufRead;
 use crate::error::Result;
 
 #[cfg(feature = "pipeline")]
+use crate::error::ImportFailure;
+#[cfg(feature = "pipeline")]
 use std::cell::RefCell;
 #[cfg(feature = "pipeline")]
 use std::fs::File;
@@ -17,8 +19,6 @@ use std::fs::File;
 use std::io::BufReader;
 #[cfg(feature = "pipeline")]
 use std::path::{Path, PathBuf};
-#[cfg(feature = "pipeline")]
-use crate::error::ImportFailure;
 
 /// The source format, which selects the streaming parser in [`crate::parser`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,8 +110,9 @@ impl ImportSource for PathImportSource {
         match self.kind {
             SourceKind::Zip1pux => self.open_zip_reader(),
             _ => {
-                let file = File::open(&self.path)
-                    .map_err(|e| ImportFailure::Pipeline(format!("open {}: {e}", self.path.display())))?;
+                let file = File::open(&self.path).map_err(|e| {
+                    ImportFailure::Pipeline(format!("open {}: {e}", self.path.display()))
+                })?;
                 Ok(Box::new(BufReader::new(file)))
             }
         }
@@ -124,8 +125,9 @@ impl PathImportSource {
     /// return a reader over it. The temp dir is retained in `self.temp_dir` so
     /// the extracted file stays alive as long as the source does.
     fn open_zip_reader(&self) -> Result<Box<dyn BufRead>> {
-        let file = File::open(&self.path)
-            .map_err(|e| ImportFailure::Pipeline(format!("open zip {}: {e}", self.path.display())))?;
+        let file = File::open(&self.path).map_err(|e| {
+            ImportFailure::Pipeline(format!("open zip {}: {e}", self.path.display()))
+        })?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|e| ImportFailure::Pipeline(format!("read zip archive: {e}")))?;
 
