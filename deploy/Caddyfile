@@ -14,9 +14,15 @@
         protocols tls1.3
     }
 
-    # Strip client-supplied identity headers at the proxy (no-plaintext rule).
-    header_up -X-User-Email
-    header_up -X-User-Id
+    # VTRFIX: HSTS on the TLS site (1 year, subdomains).
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
-    reverse_proxy server:8080
+    # VTRFIX: `header_up` directives are valid ONLY inside the reverse_proxy
+    # block — at site level Caddy refuses to load the config
+    # ("Unrecognized subdirective header_up").
+    reverse_proxy server:8080 {
+        # Strip client-supplied identity headers at the proxy (no-plaintext rule).
+        header_up -X-User-Email
+        header_up -X-User-Id
+    }
 }
