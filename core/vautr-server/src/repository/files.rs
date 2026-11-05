@@ -9,6 +9,42 @@ use sqlx::FromRow;
 
 use crate::repository::Repository;
 
+/// Error returned by [`Repository::upsert_file_manifest`].
+#[derive(Debug)]
+pub enum UpsertFileManifestError {
+    /// VTRFIX (MEDIUM): the `file_uuid` already exists and belongs to a
+    /// DIFFERENT owner. The old `ON CONFLICT DO UPDATE SET owner_user_id = ...`
+    /// took the row over (cross-tenant takeover of in-flight uploads); now the
+    /// caller maps this to 409 in `handlers/files.rs::upload_initiate`.
+    OwnerConflict,
+    /// Underlying database error.
+    Db(sqlx::Error),
+}
+
+impl std::fmt::Display for UpsertFileManifestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OwnerConflict => write!(f, "file manifest already claimed by another owner"),
+            Self::Db(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for UpsertFileManifestError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Db(e) => Some(e),
+            Self::OwnerConflict => None,
+        }
+    }
+}
+
+impl From<sqlx::Error> for UpsertFileManifestError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Db(e)
+    }
+}
+
 /// Row mirror of `file_manifests` (migrations/0004_files.sql).
 #[derive(Debug, Clone, FromRow)]
 pub struct FileManifestRow {
@@ -38,6 +74,15 @@ impl Repository {
     /// Re-initiation of a session re-arms every chunk to `pending`. Callers must
     /// reject re-initiation of an already-`Available` file before calling this
     /// (see `handlers/files.rs::upload_initiate`).
+    ///
+    /// VTRFIX (MEDIUM): the previous implementation used
+    /// `ON CONFLICT(file_uuid) DO UPDATE SET owner_user_id = excluded.owner_user_id`,
+    /// letting any caller take over another tenant's in-flight upload by simply
+    /// re-initiating the same `file_uuid`. Now the insert is `ON CONFLICT DO
+    /// NOTHING`; the existing row is fetched and, when its `owner_user_id`
+    /// differs from the caller, [`UpsertFileManifestError::OwnerConflict`] is
+    /// returned (handlers map it to 409). Re-initiating one's OWN pending upload
+    /// still resets the manifest + chunks exactly as before.
     pub async fn upsert_file_manifest(
         &self,
         file_uuid: &str,
@@ -49,21 +94,13 @@ impl Repository {
         content_type: &str,
         last_modified: i64,
         now: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
+    ) -> Result<(), UpsertFileManifestError> {
+        let inserted = sqlx::query(
             "INSERT INTO file_manifests \
                (file_uuid, owner_user_id, total_size, chunk_size, total_chunks, \
                 enc_key_gen, content_type, status, last_modified, created_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, 'PendingUpload', ?, ?) \
-             ON CONFLICT(file_uuid) DO UPDATE SET \
-               owner_user_id = excluded.owner_user_id, \
-               total_size = excluded.total_size, \
-               chunk_size = excluded.chunk_size, \
-               total_chunks = excluded.total_chunks, \
-               enc_key_gen = excluded.enc_key_gen, \
-               content_type = excluded.content_type, \
-               status = 'PendingUpload', \
-               last_modified = excluded.last_modified",
+             ON CONFLICT(file_uuid) DO NOTHING",
         )
         .bind(file_uuid)
         .bind(user_id)
@@ -77,6 +114,47 @@ impl Repository {
         .execute(&self.pool)
         .await?;
 
+        if inserted.rows_affected() == 0 {
+            // Row already exists: it must belong to this caller, otherwise this
+            // is a cross-tenant takeover attempt.
+            let existing: Option<(String,)> =
+                sqlx::query_as("SELECT owner_user_id FROM file_manifests WHERE file_uuid = ?")
+                    .bind(file_uuid)
+                    .fetch_optional(&self.pool)
+                    .await?;
+            match existing {
+                Some(row) if row.0 == user_id => {
+                    // Legitimate re-initiation of my own pending upload: reset
+                    // the manifest fields (owner stays untouched) and re-arm.
+                    sqlx::query(
+                        "UPDATE file_manifests SET \
+                           total_size = ?, chunk_size = ?, total_chunks = ?, \
+                           enc_key_gen = ?, content_type = ?, status = 'PendingUpload', \
+                           last_modified = ? \
+                         WHERE file_uuid = ? AND owner_user_id = ?",
+                    )
+                    .bind(total_size)
+                    .bind(chunk_size)
+                    .bind(total_chunks)
+                    .bind(enc_key_gen)
+                    .bind(content_type)
+                    .bind(last_modified)
+                    .bind(file_uuid)
+                    .bind(user_id)
+                    .execute(&self.pool)
+                    .await?;
+                }
+                Some(_) => return Err(UpsertFileManifestError::OwnerConflict),
+                None => {
+                    // Raced with a concurrent delete; retry the insert path by
+                    // treating it as absent.
+                    return Err(UpsertFileManifestError::Db(sqlx::Error::Protocol(
+                        "file manifest disappeared during upsert".into(),
+                    )));
+                }
+            }
+        }
+
         // Re-arm the per-chunk state for the new session.
         sqlx::query("DELETE FROM file_chunks WHERE file_uuid = ?")
             .bind(file_uuid)
@@ -87,9 +165,7 @@ impl Repository {
         // directly from tests or future code paths).
         let capped = total_chunks.clamp(0, 512);
         if capped < total_chunks {
-            return Err(sqlx::Error::Protocol(
-                "total_chunks exceeds 512".into(),
-            ));
+            return Err(sqlx::Error::Protocol("total_chunks exceeds 512".into()).into());
         }
         // Chunk inserts stay as individual statements (SQLite handles 512 rows
         // easily within the enclosing caller's transaction). The previous
@@ -169,6 +245,13 @@ impl Repository {
 
     /// Mark every chunk of a manifest owned by `user_id` as uploaded (invoked on
     /// commit). Mirrors the post-assembly state of the S3 multipart upload.
+    ///
+    /// VTRFIX (MEDIUM): this is now only used by tests/legacy paths — the
+    /// `upload_complete` handler no longer calls it, because marking chunks
+    /// `uploaded` that were never received would mask data loss. Completeness
+    /// is verified by counting `file_chunks` with status `uploaded` instead
+    /// (see `count_chunks_uploaded`).
+    #[allow(dead_code)]
     pub async fn set_all_chunks_uploaded(
         &self,
         file_uuid: &str,
@@ -205,7 +288,8 @@ impl Repository {
 /// FEAT-H01: encrypted-chunk storage trait.
 #[async_trait::async_trait]
 pub trait ChunkStore: Send + Sync {
-    async fn put_chunk(&self, file_uuid: &str, idx: u32, bytes: Vec<u8>) -> Result<(), sqlx::Error>;
+    async fn put_chunk(&self, file_uuid: &str, idx: u32, bytes: Vec<u8>)
+        -> Result<(), sqlx::Error>;
     async fn get_chunk(&self, file_uuid: &str, idx: u32) -> Result<Option<Vec<u8>>, sqlx::Error>;
     async fn delete_file(&self, file_uuid: &str) -> Result<(), sqlx::Error>;
     async fn count_chunks(&self, file_uuid: &str) -> Result<u64, sqlx::Error>;
@@ -224,7 +308,12 @@ impl SqliteChunkStore {
 
 #[async_trait::async_trait]
 impl ChunkStore for SqliteChunkStore {
-    async fn put_chunk(&self, file_uuid: &str, idx: u32, bytes: Vec<u8>) -> Result<(), sqlx::Error> {
+    async fn put_chunk(
+        &self,
+        file_uuid: &str,
+        idx: u32,
+        bytes: Vec<u8>,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO chunks (file_uuid, idx, bytes) VALUES (?, ?, ?) \
              ON CONFLICT(file_uuid, idx) DO UPDATE SET bytes = excluded.bytes",
@@ -265,6 +354,26 @@ impl ChunkStore for SqliteChunkStore {
 }
 
 impl Repository {
+    /// VTRFIX (MEDIUM): count chunks with status `uploaded` for a manifest owned
+    /// by `user_id`. `upload_complete` only flips the manifest to `Available`
+    /// when this equals `total_chunks`.
+    pub async fn count_chunks_uploaded(
+        &self,
+        file_uuid: &str,
+        user_id: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let n: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM file_chunks c \
+             JOIN file_manifests m ON m.file_uuid = c.file_uuid \
+             WHERE c.file_uuid = ? AND m.owner_user_id = ? AND c.status = 'uploaded'",
+        )
+        .bind(file_uuid)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n.unwrap_or(0))
+    }
+
     /// Mark a single chunk `uploaded` for `user_id`.
     pub async fn set_chunk_uploaded(
         &self,
