@@ -1,13 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
-import { Clipboard, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button, ButtonText } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Separator } from '../../components/ui/separator';
 import { Text } from '../../components/ui/text';
+import { useToast } from '../../components/ui/toast';
+import { describeBiometricDenial, requireBiometric } from '../../lib/biometrics';
 import { services } from '../../lib/client';
 import { useSession } from '../../lib/session';
+import { useVaultLock } from '../../lib/vaultLock';
+import { clearSensitiveClipboard, copySensitiveToClipboard } from '../../src/lib/secureClipboard';
 import { triggerReplayOnboarding } from '../../src/onboarding/OnboardingFlow';
 import { triggerReplayTour } from '../../src/tour/TourOverlay';
 import { shareKit } from '../lib/kit';
@@ -18,8 +22,48 @@ export const Route = createFileRoute('/_app/settings')({
 
 function SettingsScreen() {
   const username = useSession((s) => s.username);
+  const locked = useVaultLock((s) => s.locked);
+  const toast = useToast();
   const [kitRevealed, setKitRevealed] = useState(false);
+  const copiedTokenRef = useRef<number | null>(null);
   const kit = services.auth.getEmergencyKit();
+
+  // If the screen unmounts while the mnemonic is still on the clipboard,
+  // clear it immediately (the epoch guard skips this if a newer copy won).
+  useEffect(() => {
+    return () => clearSensitiveClipboard(copiedTokenRef.current ?? undefined);
+  }, []);
+
+  const revealKit = async () => {
+    if (locked) {
+      toast.show({
+        title: 'Vault locked',
+        description: 'Unlock the vault with biometrics (fingerprint button in the header) first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const gate = await requireBiometric('Reveal Emergency Kit');
+    if (!gate.success) {
+      toast.show({
+        title: 'Reveal blocked',
+        description: describeBiometricDenial(gate.reason, 'revealing the Emergency Kit'),
+        variant: 'destructive',
+      });
+      return;
+    }
+    setKitRevealed(true);
+  };
+
+  const copyMnemonic = () => {
+    if (!kit) return;
+    // Auto-clears after ~45s; never cleared early by a newer copy (epoch guard).
+    copiedTokenRef.current = copySensitiveToClipboard(kit.mnemonic);
+    toast.show({
+      title: 'Copied',
+      description: 'Recovery Key copied — the clipboard is cleared automatically in ~45 seconds.',
+    });
+  };
 
   return (
     <Animated.View entering={FadeInDown.duration(300).springify()} className="gap-4">
@@ -42,20 +86,26 @@ function SettingsScreen() {
         </Text>
         {kit ? (
           <View className="gap-2">
-            <Button variant="outline" onPress={() => setKitRevealed((v) => !v)}>
+            <Button variant="outline" disabled={locked} onPress={() => void revealKit()}>
               <ButtonText>{kitRevealed ? 'Hide' : 'Reveal'}</ButtonText>
             </Button>
-            {kitRevealed ? (
+            {locked ? (
+              <Text variant="tiny" className="text-muted-foreground">
+                Vault locked after inactivity — unlock with biometrics in the header to reveal.
+              </Text>
+            ) : null}
+            {kitRevealed && !locked ? (
               <Text variant="tiny" className="font-mono text-foreground" selectable>
                 {kit.mnemonic}
               </Text>
             ) : null}
             <View className="flex-row gap-2">
-              <Button variant="outline" onPress={() => Clipboard.setString(kit.mnemonic)}>
+              <Button variant="outline" disabled={locked || !kitRevealed} onPress={copyMnemonic}>
                 <ButtonText>Copy</ButtonText>
               </Button>
               <Button
                 variant="outline"
+                disabled={locked || !kitRevealed}
                 onPress={() => void shareKit(kit.mnemonic, username || 'you')}
               >
                 <ButtonText>Share</ButtonText>
