@@ -53,6 +53,9 @@ async fn send_json<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> R
 #[derive(Deserialize)]
 struct RegisterStartResp {
     registration_response: String,
+    // VTRFIX: the server distributes its own public key at register/start;
+    // register/finish must echo it verbatim (stubs/mismatches are rejected).
+    server_public_key: String,
 }
 
 #[derive(Deserialize)]
@@ -150,7 +153,8 @@ impl AuthClient {
             .map_err(|e| format!("svk rk wrap: {e}"))?;
 
         // ── OPAQUE registration (api.md §3.1) ──────────────────────────
-        let (cstate, creq) = state::registration_start(password);
+        let (cstate, creq) =
+            state::registration_start(password).map_err(|e| format!("opaque: {e}"))?;
 
         let start_resp: RegisterStartResp = send_json(
             self.client
@@ -169,8 +173,13 @@ impl AuthClient {
         let sresp = B64
             .decode(&start_resp.registration_response)
             .map_err(|e| format!("register/start b64 decode: {e}"))?;
-        let (upload, _export_key, _st) =
-            state::registration_finish(&cstate, &sresp, password, username.as_bytes());
+        let (upload, _export_key, _st) = state::registration_finish(
+            &cstate,
+            &sresp,
+            password,
+            username.as_bytes(),
+        )
+        .map_err(|e| format!("opaque: {e}"))?;
 
         let _finish: RegisterFinishResp = send_json(
             self.client
@@ -178,7 +187,8 @@ impl AuthClient {
                 .json(&serde_json::json!({
                     "username": username,
                     "registration_finish": B64.encode(&upload),
-                    "server_public_key": B64.encode(&[0u8; 32]),
+                    // VTRFIX: echo the server's key from register/start (was [0u8;32], rejected since BUG-M19).
+                    "server_public_key": &start_resp.server_public_key,
                     "kdf_salt": B64.encode(&kdf_salt),
                     "svk_ciphertext_blob": B64.encode(&svk_wrapped),
                     "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped),
@@ -206,7 +216,7 @@ impl AuthClient {
         _kdf_salt: &[u8; 32],
     ) -> Result<LoginResult, String> {
         // ── OPAQUE login (api.md §3.2) ──────────────────────────────────
-        let (cstate, lreq) = state::login_start(password);
+        let (cstate, lreq) = state::login_start(password).map_err(|e| format!("opaque: {e}"))?;
 
         let start_resp: LoginStartResp = send_json(
             self.client
@@ -225,8 +235,13 @@ impl AuthClient {
         let sresp = B64
             .decode(&start_resp.login_response)
             .map_err(|e| format!("login/start b64 decode: {e}"))?;
-        let (upload, _session_key, _st) =
-            state::login_finish(&cstate, &sresp, password, username.as_bytes());
+        let (upload, _session_key, _st) = state::login_finish(
+            &cstate,
+            &sresp,
+            password,
+            username.as_bytes(),
+        )
+        .map_err(|e| format!("opaque: {e}"))?;
 
         let finish_resp: LoginFinishResp = send_json(
             self.client
