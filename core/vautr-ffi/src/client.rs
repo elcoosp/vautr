@@ -89,14 +89,23 @@ pub enum FfiError {
 /// the on-device sqlite DB. This is the mobile equivalent of the web client's
 /// JS key store: it keeps the KDF salt + MP-wrapped SVK so a later `login` can
 /// re-derive the vault key without re-registering. (VTR-104)
+///
+/// The recovery mnemonic is stored sealed under the KEK
+/// (`aead::encrypt(kek, Uuid::nil(), 0, …)`, base64) whenever a KEK is
+/// available at the save site; legacy files with a plaintext
+/// `recovery_mnemonic` remain readable.
 #[derive(Serialize, Deserialize)]
 struct LocalAccount {
     /// Argon2id KDF salt (base64, 32 bytes).
     kdf_salt_b64: String,
     /// MP-wrapped SVK (base64).
     wrapped_svk_b64: String,
-    /// 24-word BIP-39 recovery mnemonic (Emergency Kit).
+    /// 24-word BIP-39 recovery mnemonic (Emergency Kit). Empty when the
+    /// sealed form is used.
     recovery_mnemonic: String,
+    /// Recovery mnemonic sealed under the KEK (base64 AEAD envelope).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery_mnemonic_sealed_b64: Option<String>,
     /// Server's minimum encryption-key generation seen at registration.
     min_enc_key_gen: u64,
 }
@@ -301,7 +310,8 @@ impl MobileClient {
                 .map_err(|e| FfiError::Core(format!("svk rk wrap: {e}")))?;
 
             // ── OPAQUE registration (api.md §3.1) ──
-            let (cstate, creq) = state::registration_start(&Zeroizing::new(password.clone()));
+            let (cstate, creq) = state::registration_start(&Zeroizing::new(password.clone()))
+                .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
             let start_resp: serde_json::Value = reqwest::Client::new()
                 .post(format!("{base}/register/start"))
                 .json(&serde_json::json!({
@@ -322,20 +332,28 @@ impl MobileClient {
             let sresp = B64
                 .decode(&sresp_b64)
                 .map_err(|e| FfiError::Core(format!("registration_response b64: {e}")))?;
+            // VTRFIX: echo the server's public key from register/start (the
+            // server rejects the all-zero stub and mismatched keys).
+            let server_public_key_b64 = start_resp
+                .get("server_public_key")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| FfiError::Core("missing server_public_key".into()))?
+                .to_string();
             let (_upload, _export_key, _st) = state::registration_finish(
                 &cstate,
                 &sresp,
                 &Zeroizing::new(password.clone()),
                 username.as_bytes(),
-            );
+            )
+            .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
 
-            // server_public_key is a server-side stub; send a fixed dummy (matches desktop).
+            // VTRFIX: echo the server's key (was a fixed dummy — rejected).
             reqwest::Client::new()
                 .post(format!("{base}/register/finish"))
                 .json(&serde_json::json!({
                     "username": username,
                     "registration_finish": B64.encode(&_upload),
-                    "server_public_key": B64.encode(&[0u8; 32]),
+                    "server_public_key": &server_public_key_b64,
                     "kdf_salt": B64.encode(&kdf_salt),
                     "svk_ciphertext_blob": B64.encode(&svk_wrapped),
                     "svk_ciphertext_blob_rk": B64.encode(&svk_rk_wrapped),
@@ -351,6 +369,7 @@ impl MobileClient {
                 B64.encode(&svk_wrapped),
                 mnemonic.clone(),
                 0,
+                Some(&*kek),
             )?;
 
             // Registration does not mint a session token; the caller follows with
@@ -373,13 +392,14 @@ impl MobileClient {
         password: String,
     ) -> Result<String, FfiError> {
         block_on_ffi(async move {
-            let account = self.load_local_account()?;
+            let account = self.load_local_account(Some(&password))?;
             let kdf_salt_b64 = account.kdf_salt_b64.clone();
             let recovery_mnemonic = account.recovery_mnemonic.clone();
             let base = format!("{}/auth", server_url.trim_end_matches('/'));
 
             // ── OPAQUE login (api.md §3.2) ──
-            let (cstate, lreq) = state::login_start(&Zeroizing::new(password.clone()));
+            let (cstate, lreq) = state::login_start(&Zeroizing::new(password.clone()))
+                .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
             let start_resp: serde_json::Value = reqwest::Client::new()
                 .post(format!("{base}/login/start"))
                 .json(&serde_json::json!({
@@ -405,7 +425,8 @@ impl MobileClient {
                 &sresp,
                 &Zeroizing::new(password.clone()),
                 username.as_bytes(),
-            );
+            )
+            .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
 
             let finish_resp: serde_json::Value = reqwest::Client::new()
                 .post(format!("{base}/login/finish"))
@@ -438,10 +459,7 @@ impl MobileClient {
                             .collect()
                     })
                     .unwrap_or_default();
-                let expires_at = mfa
-                    .get("expires_at")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let expires_at = mfa.get("expires_at").and_then(|v| v.as_i64()).unwrap_or(0);
                 return Ok(serde_json::json!({
                     "recovery_mnemonic": recovery_mnemonic,
                     "session_token": serde_json::Value::Null,
@@ -518,7 +536,7 @@ impl MobileClient {
         code: String,
     ) -> Result<String, FfiError> {
         block_on_ffi(async move {
-            let account = self.load_local_account()?;
+            let account = self.load_local_account(Some(&password))?;
             let kdf_salt_b64 = account.kdf_salt_b64.clone();
             let recovery_mnemonic = account.recovery_mnemonic.clone();
             let base = format!("{}/mfa/totp", server_url.trim_end_matches('/'));
@@ -586,7 +604,11 @@ impl MobileClient {
     /// unlock, crypto.md §6). `local_gen` is the local vault key generation.
     /// VTRFIX-FEAT-H02: sign the server-issued recovery challenge nonce with
     /// the Ed25519 key derived from the 24-word mnemonic. Returns base64.
-    pub fn sign_recovery_nonce(&self, mnemonic: String, nonce_b64: String) -> Result<String, FfiError> {
+    pub fn sign_recovery_nonce(
+        &self,
+        mnemonic: String,
+        nonce_b64: String,
+    ) -> Result<String, FfiError> {
         use base64::Engine;
         let m = vautr_crypto::recovery::decode_recovery_mnemonic(&mnemonic)
             .map_err(|e| FfiError::Core(format!("mnemonic: {e}")))?;
@@ -625,7 +647,15 @@ impl MobileClient {
             .map_err(|e| FfiError::Core(format!("user id: {e}")))?;
         let kek_rk = vautr_crypto::recovery::derive_kek_rk(&m)
             .map_err(|e| FfiError::Core(format!("kek_rk: {e}")))?;
+        // TODO(vtrfix): switch to `vautr_crypto::recovery::unwrap_svk_with_rk_any`
+        // once it lands in vautr-crypto (tries (user_id, 0) then (nil, 0)).
+        // Inline equivalent below: registration wrapped the SVK with
+        // AD = Uuid::nil() on some paths, older/other clients with the real
+        // user id — accept either so kit recovery works for both.
         let svk = vautr_crypto::recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &uid)
+            .or_else(|_| {
+                vautr_crypto::recovery::unwrap_svk_with_rk(&wrapped, &kek_rk, &Uuid::nil())
+            })
             .map_err(|e| FfiError::Core(format!("unwrap: {e}")))?;
         Ok(svk.to_vec())
     }
@@ -734,8 +764,22 @@ impl MobileClient {
             };
             let kek_rk_old = vautr_crypto::recovery::derive_kek_rk(&m_old)
                 .map_err(|e| FfiError::Core(format!("kek_rk: {e}")))?;
-            let svk = vautr_crypto::recovery::unwrap_svk_with_rk(&svk_rk_bytes, &kek_rk_old, &user_id)
-                .map_err(|e| FfiError::Core(format!("unwrap svk: {e}")))?;
+            // TODO(vtrfix): switch to `vautr_crypto::recovery::unwrap_svk_with_rk_any`
+            // once it lands in vautr-crypto (tries (user_id, 0) then (nil, 0)).
+            // Inline equivalent below: registration wrapped the SVK with
+            // AD = Uuid::nil(), but this flow previously unwrapped with the real
+            // user id — a mismatch that made kit recovery always fail. Accept
+            // either AD so both old and new registrations recover.
+            let svk =
+                vautr_crypto::recovery::unwrap_svk_with_rk(&svk_rk_bytes, &kek_rk_old, &user_id)
+                    .or_else(|_| {
+                        vautr_crypto::recovery::unwrap_svk_with_rk(
+                            &svk_rk_bytes,
+                            &kek_rk_old,
+                            &Uuid::nil(),
+                        )
+                    })
+                    .map_err(|e| FfiError::Core(format!("unwrap svk: {e}")))?;
 
             // 6. Fresh MP wrap + fresh RK.
             let kdf_salt = kdf::generate_kdf_salt();
@@ -757,7 +801,8 @@ impl MobileClient {
                 .map_err(|e| FfiError::Core(format!("pk new: {e}")))?;
 
             // 7. Re-register OPAQUE under the new password.
-            let (cstate, creq) = state::registration_start(&Zeroizing::new(new_password.clone()));
+            let (cstate, creq) = state::registration_start(&Zeroizing::new(new_password.clone()))
+                .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
             let start_resp: serde_json::Value = reqwest::Client::new()
                 .post(format!("{base}/auth/register/start"))
                 .json(&serde_json::json!({
@@ -783,7 +828,8 @@ impl MobileClient {
                 &sresp,
                 &Zeroizing::new(new_password.clone()),
                 username.as_bytes(),
-            );
+            )
+            .map_err(|e| FfiError::Core(format!("opaque: {e}")))?;
 
             // 8. Complete: server atomically replaces creds.
             reqwest::Client::new()
@@ -808,6 +854,7 @@ impl MobileClient {
                 B64.encode(&svk_wrapped_new),
                 new_mnemonic.clone(),
                 0,
+                Some(&*kek_new),
             )?;
 
             Ok(new_mnemonic)
@@ -851,6 +898,11 @@ impl MobileClient {
             let kdf_salt = base64::engine::general_purpose::STANDARD
                 .decode(&kdf_salt_b64)
                 .map_err(|e| FfiError::Core(format!("kdf_salt b64: {e}")))?;
+            // VTRFIX: a wrong-length salt previously panicked in
+            // `copy_from_slice` (aborting the mobile app). Fail closed instead.
+            if kdf_salt.len() != 32 {
+                return Err(FfiError::Core("kdf_salt must be 32 bytes".into()));
+            }
             let wrapped_svk = base64::engine::general_purpose::STANDARD
                 .decode(&wrapped_svk_b64)
                 .map_err(|e| FfiError::Core(format!("wrapped_svk b64: {e}")))?;
@@ -1141,6 +1193,51 @@ impl MobileClient {
     }
 }
 
+/// Atomic file write with restrictive permissions: content is written to a
+/// unique temp file (0o600 on unix) in the same directory, then renamed over
+/// `path` so readers never observe a torn write. Mirrors the CLI config
+/// pattern (`apps/cli/src/config.rs` save).
+fn atomic_write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    };
+    std::fs::create_dir_all(&dir)?;
+    let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = dir.join(format!(
+        ".{}.tmp.{}.{}",
+        stem,
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all().ok();
+    }
+    #[cfg(not(unix))]
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all().ok();
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Non-exported helpers for the native OPAQUE register/login flow. Kept in a
 /// separate `impl` block (no `#[uniffi::export]`) so UniFFI never tries to
 /// generate bindings for them — they are an internal implementation detail.
@@ -1152,29 +1249,75 @@ impl MobileClient {
         p.with_file_name(name).to_string_lossy().into_owned()
     }
 
+    /// Persist the local account companion file.
+    ///
+    /// # Security
+    /// When a KEK is provided (both current call sites have one) the plaintext
+    /// recovery mnemonic is **sealed** with
+    /// `vautr_crypto::aead::encrypt(kek, &Uuid::nil(), 0, …)` and stored
+    /// base64 in `recovery_mnemonic_sealed_b64`; the plaintext field is left
+    /// empty. The matching `load_local_account` unseals it with the KEK
+    /// re-derived from the master password + the account's KDF salt, falling
+    /// back to legacy plaintext files. The write itself is atomic and 0o600.
     fn save_local_account(
         &self,
         kdf_salt_b64: String,
         wrapped_svk_b64: String,
         recovery_mnemonic: String,
         min_enc_key_gen: u64,
+        kek: Option<&[u8; 32]>,
     ) -> Result<(), FfiError> {
+        let (mnemonic_field, sealed_field) = match kek {
+            Some(kek) => {
+                let sealed =
+                    vautr_crypto::aead::encrypt(kek, &Uuid::nil(), 0, recovery_mnemonic.as_bytes())
+                        .map_err(|e| FfiError::Core(format!("seal mnemonic: {e}")))?;
+                (String::new(), Some(B64.encode(&sealed)))
+            }
+            None => (recovery_mnemonic, None),
+        };
         let acct = LocalAccount {
             kdf_salt_b64,
             wrapped_svk_b64,
-            recovery_mnemonic,
+            recovery_mnemonic: mnemonic_field,
+            recovery_mnemonic_sealed_b64: sealed_field,
             min_enc_key_gen,
         };
         let json = serde_json::to_string(&acct)
             .map_err(|e| FfiError::Core(format!("ser account: {e}")))?;
-        std::fs::write(self.account_path(), json)
+        atomic_write_private(std::path::Path::new(&self.account_path()), json.as_bytes())
             .map_err(|e| FfiError::Core(format!("write account: {e}")))
     }
 
-    fn load_local_account(&self) -> Result<LocalAccount, FfiError> {
+    /// Load the local account companion file. `mp` is the master password,
+    /// used to re-derive the KEK when the recovery mnemonic is stored sealed;
+    /// unsealing failure is **non-fatal** (a wrong password must still reach
+    /// the OPAQUE handshake, which reports invalid credentials properly) —
+    /// the mnemonic is simply returned empty.
+    fn load_local_account(&self, mp: Option<&str>) -> Result<LocalAccount, FfiError> {
         let json = std::fs::read_to_string(self.account_path())
             .map_err(|e| FfiError::Core(format!("read account (register first): {e}")))?;
-        serde_json::from_str(&json).map_err(|e| FfiError::Core(format!("parse account: {e}")))
+        let mut acct: LocalAccount = serde_json::from_str(&json)
+            .map_err(|e| FfiError::Core(format!("parse account: {e}")))?;
+        if let (Some(sealed_b64), Some(mp)) = (&acct.recovery_mnemonic_sealed_b64, mp) {
+            let unsealed = (|| -> Option<String> {
+                let sealed = B64.decode(sealed_b64).ok()?;
+                let salt = B64.decode(&acct.kdf_salt_b64).ok()?;
+                if salt.len() != 32 {
+                    return None;
+                }
+                let mut s = [0u8; 32];
+                s.copy_from_slice(&salt);
+                let mk = kdf::derive_master_key(mp, &s).ok()?;
+                let kek = key_tree::derive_kek(&mk).ok()?;
+                let pt = vautr_crypto::aead::decrypt(&kek, &Uuid::nil(), 0, &sealed).ok()?;
+                String::from_utf8(pt).ok()
+            })();
+            if let Some(m) = unsealed {
+                acct.recovery_mnemonic = m;
+            }
+        }
+        Ok(acct)
     }
 }
 
@@ -1202,34 +1345,20 @@ impl MobileClient {
 }
 
 /// Connect to the vault DB, safe to call from either a synchronous context or
-/// from inside an existing Tokio runtime.
+/// from inside an existing Tokio runtime (any flavor — see [`block_on_ffi`]).
 ///
 /// `MobileClient::new` is synchronous but must open the DB. A naive
 /// `Handle::current().block_on(...)` panics with "Cannot start a runtime from
-/// within a runtime" when called from the uniffi/Expo async bridge (which drives
-/// the `register`/`login` calls from within a Tokio runtime) — that panic was
-/// the root cause of the empty/opaque error on mobile register. Here we `spawn`
-/// the connect future and await its JoinHandle, which never blocks the current
-/// thread's driver and so cannot panic. When no runtime is present we build a
-/// throwaway current-thread runtime to `block_on` the connect.
+/// within a runtime" when called from the uniffi/Expo async bridge — that panic
+/// was the root cause of the empty/opaque error on mobile register. Routing
+/// through [`block_on_ffi`] picks a safe blocking strategy for every runtime
+/// flavor (multi-thread → `block_in_place`, current-thread/none → FFI runtime).
 fn connect_db(url: &str) -> Result<sea_orm::DatabaseConnection, FfiError> {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => {
-            // Inside an existing runtime (the uniffi/Expo async bridge). Block
-            // on a worker thread via `block_in_place` so we never panic the
-            // runtime's driver thread ("Cannot start a runtime from within a
-            // runtime"). This is the documented pattern for blocking from within
-            // a Tokio runtime.
-            tokio::task::block_in_place(|| handle.block_on(sea_orm::Database::connect(url)))
-                .map_err(|e| FfiError::Core(format!("db connect: {e}")))
-        }
-        Err(_) => tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| FfiError::Core(format!("runtime build: {e}")))?
-            .block_on(sea_orm::Database::connect(url))
-            .map_err(|e| FfiError::Core(format!("db connect: {e}"))),
-    }
+    block_on_ffi(async move {
+        sea_orm::Database::connect(url)
+            .await
+            .map_err(|e| FfiError::Core(format!("db connect: {e}")))
+    })
 }
 
 /// Process-wide Tokio runtime used to drive the (otherwise async) FFI surface
@@ -1252,11 +1381,19 @@ fn ffi_runtime() -> &'static tokio::runtime::Runtime {
 fn block_on_ffi<F: std::future::Future>(fut: F) -> F::Output {
     // When a Tokio runtime is already present on the calling thread (e.g. a Rust
     // test harness), drive the future on it via `block_in_place` (which migrates
-    // the task to the runtime's blocking pool so `block_on` is safe). When no
-    // runtime is present — the common case for a synchronous Kotlin/Expo call
-    // site on Android — block on the dedicated process-wide FFI runtime instead.
+    // the task to the runtime's blocking pool so `block_on` is safe) — but ONLY
+    // on a multi-threaded runtime: `block_in_place` panics with "can only be
+    // called from a multi-threaded runtime" on a current-thread runtime, which
+    // would abort a mobile/test call site. For that flavor (and when no runtime
+    // is present — the common case for a synchronous Kotlin/Expo call site on
+    // Android) block on the dedicated process-wide FFI runtime instead.
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+        Ok(handle) => {
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::CurrentThread {
+                return ffi_runtime().block_on(fut);
+            }
+            tokio::task::block_in_place(|| handle.block_on(fut))
+        }
         Err(_) => ffi_runtime().block_on(fut),
     }
 }
