@@ -88,7 +88,8 @@ fn live_register_login_sync_roundtrip() {
         json!({
             "username": username,
             "registration_finish": b64(&reg_finish),
-            "server_public_key": b64(&[0u8; 32]),
+            // VTRFIX: echo the server's key from register/start.
+            "server_public_key": reg_resp["server_public_key"].as_str().unwrap_or_default(),
             "kdf_salt": b64(&kdf_salt),
             "svk_ciphertext_blob": b64(&svk_wrapped),
             "svk_ciphertext_blob_rk": b64(&svk_rk_wrapped),
