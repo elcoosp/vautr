@@ -105,7 +105,13 @@ pub fn render_emergency_kit_pdf(email: &str, mnemonic: &str) -> Result<Vec<u8>, 
 
     // --- Recovery Key (readable words only) ---
     layer.set_fill_color(Color::Rgb(brand.clone()));
-    layer.use_text("Recovery Key (24 words)", 13.0, Mm(20.0), Mm(166.0), &font_bold);
+    layer.use_text(
+        "Recovery Key (24 words)",
+        13.0,
+        Mm(20.0),
+        Mm(166.0),
+        &font_bold,
+    );
 
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
     // Render as a readable numbered grid (4 columns x 6 rows).
@@ -144,23 +150,28 @@ pub fn render_emergency_kit_pdf(email: &str, mnemonic: &str) -> Result<Vec<u8>, 
 mod tests {
     use super::*;
 
-    const MNEMONIC: &str = "legal winner thank year wave sausage worth useful legal winner thank yellow \
+    const MNEMONIC: &str =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow \
         letter advice cage absurd amount doctor acoustic avoid letter advice cage above \
         fruit mother list laundry dawn region above exhibit leaf garden require margin";
 
     #[test]
     fn emergency_kit_pdf_generates_bytes() {
-        let bytes = render_emergency_kit_pdf("alice@example.com", MNEMONIC)
-            .expect("pdf should render");
+        let bytes =
+            render_emergency_kit_pdf("alice@example.com", MNEMONIC).expect("pdf should render");
         assert!(!bytes.is_empty(), "PDF must produce non-empty bytes");
         // PDF magic header.
-        assert!(bytes.starts_with(b"%PDF"), "must be a valid PDF (got {:?})", &bytes[..5]);
+        assert!(
+            bytes.starts_with(b"%PDF"),
+            "must be a valid PDF (got {:?})",
+            &bytes[..5]
+        );
     }
 
     #[test]
     fn emergency_kit_contains_readable_words() {
-        let bytes = render_emergency_kit_pdf("alice@example.com", MNEMONIC)
-            .expect("pdf should render");
+        let bytes =
+            render_emergency_kit_pdf("alice@example.com", MNEMONIC).expect("pdf should render");
         // Text is emitted as hex-encoded content streams (`<...>` tokens), which
         // proves the key is rendered as real, selectable text (not an image or a
         // machine-scannable blob). Lowercase both sides and search for the hex
@@ -183,17 +194,12 @@ mod tests {
     /// scannable representation of the Recovery Key.
     #[test]
     fn emergency_kit_emits_no_qr_or_barcode() {
-        let bytes = render_emergency_kit_pdf("alice@example.com", MNEMONIC)
-            .expect("pdf should render");
+        let bytes =
+            render_emergency_kit_pdf("alice@example.com", MNEMONIC).expect("pdf should render");
         let text = String::from_utf8_lossy(&bytes).to_lowercase();
         // No QR/barcode operators or resource names.
         for marker in [
-            "qrcode",
-            "qr code",
-            "barcode",
-            "/dqfont",
-            "matrix",
-            "pdf417",
+            "qrcode", "qr code", "barcode", "/dqfont", "matrix", "pdf417",
         ] {
             assert!(
                 !text.contains(marker),
