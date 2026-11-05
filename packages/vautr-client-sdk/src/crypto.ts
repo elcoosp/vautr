@@ -12,6 +12,8 @@
  * before issuing any operation.
  */
 
+import { toBase64 } from './api';
+
 export interface OpaqueStart {
   /** Message to send to the server (base64 wire). */
   message: Uint8Array;
@@ -75,10 +77,11 @@ export class AsyncCryptoAdapter {
 
   // --- VTRFIX-FEAT-H02: recovery-auth Ed25519 signing key ---
   signRecoveryNonce(mnemonic: string, nonce: Uint8Array): string {
+    // The wasm boundary takes the nonce as base64 (auth.rs `nonce_b64: &str`).
     const mod = this.m() as unknown as {
-      sign_recovery_nonce_js: (m: string, nonce: number[]) => string;
+      sign_recovery_nonce_js: (m: string, nonce_b64: string) => string;
     };
-    return mod.sign_recovery_nonce_js(mnemonic, Array.from(nonce));
+    return mod.sign_recovery_nonce_js(mnemonic, toBase64(nonce));
   }
   recoveryPublicKey(mnemonic: string): Uint8Array {
     const mod = this.m() as unknown as {
