@@ -104,7 +104,14 @@ pub fn share_item(
 ) -> Result<SharedEnvelope> {
     let ephemeral = EphemeralSecret::random_from_rng(rand::rngs::OsRng);
     let ephemeral_pk = PublicKey::from(&ephemeral);
-    let shared = ephemeral.diffie_hellman(&PublicKey::from(*recipient_pk));
+    let recipient_pk_parsed = PublicKey::from(*recipient_pk);
+    let shared = ephemeral.diffie_hellman(&recipient_pk_parsed);
+    // Defense-in-depth (RFC 7748 §6.1 / HPKE §7.1.4): reject a non-contributory
+    // (all-zero) DH output. A malicious relay could otherwise feed a low-order
+    // recipient key and obtain a deterministic envelope key.
+    if !shared.was_contributory() {
+        return Err(CryptoError::MalformedCiphertext);
+    }
     let key = derive_share_key(shared.as_bytes());
     let ad = share_ad(recipient_pk, item_uuid);
 
@@ -139,9 +146,12 @@ pub fn unwrap_shared_item(
         return Err(CryptoError::MalformedCiphertext);
     }
     let (nonce_bytes, ct) = envelope.wrapped_sik.split_at(NONCE_LEN);
-    let shared = recipient
-        .static_secret()
-        .diffie_hellman(&PublicKey::from(envelope.ephemeral_public_key));
+    let ephemeral_pk = PublicKey::from(envelope.ephemeral_public_key);
+    let shared = recipient.static_secret().diffie_hellman(&ephemeral_pk);
+    // Same non-contributory-output check as the wrap side.
+    if !shared.was_contributory() {
+        return Err(CryptoError::MalformedCiphertext);
+    }
     let key = derive_share_key(shared.as_bytes());
     let ad = share_ad(&recipient.public, item_uuid);
 
