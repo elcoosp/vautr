@@ -37,6 +37,7 @@ import { TokensTab } from './components/TokensTab';
 import { VaultTab } from './components/VaultTab';
 import { disposePopupClient, getPopupClient, getPopupMlpClient } from './popupClient';
 import { usePopupStore } from './store';
+import { secureLock } from './vaultActions';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -143,6 +144,10 @@ export function App() {
     if (client) {
       await client.lock();
     }
+    // VTRFIX-G: wipe the SW session SVK + cached ciphertexts and restrict
+    // storage.session access on the lock path (the only session-ending path in
+    // the popup — there is no separate logout button).
+    await secureLock();
     reset();
     clientRef.current = null;
     mlpRef.current = null;
