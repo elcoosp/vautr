@@ -17,11 +17,24 @@ use sea_orm::QuerySelect;
 /// A save command: an atomic aggregate + the epoch it was issued under.
 /// `payload` is the ciphertext blob (encrypted by OEK/DEK in the app layer,
 /// per data.md §3 contract — the worker only persists it).
-#[derive(Clone, Debug)]
+///
+/// VTRFIX (telemetry.md §1.3 Debug Ban): no derived `Debug` — the command
+/// embeds a `DomainModel`, whose `Debug` must never render the secret.
+#[derive(Clone)]
 pub struct SaveCommand {
     pub item: DomainModel,
     pub payload: Vec<u8>,
     pub sync_epoch: u64,
+}
+
+impl std::fmt::Debug for SaveCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SaveCommand")
+            .field("item_uuid", &self.item.uuid)
+            .field("sync_epoch", &self.sync_epoch)
+            .field("payload_bytes", &self.payload.len())
+            .finish()
+    }
 }
 
 /// A delete command: uuid + the epoch it was issued under, plus the caller's
@@ -180,14 +193,21 @@ impl PersistenceWorker {
         // previous code always wrote 1, so an edit produced a local row at
         // v1 while the server was at vN — the next push then conflicted
         // forever. New items legitimately start at 1.
-        let existing_version: Option<i64> = item_overview::Entity::find_by_id(ov.uuid.to_string())
+        // VTRFIX: also read the existing created_at — the previous code
+        // overwrote the original creation timestamp with the edit's
+        // `meta.created_at` on every update.
+        let existing: Option<(i64, i64)> = item_overview::Entity::find_by_id(ov.uuid.to_string())
             .select_only()
-            .column(item_overview::Column::Version)
+            .columns([
+                item_overview::Column::Version,
+                item_overview::Column::CreatedAt,
+            ])
             .into_tuple()
             .one(&self.db)
             .await
             .map_err(|e| format!("read version: {e}"))?;
-        let version = existing_version.unwrap_or(1);
+        let version = existing.map(|(v, _)| v).unwrap_or(1);
+        let created_at = existing.map(|(_, c)| c).unwrap_or(meta.created_at);
 
         let overview_am = item_overview::ActiveModel {
             uuid: Set(ov.uuid.to_string()),
@@ -202,7 +222,7 @@ impl PersistenceWorker {
             overview_subtitle: Set(ov.subtitle.clone()),
             overview_icon_key: Set(ov.icon_key.clone()),
             overview_urls: Set(serde_json::to_string(&ov.urls).unwrap_or_else(|_| "[]".into())),
-            created_at: Set(meta.created_at),
+            created_at: Set(created_at),
             updated_at: Set(meta.updated_at),
         };
 
@@ -234,6 +254,31 @@ impl PersistenceWorker {
             .begin()
             .await
             .map_err(|e| format!("begin txn: {e}"))?;
+        // VTRFIX (delete round-trip): capture the row's server version BEFORE
+        // deleting and record a tombstone intent in the same transaction. The
+        // next push flushes it as a real server tombstone (`payload: None`);
+        // previously the delete was local-only and the item resurrected on
+        // every other device and on full resync.
+        let existing: Option<(i64, i64)> = item_overview::Entity::find_by_id(cmd.uuid.to_string())
+            .select_only()
+            .columns([
+                item_overview::Column::Version,
+                item_overview::Column::EncKeyGen,
+            ])
+            .into_tuple()
+            .one(&txn)
+            .await
+            .map_err(|e| format!("read version for delete: {e}"))?;
+        if let Some((version, enc_key_gen)) = existing {
+            vautr_db::txn::record_pending_delete_txn(
+                &txn,
+                &cmd.uuid.to_string(),
+                version,
+                enc_key_gen,
+            )
+            .await
+            .map_err(|e| format!("record pending delete: {e}"))?;
+        }
         item_overview::Entity::delete_many()
             .filter(item_overview::Column::Uuid.eq(cmd.uuid.to_string()))
             .exec(&txn)
