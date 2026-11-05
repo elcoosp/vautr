@@ -190,8 +190,13 @@ async fn list_secrets(
     Path(project_id): Path<String>,
     auth: Bearer,
 ) -> Result<Json<SecretListResponse>, ApiError> {
-    let user_id = auth_any(&st.repo, &auth.0).await?;
-    require_project_access(&st, &project_id, &user_id, false).await?;
+    let caller = auth_any(&st.repo, &auth.0).await?;
+    // VTRFIX (HIGH): machine-account tokens must be scope-checked and cannot
+    // reach outside their bound project. User sessions are unaffected (the
+    // checks are no-ops when `caller.token` is `None`).
+    caller.require_scope("secrets:read")?;
+    caller.require_project(&project_id)?;
+    require_project_access(&st, &project_id, &caller.user_id, false).await?;
     let rows = st.repo.list_secrets(&project_id).await.map_err(internal)?;
     Ok(Json(SecretListResponse {
         secrets: rows.iter().map(to_secret).collect(),
@@ -673,6 +678,112 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// VTRFIX (HIGH): machine-account (`vtr-ak-…`) tokens hitting the secrets
+    /// list route must carry `secrets:read` and cannot reach outside their
+    /// bound project. User sessions are unaffected.
+    #[tokio::test]
+    async fn machine_token_scope_and_project_binding_enforced() {
+        let state = test_state().await;
+        let app = routes().with_state(state.clone());
+        let now = now_ms();
+
+        // A second project owned by u1.
+        sqlx::query(
+            "INSERT INTO projects (id, name, kind, org_id, team_id, owner_user_id, created_at, updated_at) \
+             VALUES ('p2', 'Other', 'personal', NULL, NULL, 'u1', ?, ?)",
+        )
+        .bind(now)
+        .bind(now)
+        .execute(state.repo.pool())
+        .await
+        .unwrap();
+
+        // Directly issue machine-account access tokens (same hashing scheme as
+        // handlers/tokens.rs: base64url(sha256(secret))).
+        let insert = |uuid: &'static str,
+                      secret: &'static str,
+                      scopes: &'static str,
+                      project: Option<&'static str>| {
+            let repo = state.repo.clone();
+            async move {
+                use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
+                use base64::Engine;
+                use sha2::{Digest, Sha256};
+                let mut h = Sha256::new();
+                h.update(secret.as_bytes());
+                let hash = B64URL.encode(h.finalize());
+                repo.create_access_token(
+                    uuid,
+                    "ma-token",
+                    "u1",
+                    None,
+                    project,
+                    scopes,
+                    &hash,
+                    "pref1234",
+                    Some(now_ms() + 3_600_000),
+                    now_ms(),
+                )
+                .await
+                .unwrap();
+            }
+        };
+        insert("ma-a", "vtr-ak-aaaa", r#"["secrets:read"]"#, Some("p1")).await;
+        insert("ma-b", "vtr-ak-bbbb", r#"["projects:read"]"#, None).await;
+        insert("ma-c", "vtr-ak-cccc", r#"["secrets:read"]"#, Some("p2")).await;
+
+        // Seed one secret in p1 with the owner's user session.
+        let (st, body) = create_secret(&app, "tok1").await;
+        assert_eq!(st, StatusCode::CREATED, "body: {body}");
+
+        // Token A: secrets:read + bound to p1 -> allowed.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/projects/p1/secrets")
+                    .header("authorization", "Bearer vtr-ak-aaaa")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Token B: lacks secrets:read -> 403 missing_scope (not the owner's
+        // full authority).
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/projects/p1/secrets")
+                    .header("authorization", "Bearer vtr-ak-bbbb")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let v = body_json(resp).await;
+        assert_eq!(v["error"], "missing_scope");
+
+        // Token C: secrets:read but bound to p2 -> 403 project_mismatch.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/projects/p1/secrets")
+                    .header("authorization", "Bearer vtr-ak-cccc")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let v = body_json(resp).await;
+        assert_eq!(v["error"], "project_mismatch");
     }
 
     #[tokio::test]
