@@ -56,8 +56,9 @@ impl Transport for RoundTripTransport {
     fn pull(
         &self,
         _cursor: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>>
-    {
+    ) -> Pin<
+        Box<dyn Future<Output = Result<(u64, Vec<PulledOverview>, bool), TransportError>> + Send>,
+    > {
         let st = self.state.clone();
         Box::pin(async move {
             let g = st.lock().unwrap();
