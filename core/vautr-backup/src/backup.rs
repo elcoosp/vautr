@@ -40,13 +40,9 @@ pub type BackupResult<T> = Result<T, BackupError>;
 /// transactionally-consistent copy of the whole database into a fresh file.
 /// The temporary snapshot file is removed before returning.
 pub async fn create_snapshot(pool: &SqlitePool, dest_dir: &Path) -> BackupResult<Vec<u8>> {
-    std::fs::create_dir_all(dest_dir)
-        .map_err(|e| BackupError::Io(format!("create dir: {e}")))?;
+    std::fs::create_dir_all(dest_dir).map_err(|e| BackupError::Io(format!("create dir: {e}")))?;
 
-    let file_name = format!(
-        "vautr-snapshot-{}.db",
-        uuid::Uuid::new_v4()
-    );
+    let file_name = format!("vautr-snapshot-{}.db", uuid::Uuid::new_v4());
     let path = dest_dir.join(file_name);
     let escaped = path.display().to_string().replace('\'', "''");
 
@@ -73,7 +69,8 @@ pub fn create_archive(
     snapshot: &[u8],
     meta: &ArchiveMeta,
 ) -> BackupResult<Vec<u8>> {
-    meta.verify_format().map_err(|_| BackupError::Archive("unsupported format"))?;
+    meta.verify_format()
+        .map_err(|_| BackupError::Archive("unsupported format"))?;
     let payload = ArchivePayload::new(meta.clone(), snapshot);
     let bytes = serde_json::to_vec(&payload)
         .map_err(|_| BackupError::Archive("payload serialization failed"))?;
@@ -87,7 +84,8 @@ pub async fn count_entries(snapshot: &[u8]) -> BackupResult<u64> {
         .map_err(|e| BackupError::Snapshot(format!("scratch: {e}")))?;
     let _ = crate::restore::write_snapshot(snapshot, &scratch)
         .map_err(|e| BackupError::Snapshot(format!("write scratch: {e}")))?;
-    let pool = open_scratch_pool(&scratch).await
+    let pool = open_scratch_pool(&scratch)
+        .await
         .map_err(|e| BackupError::Snapshot(format!("open scratch: {e}")))?;
     let count: Option<i64> = sqlx::query_scalar("SELECT COUNT(*) FROM items")
         .fetch_optional(&pool)
@@ -106,8 +104,13 @@ pub(crate) async fn open_scratch_pool(path: &Path) -> Result<SqlitePool, sqlx::E
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::str::FromStr;
     let url = format!("sqlite://{}", path.display());
-    let opts = SqliteConnectOptions::from_str(&url)?.create_if_missing(true).read_only(false);
-    SqlitePoolOptions::new().max_connections(1).connect_with(opts).await
+    let opts = SqliteConnectOptions::from_str(&url)?
+        .create_if_missing(true)
+        .read_only(false);
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await
 }
 
 #[cfg(test)]
@@ -123,7 +126,9 @@ mod tests {
         let archive = create_archive(&key, &snapshot, &meta).unwrap();
         assert!(archive.len() > snapshot.len());
         // Plaintext must not appear in the archive.
-        assert!(!archive.windows(snapshot.len()).any(|w| w == snapshot.as_slice()));
+        assert!(!archive
+            .windows(snapshot.len())
+            .any(|w| w == snapshot.as_slice()));
     }
 
     #[tokio::test]
@@ -134,9 +139,13 @@ mod tests {
         {
             let pool = open_scratch_pool(&scratch).await.unwrap();
             sqlx::query("CREATE TABLE items (uuid TEXT PRIMARY KEY) STRICT")
-                .execute(&pool).await.unwrap();
+                .execute(&pool)
+                .await
+                .unwrap();
             sqlx::query("INSERT INTO items (uuid) VALUES ('a'), ('b'), ('c')")
-                .execute(&pool).await.unwrap();
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
         let bytes = std::fs::read(&scratch).unwrap();
