@@ -64,14 +64,14 @@ cargo-ios-sim:
     cargo build -p vautr-ffi --target aarch64-apple-ios-sim
 
 # --- iOS native bridge (VTR-070 native layer) ---
-# Builds the static lib + bindings, copies the pod sources to a real (non-
-# symlinked) dir (CocoaPods skips modulemap gen for pnpm-symlinked sources),
-# then prebuilds + installs pods + builds the simulator app.
+# Builds the static lib + bindings, then prebuilds + installs pods + builds the
+# simulator app. NOTE: no source copying — the Podfile binds the pod directly
+# to ../../../packages/native/ios (see apps/mobile/ios/Podfile.lock), so the
+# old `packages/native/ios -> apps/mobile/VautrNativeModule-src` snapshot copy
+# was stale drift and has been removed (VTRFIX-INFRA-M08).
 
-# Regenerate bindings + static lib, then refresh the real-path pod copy.
+# Regenerate bindings + static lib for the simulator pod.
 ios-setup: cargo-ios-sim gen-ffi
-    rm -rf apps/mobile/VautrNativeModule-src
-    cp -R packages/native/ios apps/mobile/VautrNativeModule-src
 
 # Generate the Xcode project (idempotent; regenerates apps/mobile/ios).
 ios-prebuild:
@@ -81,12 +81,13 @@ ios-prebuild:
 ios-pod-install:
     cd apps/mobile/ios && pod install
 
-# Build the simulator app (no signing). Requires ios-setup first.
+# Build the simulator app (no signing). Requires ios-setup first. The generic
+# destination avoids hardcoding a machine-specific simulator UUID.
 ios-build:
     cd apps/mobile/ios && xcodebuild \
         -workspace Vautr.xcworkspace -scheme Vautr \
         -configuration Debug -sdk iphonesimulator \
-        -destination 'id=27088715-6C8B-436A-AC66-B2DA978A2944' \
+        -destination 'generic/platform=iOS Simulator' \
         CODE_SIGN_IDENTITY="" CODE_SIGNING_ALLOWED=NO build
 
 # Full iOS flow: setup -> prebuild -> pod install -> build.
@@ -101,10 +102,13 @@ android-so:
     export ANDROID_NDK_HOME="/opt/homebrew/Caskroom/android-ndk/29/AndroidNDK14206865.app/Contents/NDK"
     cargo ndk -t arm64-v8a -o packages/native/android/src/main/jniLibs build -p vautr-ffi --release
 
-# Copy the generated Kotlin bindings into the module's source set.
+# Copy the generated Kotlin bindings into the module's source set. The
+# destination mirrors the checked-in nested path (packages/native/android/
+# src/main/java/uniffi/vautr_ffi/uniffi/vautr_ffi/vautr_ffi.kt); a flat copy
+# here would duplicate the `uniffi.vautr_ffi` class and break the build.
 android-bindings:
-    mkdir -p packages/native/android/src/main/java/uniffi/vautr_ffi
-    cp -R modules/vautr-native/ffi-bindings/uniffi/vautr_ffi/. packages/native/android/src/main/java/uniffi/vautr_ffi/
+    mkdir -p packages/native/android/src/main/java/uniffi/vautr_ffi/uniffi/vautr_ffi
+    cp -R modules/vautr-native/ffi-bindings/uniffi/vautr_ffi/. packages/native/android/src/main/java/uniffi/vautr_ffi/uniffi/vautr_ffi/
 
 # Generate the Gradle project (regenerates apps/mobile/android).
 android-prebuild:
