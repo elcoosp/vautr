@@ -351,7 +351,11 @@ async fn create_token(
     let effective_expiry = match req.expires_at {
         Some(t) => Some(t),
         None => {
-            if std::env::var("VAUTR_ALLOW_NON_EXPIRING_TOKENS").ok().as_deref() == Some("1") {
+            if std::env::var("VAUTR_ALLOW_NON_EXPIRING_TOKENS")
+                .ok()
+                .as_deref()
+                == Some("1")
+            {
                 None
             } else {
                 let max_days: i64 = std::env::var("VAUTR_MAX_TOKEN_LIFETIME_DAYS")
