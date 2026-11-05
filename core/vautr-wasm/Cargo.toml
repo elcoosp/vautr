@@ -40,9 +40,10 @@ vautr-sharing.workspace = true
 vautr-keyring.workspace = true
 
 [features]
-# `read_secret` enabled only for the desktop/web full client, NOT the
-# stateless extension service-worker build. CI symbol-check (prd.md) asserts it
-# is absent from the restricted web artifact.
+# `read_secret` exists ONLY for local/native tests and tooling of the wasm
+# crate. It is NOT part of any shipped web artifact: the web full client does
+# not enable `desktop-api` (scripts/check-restricted-api.sh asserts `read_secret`
+# is absent from the restricted extension/service-worker build).
 desktop-api = []
 
 [dev-dependencies]
