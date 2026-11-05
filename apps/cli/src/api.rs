@@ -89,6 +89,9 @@ struct LoginFinishResp {
 #[derive(Deserialize)]
 struct RegisterStartResp {
     registration_response: String,
+    // VTRFIX: the server now distributes its own public key at register/start
+    // (base64); register/finish must echo it verbatim.
+    server_public_key: String,
 }
 
 /// Thin async HTTP client for the Vautr server.
@@ -139,7 +142,11 @@ impl Api {
     }
 
     /// OPAQUE register start. Returns the base64 server `registration_response`.
-    pub async fn register_start(&self, username: &str, reg_start_b64: &str) -> CliResult<String> {
+    pub async fn register_start(
+        &self,
+        username: &str,
+        reg_start_b64: &str,
+    ) -> CliResult<(String, String)> {
         let resp = self
             .client
             .post(self.url("/auth/register/start"))
@@ -148,7 +155,12 @@ impl Api {
             .await?;
         let body = self.check(resp).await?;
         let parsed: RegisterStartResp = serde_json::from_value(body)?;
-        Ok(parsed.registration_response)
+        // VTRFIX: return the server's public key alongside the OPAQUE
+        // response — register/finish must ECHO it (the server rejects a
+        // mismatched/stub key). Previously the CLI generated a client-side
+        // `ServerSetup` here and sent its serialization — which CONTAINS the
+        // OPRF PRIVATE KEY — as `server_public_key`.
+        Ok((parsed.registration_response, parsed.server_public_key))
     }
 
     /// OPAQUE register finish.
