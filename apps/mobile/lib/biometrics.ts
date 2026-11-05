@@ -9,13 +9,15 @@ export interface BiometricGate {
 
 /**
  * Gate an action (e.g. revealing a secret) behind the device biometrics.
- * Uses `expo-local-authentication`; on devices without hardware the gate passes
- * through (so the app remains usable on simulators).
+ * Uses `expo-local-authentication`. Fail-closed (VTRFIX-SEC-C02): on devices
+ * without biometric hardware the gate DENIES instead of passing through, so a
+ * simulator or stripped-down device can never silently bypass a protected
+ * action. Callers should surface `reason` as a friendly message.
  */
 export async function requireBiometric(promptMessage = 'Vautr unlock'): Promise<BiometricGate> {
   const hasHardware = await LocalAuthentication.hasHardwareAsync();
   if (!hasHardware) {
-    return { success: true, reason: 'no_hardware' };
+    return { success: false, reason: 'no_hardware' };
   }
   const enrolled = await LocalAuthentication.isEnrolledAsync();
   if (!enrolled) {
@@ -34,4 +36,25 @@ export async function canUseBiometrics(): Promise<boolean> {
   return (
     (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync())
   );
+}
+
+/**
+ * Friendly, user-facing message for a denied gate. Callers pass `gate.reason`
+ * from `requireBiometric`; the wording explains WHY the gate failed instead of
+ * a generic "authentication failed" (VTRFIX-SEC-C02 fail-closed follow-up).
+ */
+export function describeBiometricDenial(
+  reason: BiometricGate['reason'],
+  subject = 'this action',
+): string {
+  switch (reason) {
+    case 'no_hardware':
+      return `This device has no biometric hardware, so ${subject} is unavailable.`;
+    case 'not_enrolled':
+      return 'No biometrics are enrolled on this device. Enroll them in system settings first.';
+    case 'cancelled':
+      return 'Authentication cancelled.';
+    default:
+      return 'Authentication failed.';
+  }
 }
