@@ -21,7 +21,17 @@ jobs:
       - name: Boot server
         run: |
           VAUTR_ALLOW_DB_OPRF=1 cargo run -p vautr-server &
-          sleep 5
+          # Poll /health instead of a fixed sleep: fail fast if the server
+          # never comes up, tolerate slow first boot (30s budget).
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "server healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy within 30s" >&2
+          exit 1
       - name: Live e2e (ignored suites)
         env:
           VAUTR_API_URL: http://localhost:8080

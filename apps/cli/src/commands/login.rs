@@ -53,11 +53,13 @@ pub async fn run(cfg: &mut Config, username: Option<String>) -> CliResult<()> {
     cfg.session_token = Some(session_token.clone());
     cfg.save()?;
 
-    // The raw token is sensitive; print a truncated hint only.
+    // The raw token is sensitive; print a truncated hint only. Char-safe
+    // truncation: byte slicing can panic on a multi-byte UTF-8 boundary in a
+    // server-controlled string.
     println!("logged in as {username}");
     println!(
         "session stored (token {}…)",
-        &session_token[..session_token.len().min(12)]
+        session_token.chars().take(12).collect::<String>()
     );
     Ok(())
 }
