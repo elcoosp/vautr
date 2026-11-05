@@ -5,24 +5,28 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-use axum::{extract::State, Json, http::StatusCode,};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use vautr_crypto::opaque;
 
-use super::{b64, decode_b64, now_ms, server_setup, ApiError, AppState};
 use super::Bearer;
+use super::{b64, decode_b64, now_ms, server_setup, ApiError, AppState};
 
-/// In-memory OPAQUE server-login state, keyed by username.
+/// In-memory OPAQUE server-login state, keyed by handle (and a legacy username
+/// alias). Value is `(ServerLogin state, created_at epoch ms)`.
 ///
 /// OPAQUE is a multi-round protocol: `login_start` must persist the ephemeral
 /// `ServerLogin` state so `login_finish` can complete the key exchange. There
 /// is no cross-request state store in the server, so we keep a small in-memory
-/// map keyed by username. Entries are short-lived (a single login round) and
-/// scoped to this process (dev/self-host topology). This is a minimal fix to
-/// thread the state that `login_start` previously discarded (the old code
-/// passed the server *setup* bytes to `finish`, which cannot validate login).
-static LOGIN_STATE: LazyLock<Mutex<HashMap<String, Vec<u8>>>> =
+/// map. Entries are short-lived (a single login round) and scoped to this
+/// process (dev/self-host topology).
+static LOGIN_STATE: LazyLock<Mutex<HashMap<String, (Vec<u8>, i64)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// VTRFIX (LOW): per-entry TTL for `LOGIN_STATE` — a login round that is never
+/// finished is swept after 10 minutes instead of the old wholesale `clear()`
+/// at 10k entries (which could evict other users' in-flight logins).
+const LOGIN_STATE_TTL_MS: i64 = 10 * 60 * 1000;
 
 #[derive(Deserialize)]
 pub(crate) struct RegisterStartReq {
@@ -32,6 +36,13 @@ pub(crate) struct RegisterStartReq {
 #[derive(Serialize)]
 pub(crate) struct RegisterStartResp {
     registration_response: String,
+    /// VTRFIX (HIGH): server-key distribution. A random 32-byte server public
+    /// key, persisted in `server_config` (`server_public_key`) and handed out
+    /// here; the client echoes it back in `register/finish` where it is
+    /// verified. Replaces the old `[0u8;32]` placeholder (rejected by M19) and
+    /// the dangerous legacy behavior of clients sending a serialized OPAQUE
+    /// ServerSetup (which contains the OPRF PRIVATE key).
+    server_public_key: String,
 }
 #[derive(Deserialize)]
 pub(crate) struct RegisterFinishReq {
@@ -107,6 +118,49 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     h.finalize().iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// VTRFIX (HIGH): get-or-create the server's 32-byte public key (base64 wire
+/// format). Persisted in `server_config` under [`SERVER_PUBLIC_KEY`]; on a
+/// multi-process deployment the first writer wins and everyone serves the
+/// persisted value (re-read after write, mirroring `server_setup`).
+const SERVER_PUBLIC_KEY: &str = "server_public_key";
+
+async fn server_public_key(repo: &crate::repository::Repository) -> Result<Vec<u8>, ApiError> {
+    if let Some(pk) = repo
+        .get_config(SERVER_PUBLIC_KEY)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    {
+        if pk.len() == 32 {
+            return Ok(pk);
+        }
+    }
+    let mut fresh = [0u8; 32];
+    use rand::RngCore;
+    rand::rngs::OsRng.fill_bytes(&mut fresh);
+    repo.set_config(SERVER_PUBLIC_KEY, fresh.as_slice())
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // Re-read: another process may have won the race.
+    repo.get_config(SERVER_PUBLIC_KEY)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .filter(|pk| pk.len() == 32)
+        .ok_or_else(|| ApiError::internal("server_public_key disappeared after write"))
+}
+
+/// VTRFIX (LOW): true when the sqlx error is a SQLite UNIQUE constraint
+/// violation (used to map the `users.email` unique-index race to a 409).
+fn is_unique_violation(e: &sqlx::Error) -> bool {
+    match e {
+        sqlx::Error::Database(db) => {
+            // 2067 = SQLITE_CONSTRAINT_UNIQUE.
+            db.code().as_deref() == Some("2067")
+                || db.message().contains("UNIQUE constraint failed")
+        }
+        _ => false,
+    }
+}
+
 pub(crate) async fn register_start(
     State(st): State<AppState>,
     Json(req): Json<RegisterStartReq>,
@@ -115,8 +169,12 @@ pub(crate) async fn register_start(
     let creq = decode_b64(&req.registration_start)?;
     let sresp = opaque::server_register_start(&setup, &creq, req.username.as_bytes())
         .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // VTRFIX (HIGH): distribute the server public key so clients can pin it
+    // (echo protocol — see `RegisterStartResp.server_public_key`).
+    let server_pk = server_public_key(&st.repo).await?;
     Ok(Json(RegisterStartResp {
         registration_response: b64(&sresp),
+        server_public_key: b64(&server_pk),
     }))
 }
 
@@ -126,11 +184,11 @@ pub(crate) async fn register_finish(
 ) -> Result<Json<RegisterFinishResp>, ApiError> {
     let setup_bytes = server_setup(&st.repo).await?;
     let _ = setup_bytes; // kept for the (future) public-key derivation
-    // VTRFIX-BUG-M19: reject the all-zeros placeholder that every client used
-    // to send (the audit found this pattern). A real OPRF public key is a
-    // non-trivial 32-byte curve point; a zero blob can never be one. This
-    // closes the "silently accept a stub" hole while a proper server-key
-    // distribution + pinning flow lands (tracked in VTRFIX-LOG).
+                         // VTRFIX-BUG-M19: reject the all-zeros placeholder that every client used
+                         // to send (the audit found this pattern). A real OPRF public key is a
+                         // non-trivial 32-byte curve point; a zero blob can never be one. This
+                         // closes the "silently accept a stub" hole while a proper server-key
+                         // distribution + pinning flow lands (tracked in VTRFIX-LOG).
     let pk = decode_b64(&req.server_public_key)?;
     if pk.iter().all(|b| *b == 0) {
         return Err(ApiError::bad_request(
@@ -144,6 +202,18 @@ pub(crate) async fn register_finish(
             "server_public_key is too short to be a valid OPRF public key",
         ));
     }
+    // VTRFIX (HIGH): server-key pinning. The key must match the one this
+    // server distributed in `register/start` (stored in `server_config`).
+    // This rejects the legacy `[0u8;32]` placeholder, random garbage, and —
+    // critically — a serialized OPAQUE ServerSetup containing the OPRF
+    // PRIVATE key that old clients used to send.
+    let stored_pk = server_public_key(&st.repo).await?;
+    if pk != stored_pk {
+        return Err(ApiError::bad_request(
+            "invalid_server_key",
+            "server_public_key does not match this server",
+        ));
+    }
     let cupload = decode_b64(&req.registration_finish)?;
     let record =
         opaque::server_register_finish(&cupload).map_err(|e| ApiError::internal(&e.to_string()))?;
@@ -154,6 +224,22 @@ pub(crate) async fn register_finish(
 
     let user_id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
+    // VTRFIX (LOW): duplicate email is a client error (409), not a 500 from the
+    // UNIQUE constraint. Pre-check first; the race window is closed by mapping
+    // the unique-index violation to the same error below.
+    if st
+        .repo
+        .get_user_by_email(&req.username)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+        .is_some()
+    {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "email_taken",
+            "an account with this email already exists",
+        ));
+    }
     st.repo
         .create_user(
             &user_id,
@@ -165,7 +251,17 @@ pub(crate) async fn register_finish(
             now,
         )
         .await
-        .map_err(|e| ApiError::internal(&e.to_string()))?;
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                ApiError::new(
+                    StatusCode::CONFLICT,
+                    "email_taken",
+                    "an account with this email already exists",
+                )
+            } else {
+                ApiError::internal(&e.to_string())
+            }
+        })?;
     // VTRFIX-SEC-M18: audit registration.
     if let Ok(Some(u)) = st.repo.get_user_by_email(&req.username).await {
         let _ = st
@@ -216,15 +312,17 @@ pub(crate) async fn login_start(
     let handle = format!("vtr-lh-{}", uuid::Uuid::new_v4().simple());
     {
         let mut map = LOGIN_STATE.lock().unwrap_or_else(|p| p.into_inner());
-        // Prune opportunistically.
-        if map.len() > 10_000 {
-            map.clear();
-        }
+        // VTRFIX (LOW): per-entry expiry sweep — drop entries older than 10
+        // minutes instead of the old bulk `clear()` at 10k entries, which
+        // could evict other users' in-flight login rounds.
+        let cutoff = now_ms() - LOGIN_STATE_TTL_MS;
+        map.retain(|_, (_, created)| *created >= cutoff);
         // Store under the handle (canonical) and under the username as a
         // one-release compatibility alias so older clients that don't echo
         // `login_handle` still work.
-        map.insert(handle.clone(), sstate.clone());
-        map.insert(req.username.clone(), sstate);
+        let now = now_ms();
+        map.insert(handle.clone(), (sstate.clone(), now));
+        map.insert(req.username.clone(), (sstate, now));
     }
     Ok(Json(LoginStartResp {
         login_response: b64(&sresp),
@@ -245,7 +343,16 @@ pub(crate) async fn login_finish(
         // VTRFIX-SEC-M18: log failed login attempts (identifier only).
         let _ = st
             .repo
-            .audit_org_event(None, None, "auth.login_failed", "session", None, Some(&req.username), None, now_ms())
+            .audit_org_event(
+                None,
+                None,
+                "auth.login_failed",
+                "session",
+                None,
+                Some(&req.username),
+                None,
+                now_ms(),
+            )
             .await;
         return Err(ApiError::bad_request("not_found", "unknown user"));
     };
@@ -259,6 +366,7 @@ pub(crate) async fn login_finish(
         } else {
             map.remove(&req.username)
         }
+        .map(|(state, _created)| state)
     }
     .ok_or_else(|| ApiError::bad_request("invalid_login", "no login in progress"))?;
     let sfin = opaque::server_login_finish(&sstate, &lupload)
@@ -310,6 +418,9 @@ pub(crate) async fn login_finish(
         .store_session(&token, &user.id, expires_at)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
+    // VTRFIX (LOW): opportunistically prune expired sessions (the
+    // `purge_expired_sessions` helper was previously never called).
+    let _ = st.repo.purge_expired_sessions(now_ms()).await;
     // VTRFIX-SEC-M18: audit successful logins (no secrets in detail).
     let _ = st
         .repo
