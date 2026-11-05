@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Dimensions, Modal, Pressable, Text, View } from 'react-native';
+import { DeviceEventEmitter, Dimensions, Modal, Pressable, Text, View } from 'react-native';
 import { Button, ButtonText } from '../../components/ui/button';
 import { ACCENT } from '../lib/colors';
 import { getTourAnchor } from './anchors';
@@ -33,13 +33,13 @@ export function TourOverlay() {
   const [index, setIndex] = useState<number | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
 
+  // VTRFIX-BUG-M07: RN/Hermes has no `window.addEventListener`/`dispatchEvent`,
+  // so the previous window-event wiring made replay a silent no-op. Use
+  // DeviceEventEmitter — the same pattern as src/onboarding/OnboardingFlow.tsx.
   useEffect(() => {
     const onReplay = () => setIndex(0);
-    if (typeof window !== 'undefined' && window.addEventListener) {
-      window.addEventListener(TOUR_REPLAY_EVENT, onReplay);
-      return () => window.removeEventListener(TOUR_REPLAY_EVENT, onReplay);
-    }
-    return undefined;
+    const subscription = DeviceEventEmitter.addListener(TOUR_REPLAY_EVENT, onReplay);
+    return () => subscription.remove();
   }, []);
 
   // Measure the active step's anchor whenever the step changes (or the layout
@@ -104,18 +104,18 @@ export function TourOverlay() {
         )}
         {/* Tour card, positioned next to the anchor. */}
         <View
-          className="absolute rounded-2xl border border-border bg-surface p-5"
+          className="absolute rounded-2xl border border-border bg-card p-5"
           style={{
             top: cardTop,
             left: Math.max(12, Math.min(cardLeft, curVw - cardWidth - 12)),
             width: cardWidth,
           }}
         >
-          <Text className="mb-1 text-xs text-text-muted">
+          <Text className="mb-1 text-xs text-muted-foreground">
             Step {index + 1} of {TOUR_STEPS.length}
           </Text>
           <Text className="mb-1 text-lg font-semibold text-foreground">{step.title}</Text>
-          <Text className="mb-4 text-sm text-text-muted">{step.body}</Text>
+          <Text className="mb-4 text-sm text-muted-foreground">{step.body}</Text>
           <View className="flex-row items-center justify-between">
             <Button variant="ghost" disabled={index === 0} onPress={back}>
               <ButtonText>Back</ButtonText>
@@ -139,7 +139,5 @@ export function TourOverlay() {
 
 /** Ask the TourOverlay to (re)start the tour from Settings. */
 export function triggerReplayTour() {
-  if (typeof window !== 'undefined' && window.dispatchEvent) {
-    window.dispatchEvent(new Event(TOUR_REPLAY_EVENT));
-  }
+  DeviceEventEmitter.emit(TOUR_REPLAY_EVENT);
 }
