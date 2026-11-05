@@ -61,10 +61,7 @@ impl Repository {
         let prod = std::env::var("VAUTR_ENV")
             .map(|v| matches!(v.as_str(), "prod" | "production"))
             .unwrap_or(false);
-        let allow_db = std::env::var("VAUTR_ALLOW_DB_BACKUP_KEY")
-            .ok()
-            .as_deref()
-            == Some("1");
+        let allow_db = std::env::var("VAUTR_ALLOW_DB_BACKUP_KEY").ok().as_deref() == Some("1");
         if prod && !allow_db {
             return Err(sqlx::Error::Protocol(
                 "VAUTR_BACKUP_KEY not set: refusing to derive the backup key from the \
