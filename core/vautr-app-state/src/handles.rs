@@ -80,6 +80,13 @@ impl SecretStore {
     pub fn contains(&self, handle: u64) -> bool {
         self.handles.lock().unwrap().contains_key(&handle)
     }
+
+    /// Zeroize and drop every live handle (VTRFIX: `lock()` must release all
+    /// decrypted secrets, not just the keys — previously a handle captured
+    /// before `lock()` kept serving plaintext for up to the 60 s reaper TTL).
+    pub fn clear_all(&self) {
+        self.handles.lock().unwrap().clear();
+    }
 }
 
 impl Default for SecretStore {
