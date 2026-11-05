@@ -46,7 +46,14 @@ import type {
 } from '@vautr/api-contract';
 import { IndexedDbStore } from '@vautr/client-sdk/storage';
 
-export const API_BASE = 'http://localhost:8080';
+/**
+ * Server base URL (VTRFIX-C): overridable via `VITE_API_BASE`, defaulting to
+ * the same-origin `/api` — matching the SDK's `DEFAULT_API_BASE` (api.ts) and
+ * the Vite dev proxy (`vite.config.ts` forwards `/api` to the live server), so
+ * requests never hardcode a cross-origin `http://localhost:8080`.
+ */
+export const API_BASE: string =
+  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE ?? '/api';
 
 /** HTTP error with the server's error code + status. */
 export class MlpApiError extends Error {
