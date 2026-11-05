@@ -137,7 +137,9 @@ export const vaultStore = createStore<VaultStoreState>((set, get) => ({
   },
 
   unlock() {
-    set({ isLocked: false });
+    // VTRFIX-L: unlocking re-auth also clears the read-only gate — otherwise
+    // `isReadOnly` stays true forever after a `KeyUpdateRequired` re-auth.
+    set({ isLocked: false, isReadOnly: false });
   },
 
   setSync(patch) {
