@@ -13,7 +13,7 @@
 # Postgres-enabled image (once the sqlx `postgres` feature + the vautr-server
 # `postgres` feature exist in the manifests — see docs/SELF-HOSTING.md §"Database"):
 #
-#   docker build --build-arg FEATURES=postgres --build-arg VAUTR_DB_URL=postgres://... .
+#   docker build --build-arg FEATURES=postgres .
 # =============================================================================
 
 # ---- Build stage ----------------------------------------------------------
@@ -49,11 +49,12 @@ RUN groupadd -r -g 1000 vautr && useradd -r -g vautr -u 1000 -d /data -s /usr/sb
 
 COPY --from=builder /build/target/release/vautr-server /usr/local/bin/vautr-server
 
-# Server configuration (build-env-deploy.md §5). The DB URL may be injected at
-# build time (`--build-arg VAUTR_DB_URL=...`) or overridden at runtime
-# (`-e VAUTR_DB_URL=...` / compose). Defaults to a SQLite file under /data.
-ARG VAUTR_DB_URL=sqlite:vautr.db
-ENV VAUTR_DB_URL=$VAUTR_DB_URL
+# Server configuration (build-env-deploy.md §5). VTRFIX: the DB URL is no
+# longer baked into the image config via ARG/ENV (a `--build-arg VAUTR_DB_URL`
+# leaked credentials into `docker image inspect`). Provide it at runtime only
+# (`-e VAUTR_DB_URL=...` / compose `environment:`). With no env var set, the
+# server code defaults to a SQLite file (`sqlite:vautr.db` relative to WORKDIR
+# /data), so the bundled SQLite image keeps working unchanged.
 ENV RUST_LOG=info
 
 # The server binds 0.0.0.0:8080 (core/vautr-server/src/main.rs).
