@@ -1,11 +1,12 @@
+import { MfaRequiredError } from '@vautr/client-sdk';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { setPendingEmergencyKit } from '@/lib/kit';
 import { usePopupStore } from '../store';
-import { MfaRequiredError } from '@vautr/client-sdk';
 
 interface AuthViewProps {
   onAuthenticated: (username: string) => void;
@@ -42,11 +43,11 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
       const client = await getPopupClient();
       if (mode === 'register') {
         const { recoveryMnemonic } = await client.register(username, password);
-        // Hand the Recovery Key to the onboarding flow (shown once). sessionStorage
-        // is cleared on popup close — never persisted in plaintext; the durable
-        // copy is KEK-sealed in IndexedDB.
+        // Hand the Recovery Key to the onboarding flow (shown once). In-memory
+        // global (cleared when consumed) — never persisted; the durable copy is
+        // KEK-sealed in IndexedDB.
         // VTRFIX-SEC-M24: mnemonic held in memory only — no sessionStorage persistence.
-      (globalThis as { __vautrPendingKit?: string }).__vautrPendingKit = recoveryMnemonic;
+        setPendingEmergencyKit(recoveryMnemonic);
       }
       try {
         await client.login(username, password);
@@ -183,51 +184,51 @@ export function AuthView({ onAuthenticated }: AuthViewProps) {
               </Button>
             </>
           ) : (
-          <>
-          <div className="space-y-2">
-            <Label htmlFor="auth-username">Username</Label>
-            <Input
-              id="auth-username"
-              autoComplete="username"
-              value={username}
-              disabled={busy}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="auth-password">Master password</Label>
-            <Input
-              id="auth-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              disabled={busy}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void submit();
-              }}
-            />
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button className="w-full" disabled={busy} onClick={() => void submit()}>
-            {busy
-              ? mode === 'login'
-                ? 'Unlocking…'
-                : 'Creating account…'
-              : mode === 'login'
-                ? 'Unlock'
-                : 'Register'}
-          </Button>
-          {mode === 'login' ? (
-            <button
-              type="button"
-              onClick={() => setRecoverMode(true)}
-              className="text-xs text-muted-foreground underline"
-            >
-              Recover with kit
-            </button>
-          ) : null}
-          </>
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="auth-username">Username</Label>
+                <Input
+                  id="auth-username"
+                  autoComplete="username"
+                  value={username}
+                  disabled={busy}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="auth-password">Master password</Label>
+                <Input
+                  id="auth-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  disabled={busy}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void submit();
+                  }}
+                />
+              </div>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <Button className="w-full" disabled={busy} onClick={() => void submit()}>
+                {busy
+                  ? mode === 'login'
+                    ? 'Unlocking…'
+                    : 'Creating account…'
+                  : mode === 'login'
+                    ? 'Unlock'
+                    : 'Register'}
+              </Button>
+              {mode === 'login' ? (
+                <button
+                  type="button"
+                  onClick={() => setRecoverMode(true)}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  Recover with kit
+                </button>
+              ) : null}
+            </>
           )}
         </CardContent>
       </Card>
