@@ -3,7 +3,15 @@
 //! Spec: docs/architecture/emergency-recovery-account.md §2-4.
 //! Owned by the Wave B recovery agent; touches the `recovery_sessions` table
 //! and the `users` columns added in migrations/0002_recovery.sql.
+//!
+//! VTRFIX (MEDIUM): recovery-session and reclaim tokens are stored SHA-256
+//! hex-hashed at rest (`token_hash` PK / `users.reclaim_token`), like every
+//! other bearer token. Callers still pass the RAW token on write and on
+//! lookup; the hashing is confined to this module. The shared hashing
+//! primitive is [`sessions::hash_session_token`] (same algorithm as
+//! `handlers::auth::sha256_hex`).
 
+use crate::repository::sessions::hash_session_token;
 use crate::repository::Repository;
 
 impl Repository {
@@ -74,6 +82,10 @@ impl Repository {
 
     /// Store a one-time, short-lived recovery session token
     /// (emergency-recovery-account.md §2.3, `recovery_sessions`).
+    ///
+    /// VTRFIX (MEDIUM): only the SHA-256 hex of the raw token is persisted
+    /// (`recovery_sessions.token_hash`, migration 0022). The raw token is
+    /// returned to the client exactly once by the handler.
     pub async fn create_recovery_session(
         &self,
         token: &str,
@@ -82,10 +94,10 @@ impl Repository {
         now: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO recovery_sessions (token, user_id, expires_at, created_at) \
+            "INSERT INTO recovery_sessions (token_hash, user_id, expires_at, created_at) \
              VALUES (?, ?, ?, ?)",
         )
-        .bind(token)
+        .bind(hash_session_token(token))
         .bind(user_id)
         .bind(expires_at)
         .bind(now)
@@ -101,15 +113,17 @@ impl Repository {
         &self,
         token: &str,
     ) -> Result<Option<(String, i64)>, sqlx::Error> {
+        let token_hash = hash_session_token(token);
         let mut tx = self.pool.begin().await?;
-        let row: Option<(String, i64)> =
-            sqlx::query_as("SELECT user_id, expires_at FROM recovery_sessions WHERE token = ?")
-                .bind(token)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let row: Option<(String, i64)> = sqlx::query_as(
+            "SELECT user_id, expires_at FROM recovery_sessions WHERE token_hash = ?",
+        )
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
         if row.is_some() {
-            sqlx::query("DELETE FROM recovery_sessions WHERE token = ?")
-                .bind(token)
+            sqlx::query("DELETE FROM recovery_sessions WHERE token_hash = ?")
+                .bind(&token_hash)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -120,6 +134,10 @@ impl Repository {
     /// Initiate an account reclaim: bind a single-use reclaim token to the user's
     /// email and suspend (hide) the vault for the 30-day grace period
     /// (emergency-recovery-account.md §4.2).
+    ///
+    /// VTRFIX (MEDIUM): only the SHA-256 hex of the raw token is persisted in
+    /// `users.reclaim_token`. The raw token is delivered out-of-band (emailed
+    /// link / one-time response) exactly once.
     pub async fn store_reclaim(
         &self,
         user_id: &str,
@@ -127,7 +145,7 @@ impl Repository {
         suspended_until: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE users SET reclaim_token = ?, suspended_until = ? WHERE id = ?")
-            .bind(reclaim_token)
+            .bind(hash_session_token(reclaim_token))
             .bind(suspended_until)
             .bind(user_id)
             .execute(&self.pool)
@@ -136,13 +154,14 @@ impl Repository {
     }
 
     /// Resolve a reclaim token back to its user `(id, email)`, if valid.
+    /// VTRFIX (MEDIUM): looks the token up by its SHA-256 hex.
     pub async fn get_user_by_reclaim_token(
         &self,
         token: &str,
     ) -> Result<Option<(String, String)>, sqlx::Error> {
         let row: Option<(String, String)> =
             sqlx::query_as("SELECT id, email FROM users WHERE reclaim_token = ?")
-                .bind(token)
+                .bind(hash_session_token(token))
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(row)
@@ -239,9 +258,9 @@ impl Repository {
     ) -> Result<Option<(String, i64)>, sqlx::Error> {
         let row: Option<(String, i64)> = sqlx::query_as(
             "SELECT user_id, expires_at FROM recovery_sessions \
-             WHERE token = ? AND one_time_use = 1",
+             WHERE token_hash = ? AND one_time_use = 1",
         )
-        .bind(token)
+        .bind(hash_session_token(token))
         .fetch_optional(&self.pool)
         .await?;
         match row {
