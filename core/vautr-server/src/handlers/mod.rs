@@ -118,7 +118,14 @@ pub fn build_router(state: AppState) -> Router {
     {
         router = router.merge(webauthn::routes());
     }
-    router.with_state(state)
+    let router = router.with_state(state);
+    // VTRFIX: `security_headers_middleware` was defined but never wired. Added
+    // after `with_state` (innermost of the app layers) so every response that
+    // passes through the router gets the security headers; main.rs still layers
+    // CORS / rate-limiting / tracing on top.
+    router.layer(axum::middleware::from_fn(
+        crate::middleware::security_headers_middleware,
+    ))
 }
 
 /// Serve the embedded OpenAPI 3 contract at `GET /openapi.json` (VTR-010 TDD #2).
@@ -232,10 +239,7 @@ pub(crate) async fn server_setup(repo: &Repository) -> Result<Vec<u8>, ApiError>
     let prod = std::env::var("VAUTR_ENV")
         .map(|v| matches!(v.as_str(), "prod" | "production"))
         .unwrap_or(false);
-    let allow_db = std::env::var("VAUTR_ALLOW_DB_OPRF")
-        .ok()
-        .as_deref()
-        == Some("1");
+    let allow_db = std::env::var("VAUTR_ALLOW_DB_OPRF").ok().as_deref() == Some("1");
     if prod && !allow_db {
         return Err(ApiError::internal(
             "no OPAQUE server setup available: set VAUTR_OPAQUE_SETUP_FILE to a provisioned \
@@ -258,12 +262,85 @@ pub(crate) async fn server_setup(repo: &Repository) -> Result<Vec<u8>, ApiError>
     Ok(stored)
 }
 
-/// Extract + validate a bearer session, returning the user id.
+/// Authenticated caller: the effective owner user id plus, when the bearer was
+/// a machine-account access token (`vtr-ak-...`), the verified token details
+/// (scopes + project binding).
+///
+/// VTRFIX (HIGH): `auth_any` used to discard `VerifiedToken`, so every route
+/// accepting machine tokens ran with the OWNER's full authority. Routes that
+/// accept machine tokens MUST now enforce the token's scopes via
+/// [`AuthContext::require_scope`] / [`AuthContext::require_any_scope`] and its
+/// project binding via [`AuthContext::require_project`]. Regular user sessions
+/// carry `token: None` and keep full authority (scope checks are no-ops).
+#[derive(Debug, Clone)]
+pub(crate) struct AuthContext {
+    pub user_id: String,
+    /// Present only when the bearer token is a machine-account access token.
+    pub token: Option<crate::handlers::tokens::VerifiedToken>,
+}
+
+impl AuthContext {
+    /// True when the request was authenticated with a machine-account token.
+    pub fn is_machine_token(&self) -> bool {
+        self.token.is_some()
+    }
+
+    /// Enforce a fine-grained scope for machine-account tokens. User sessions
+    /// (no token) are unaffected and always pass.
+    pub fn require_scope(&self, scope: &str) -> Result<(), ApiError> {
+        match &self.token {
+            None => Ok(()),
+            Some(t) if t.scopes.iter().any(|s| s == scope) => Ok(()),
+            Some(_) => Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "missing_scope",
+                &format!("token is missing the required `{scope}` scope"),
+            )),
+        }
+    }
+
+    /// Enforce that a machine-account token carries at least one of `scopes`.
+    pub fn require_any_scope(&self, scopes: &[&str]) -> Result<(), ApiError> {
+        match &self.token {
+            None => Ok(()),
+            Some(t) if t.scopes.iter().any(|s| scopes.contains(&s.as_str())) => Ok(()),
+            Some(_) => Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "missing_scope",
+                &format!(
+                    "token is missing every required scope ({})",
+                    scopes.join(", ")
+                ),
+            )),
+        }
+    }
+
+    /// VTRFIX: when the token is bound to a project (`project_uuid`), any
+    /// project-scoped route must target exactly that project.
+    pub fn require_project(&self, project_uuid: &str) -> Result<(), ApiError> {
+        match &self.token {
+            None => Ok(()),
+            Some(t) => match t.project_uuid.as_deref() {
+                None => Ok(()),
+                Some(bound) if bound == project_uuid => Ok(()),
+                Some(_) => Err(ApiError::new(
+                    StatusCode::FORBIDDEN,
+                    "project_mismatch",
+                    "token is bound to a different project",
+                )),
+            },
+        }
+    }
+}
+
+/// Extract + validate a bearer session, returning the caller's [`AuthContext`].
 /// VTRFIX-SEC-H12: authenticate a bearer token that may be either a session
 /// token or a machine-account access token (`vtr-ak-...`). Returns the
-/// effective owner user id. Session-only routes (account, MFA, policy,
-/// recovery, admin) MUST keep calling `auth_user` directly.
-pub(crate) async fn auth_any(repo: &Repository, token: &str) -> Result<String, ApiError> {
+/// effective owner user id plus the machine token info (scopes / project
+/// binding) so callers can enforce least privilege. Session-only routes
+/// (account, MFA, policy, recovery, admin) MUST keep calling `auth_user`
+/// directly.
+pub(crate) async fn auth_any(repo: &Repository, token: &str) -> Result<AuthContext, ApiError> {
     if token.starts_with("vtr-ak-") {
         let verified = crate::handlers::tokens::verify_access_token(repo, token).await?;
         let owner = repo
@@ -271,9 +348,15 @@ pub(crate) async fn auth_any(repo: &Repository, token: &str) -> Result<String, A
             .await
             .map_err(|e| ApiError::internal(&e.to_string()))?
             .ok_or_else(ApiError::unauthorized)?;
-        Ok(owner)
+        Ok(AuthContext {
+            user_id: owner,
+            token: Some(verified),
+        })
     } else {
-        auth_user(repo, token).await
+        Ok(AuthContext {
+            user_id: auth_user(repo, token).await?,
+            token: None,
+        })
     }
 }
 
