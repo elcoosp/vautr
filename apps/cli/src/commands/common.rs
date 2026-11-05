@@ -1,8 +1,9 @@
 //! Shared helpers for CLI subcommands: authenticated API access, secret
 //! resolution, and password input.
 
-use std::io::{BufRead, Write};
 use std::process::exit;
+
+use zeroize::Zeroizing;
 
 use crate::api::{Api, Project, Secret};
 use crate::config::Config;
@@ -124,14 +125,23 @@ pub async fn resolve_secret(
 }
 
 /// Decrypt a secret's revealed ciphertext with the stored project key.
-pub fn decrypt_secret(cfg: &Config, project_uuid: &str, ciphertext_b64: &str) -> CliResult<String> {
+///
+/// The plaintext is returned in a [`Zeroizing`] guard so it is wiped from
+/// memory when the caller drops it.
+pub fn decrypt_secret(
+    cfg: &Config,
+    project_uuid: &str,
+    ciphertext_b64: &str,
+) -> CliResult<Zeroizing<String>> {
     let key_b64 = cfg
         .project_keys
         .get(project_uuid)
         .cloned()
         .ok_or_else(|| CliError::MissingProjectKey(project_uuid.to_string()))?;
     let plaintext = crate::crypto::decrypt_value(&key_b64, ciphertext_b64)?;
-    Ok(String::from_utf8_lossy(&plaintext).into_owned())
+    Ok(Zeroizing::new(
+        String::from_utf8_lossy(&plaintext).into_owned(),
+    ))
 }
 
 /// Terminate with an error message on stderr.
