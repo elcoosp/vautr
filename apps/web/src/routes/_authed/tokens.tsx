@@ -175,10 +175,15 @@ function TokensPage() {
                           <DropdownMenuItem
                             className="text-danger"
                             onClick={() => {
-                              void mlp.revokeToken(t.uuid).then(() => {
-                                toast.success('Token revoked');
-                                void load();
-                              });
+                              void mlp
+                                .revokeToken(t.uuid)
+                                .then(() => {
+                                  toast.success('Token revoked');
+                                  void load();
+                                })
+                                .catch((e: unknown) =>
+                                  toast.error(e instanceof Error ? e.message : String(e)),
+                                );
                             }}
                           >
                             <Trash2 className="mr-2 size-4" aria-hidden="true" />
