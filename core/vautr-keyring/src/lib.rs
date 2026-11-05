@@ -10,7 +10,7 @@
 //! - `rotate`   — batch re-encryption driven by `enc_key_gen` cursor (ADR-006).
 //! - `recover`  — unwrap via Recovery Key, force MP reset (⚠ needs KEK_RK spec).
 
+pub mod recover;
+pub mod rotate;
 pub mod svk;
 pub mod wrap;
-pub mod rotate;
-pub mod recover;
