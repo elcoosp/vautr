@@ -14,6 +14,7 @@ pub async fn run(cfg: &Config, api: &Api, key: &str, project: Option<&str>) -> C
     let token = crate::commands::common::session_token(cfg)?;
     let (_revealed_key, ciphertext) = api.reveal_secret(token, &secret.uuid).await?;
     let plaintext = crate::commands::common::decrypt_secret(cfg, &proj.uuid, &ciphertext)?;
-    print!("{plaintext}");
+    // Zeroizing<String> has no Display impl; print through the deref.
+    print!("{}", plaintext.as_str());
     Ok(())
 }
