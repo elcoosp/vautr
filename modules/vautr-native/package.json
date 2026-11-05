@@ -1,7 +1,7 @@
 {
-  "name": "@vautr/native",
+  "name": "@vautr/native-legacy",
   "version": "0.1.0",
-  "description": "Expo native module bridging the Vautr uniffi core (VTR-061).",
+  "description": "LEGACY (unlinked) Expo native module bridging the Vautr uniffi core (VTR-061). Kept for the binding-gen scripts; the linked module lives in packages/native (@vautr/native).",
   "private": true,
   "main": "build/index.js",
   "types": "build/index.d.ts",
