@@ -91,8 +91,11 @@ pub async fn rebuild_fts(db: &DatabaseConnection) -> Result<std::time::Duration,
     )
     .await
     .map_err(|e| format!("drop fts: {e}"))?;
-    // 2. Recreate the schema (idempotent) — re-adds the virtual table + triggers.
-    crate::migrate::init(db)
+    // 2. Recreate the FTS objects (idempotent). VTRFIX: this used to call
+    // `migrate::init`, which re-ran every migration on every boot; migrations
+    // are now version-consulted, so the rebuild path recreates the FTS
+    // objects explicitly.
+    crate::migrate::recreate_fts_schema(db)
         .await
         .map_err(|e| format!("recreate fts: {e}"))?;
     // 3. Bulk re-index every row atomically (data-import-seeding §3.2 fast-path).
@@ -187,14 +190,18 @@ pub async fn get_secret_material(
         .one(db)
         .await
         .map_err(|e| format!("get_secret_material: {e}"))?;
-    Ok(row.map(|r| (r.enc_key_gen, r.payload)))
+    // VTRFIX: a metadata-only item (overview without a payload row) used to
+    // fail the whole query — sea-orm cannot decode SQL NULL into a non-Option
+    // `Vec<u8>`. The contract says "returns None if the payload does not
+    // exist", so decode the payload as Option and map it through.
+    Ok(row.and_then(|r| r.payload.map(|p| (r.enc_key_gen, p))))
 }
 
 /// Row mirror of the joined overview/payload query above.
 #[derive(Debug, FromQueryResult)]
 struct SecretMaterialRow {
     enc_key_gen: i64,
-    payload: Vec<u8>,
+    payload: Option<Vec<u8>>,
 }
 
 /// List `(uuid, enc_key_gen, payload)` for every item. Used by key rotation to
@@ -237,4 +244,68 @@ struct EncKeyGenRow {
     uuid: String,
     enc_key_gen: i64,
     payload: Vec<u8>,
+}
+
+/// List `(uuid, version, enc_key_gen, payload)` for every live item whose
+/// `enc_key_gen < max_gen` — the full rotation input (ADR-006). Unlike
+/// [`list_enc_key_gens`], this also carries each item's server `version`,
+/// which the rotation push needs as its OCC target (VTRFIX: pushing
+/// `target_version = enc_key_gen` matched no previously-edited item and the
+/// discarded outcomes silently stranded old-generation ciphertext on the
+/// server). Deleted items are excluded: tombstones carry no payload to
+/// re-encrypt.
+pub async fn list_rotation_items(
+    db: &DatabaseConnection,
+    max_gen: i64,
+) -> Result<Vec<(Uuid, i64, i64, Vec<u8>)>, String> {
+    let sql = "SELECT o.uuid, o.version, o.enc_key_gen, p.payload \
+               FROM item_overviews o INNER JOIN item_payloads p ON p.uuid = o.uuid \
+               WHERE p.payload IS NOT NULL \
+                 AND o.deleted_date IS NULL \
+                 AND o.enc_key_gen < ? \
+               ORDER BY o.enc_key_gen ASC";
+    let stmt =
+        Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, [max_gen.into()]);
+    let rows = RotationRow::find_by_statement(stmt)
+        .all(db)
+        .await
+        .map_err(|e| format!("list_rotation_items: {e}"))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| match Uuid::parse_str(&r.uuid) {
+            Ok(uuid) => Some((uuid, r.version, r.enc_key_gen, r.payload)),
+            Err(e) => {
+                tracing::warn!(uuid = %r.uuid, error = %e, "list_rotation_items: skipping corrupt uuid");
+                None
+            }
+        })
+        .collect())
+}
+
+/// Row mirror of the rotation query above.
+#[derive(Debug, FromQueryResult)]
+struct RotationRow {
+    uuid: String,
+    version: i64,
+    enc_key_gen: i64,
+    payload: Vec<u8>,
+}
+
+/// Read the persisted sync cursor (`sync_meta.sync_cursor`, row id = 1).
+/// Returns 0 when the singleton is missing (fresh DB before the first sync).
+/// VTRFIX (cursor persistence): the cursor was written per page but never
+/// read back, so every restart re-pulled the whole vault.
+pub async fn get_sync_cursor(db: &DatabaseConnection) -> Result<u64, String> {
+    let sql = "SELECT sync_cursor FROM sync_meta WHERE id = 1";
+    let stmt = Statement::from_string(sea_orm::DatabaseBackend::Sqlite, sql.to_owned());
+    let row = CursorRow::find_by_statement(stmt)
+        .one(db)
+        .await
+        .map_err(|e| format!("get_sync_cursor: {e}"))?;
+    Ok(row.map(|r| r.sync_cursor).unwrap_or(0).max(0) as u64)
+}
+
+#[derive(Debug, FromQueryResult)]
+struct CursorRow {
+    sync_cursor: i64,
 }
