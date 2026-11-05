@@ -76,6 +76,14 @@ pub struct VautrClient {
     svk: Arc<tokio::sync::Mutex<Option<Zeroizing<[u8; 32]>>>>,
     /// Active DEK (derived from SVK) for secret decryption on reveal.
     dek: Arc<tokio::sync::Mutex<Option<Zeroizing<[u8; 32]>>>>,
+    /// Active MK (derived from the master password) — cached ONLY while the
+    /// vault is MP-unlocked so `rotate_key` can re-wrap the new SVK under the
+    /// same KEK the next `unlock_with_password` will derive. VTRFIX
+    /// (rotation brick): rotation previously wrapped under a KEK derived from
+    /// the NEW SVK, which no unlock path can ever derive again. Cleared on
+    /// lock() and on raw-key unlock (raw-key sessions cannot rotate; they
+    /// must re-unlock with the MP first).
+    mk: Arc<tokio::sync::Mutex<Option<Zeroizing<[u8; 32]>>>>,
     local_gen: Arc<AtomicU64>,
     locked: Arc<AtomicBool>,
 
@@ -148,6 +156,7 @@ impl VautrClient {
             worker,
             svk: Arc::new(tokio::sync::Mutex::new(None)),
             dek: Arc::new(tokio::sync::Mutex::new(None)),
+            mk: Arc::new(tokio::sync::Mutex::new(None)),
             local_gen: Arc::new(AtomicU64::new(1)),
             locked: Arc::new(AtomicBool::new(true)),
             handles: SecretStore::new(),
@@ -259,6 +268,7 @@ impl VautrClient {
             worker: self.worker.clone(),
             svk: self.svk.clone(),
             dek: self.dek.clone(),
+            mk: self.mk.clone(),
             local_gen: self.local_gen.clone(),
             locked: self.locked.clone(),
             handles: self.handles.clone(),
@@ -354,7 +364,11 @@ impl VautrClient {
             .map_err(|e| format!("mk derive: {e}"))?;
         let kek = key_tree::derive_kek(&mk).map_err(|e| format!("kek derive: {e}"))?;
         let svk = {
+            // VTRFIX (AD compat): the blob convention is the nil-UUID AD (see
+            // vautr-keyring::wrap module docs). Try the caller-supplied id
+            // first, then the legacy nil AD, so blobs move across clients.
             let pt = aead::decrypt(&kek, &server_user_id, 0, wrapped_svk)
+                .or_else(|_| aead::decrypt(&kek, &uuid::Uuid::nil(), 0, wrapped_svk))
                 .map_err(|_| "svk unwrap failed (wrong password?)".to_string())?;
             if pt.len() != 32 {
                 return Err("malformed svk blob".into());
@@ -367,7 +381,11 @@ impl VautrClient {
         let dek = key_tree::derive_dek(&svk).map_err(|e| format!("dek derive: {e}"))?;
         *self.svk.lock().await = Some(svk);
         *self.dek.lock().await = Some(dek);
+        // Cache the MK for `rotate_key` (re-wraps the rotated SVK under the
+        // same MP-derived KEK the next unlock derives). Wiped on lock().
+        *self.mk.lock().await = Some(mk);
         *self.server_user_id.write().await = Some(server_user_id);
+        self.load_persisted_cursor().await;
         self.local_gen.store(local_gen, Ordering::SeqCst);
         self.epoch.set_min_enc_key_gen(local_gen);
         self.load_blacklist().await;
@@ -380,6 +398,9 @@ impl VautrClient {
         let dek = key_tree::derive_dek(&raw_key).expect("dek derive");
         *self.svk.lock().await = Some(raw_key);
         *self.dek.lock().await = Some(dek);
+        // Raw-key sessions hold no MK: `rotate_key` requires an MP unlock.
+        *self.mk.lock().await = None;
+        self.load_persisted_cursor().await;
         self.local_gen.store(local_gen, Ordering::SeqCst);
         self.epoch.set_min_enc_key_gen(local_gen);
         self.load_blacklist().await;
@@ -455,6 +476,10 @@ impl VautrClient {
     pub async fn lock(&self) {
         *self.svk.lock().await = None;
         *self.dek.lock().await = None;
+        *self.mk.lock().await = None;
+        // VTRFIX: actually release live secret handles. They previously kept
+        // serving plaintext for up to the 60 s reaper TTL after lock.
+        self.handles.clear_all();
         self.locked.store(true, Ordering::SeqCst);
         self.reset_second_factor().await;
         self.bus.publish(VaultStateUpdate::VaultLocked);
@@ -537,6 +562,11 @@ impl VautrClient {
     /// (client.md §2 / data.md §4 Restricted API Rule). GPUI renders directly.
     #[cfg(feature = "desktop-api")]
     pub fn read_secret(&self, handle: SecretHandle) -> Result<Zeroizing<String>, String> {
+        // VTRFIX: `perform_action` checks the lock but `read_secret` did not —
+        // a handle captured before `lock()` could still return plaintext.
+        if self.is_locked() {
+            return Err("vault locked".into());
+        }
         let secret = self
             .handles
             .access(handle)
@@ -604,99 +634,115 @@ impl VautrClient {
             }
             first_pass = false;
 
-        let transport = self.transport.read().await.clone();
-        let transport = transport.ok_or_else(|| "sync not connected".to_string())?;
-        // VTRFIX-BUG-C02: seed the engine with the persisted cursor so a
-        // long-lived client resumes where it left off, and page through the
-        // server until `has_more == false`.
-        let start_cursor = self.cursor.load(Ordering::SeqCst);
-        let mut engine = Engine::new(transport.clone(), self.blacklist.clone(), start_cursor);
+            let transport = self.transport.read().await.clone();
+            let transport = transport.ok_or_else(|| "sync not connected".to_string())?;
+            // VTRFIX-BUG-C02: seed the engine with the persisted cursor so a
+            // long-lived client resumes where it left off, and page through the
+            // server until `has_more == false`.
+            let start_cursor = self.cursor.load(Ordering::SeqCst);
+            let mut engine = Engine::new(transport.clone(), self.blacklist.clone(), start_cursor);
 
-        self.bus.publish(VaultStateUpdate::SyncStarted);
-        let mut progress = 0u8;
+            self.bus.publish(VaultStateUpdate::SyncStarted);
+            let mut progress = 0u8;
 
-        // Epoch gate: if the server's min_gen is ahead of our local key gen,
-        // enter Read-Only (core.md §1.3, REQ-AUTH-05).
-        let local_gen = self.local_gen.load(Ordering::SeqCst);
+            // Epoch gate: if the server's min_gen is ahead of our local key gen,
+            // enter Read-Only (core.md §1.3, REQ-AUTH-05).
+            let local_gen = self.local_gen.load(Ordering::SeqCst);
 
-        // Safety: cap the number of pages so a buggy `has_more` cannot hang us.
-        let mut pages = 0u32;
-        // VTRFIX-BUG-M07 (done): set on any per-item fetch/persist failure.
-        // Blocks the final cursor advance so the next sync retries that page.
-        let mut first_failure = false;
-        loop {
-            pages += 1;
-            if pages > 10_000 {
-                return Err("sync: exceeded 10000 pages (has_more loop?)".into());
-            }
-            let (overviews, has_more) = engine
-                .pull_and_advance()
-                .await
-                .map_err(|e| format!("sync pull: {e}"))?;
-
-            let total = overviews.len().max(1) as u32;
-            let mut idx = 0u32;
-            for ov in &overviews {
-                if self.blacklist.is_ignored(&ov.uuid) {
-                    idx += 1;
-                    continue;
+            // Safety: cap the number of pages so a buggy `has_more` cannot hang us.
+            let mut pages = 0u32;
+            // VTRFIX-BUG-M07 (done): set on any per-item fetch/persist failure.
+            // Blocks the final cursor advance so the next sync retries that page.
+            let mut first_failure = false;
+            loop {
+                pages += 1;
+                if pages > 10_000 {
+                    return Err("sync: exceeded 10000 pages (has_more loop?)".into());
                 }
-                if !ov.deleted {
-                    match engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await {
-                        Ok(Some(payload)) => {
-                            if let Err(e) = self.persist_synced_item(&ov, payload).await {
+                let (overviews, has_more) = engine
+                    .pull_and_advance()
+                    .await
+                    .map_err(|e| format!("sync pull: {e}"))?;
+
+                let total = overviews.len().max(1) as u32;
+                let mut idx = 0u32;
+                // VTRFIX (server tombstones): deletions are applied too. The old
+                // loop only fetched/persisted non-deleted overviews and always
+                // passed an empty `uuids_to_delete` to `apply_sync_batch_txn`, so
+                // tombstoned items silently resurrected locally.
+                let mut page_upserts: Vec<(PulledOverview, Vec<u8>)> = Vec::new();
+                let mut page_deletes: Vec<String> = Vec::new();
+                for ov in &overviews {
+                    if self.blacklist.is_ignored(&ov.uuid) {
+                        idx += 1;
+                        continue;
+                    }
+                    if !ov.deleted {
+                        match engine.fetch_payload_if_allowed(&ov.uuid, ov.version).await {
+                            Ok(Some(payload)) => {
+                                page_upserts.push((ov.clone(), payload));
+                            }
+                            Ok(None) => { /* blacklisted: skip silently */ }
+                            Err(e) => {
                                 tracing::warn!(
                                     uuid = %ov.uuid,
                                     error = %e,
-                                    "sync: persist failed; cursor will not advance past this page"
+                                    "sync: payload fetch failed; cursor will not advance past this page"
                                 );
                                 first_failure = true;
                             }
                         }
-                        Ok(None) => { /* blacklisted: skip silently */ }
-                        Err(e) => {
-                            tracing::warn!(
-                                uuid = %ov.uuid,
-                                error = %e,
-                                "sync: payload fetch failed; cursor will not advance past this page"
-                            );
-                            first_failure = true;
-                        }
+                    } else {
+                        page_deletes.push(ov.uuid.to_string());
+                    }
+                    idx += 1;
+                    let p = ((idx * 100) / total) as u8;
+                    if p != progress {
+                        progress = p;
+                        self.bus.publish(VaultStateUpdate::SyncProgress(p));
                     }
                 }
-                idx += 1;
-                let p = ((idx * 100) / total) as u8;
-                if p != progress {
-                    progress = p;
-                    self.bus.publish(VaultStateUpdate::SyncProgress(p));
+
+                // Apply the page atomically (upserts + deletes) with the page-end
+                // cursor so a restart resumes where this page ended.
+                if !page_upserts.is_empty() || !page_deletes.is_empty() {
+                    if let Err(e) = self
+                        .persist_synced_page(&page_upserts, &page_deletes, engine.cursor())
+                        .await
+                    {
+                        tracing::warn!(
+                            error = %e,
+                            "sync: page persist failed; cursor will not advance past this page"
+                        );
+                        first_failure = true;
+                    }
+                }
+
+                if !has_more {
+                    break;
                 }
             }
 
-            if !has_more {
-                break;
+            // VTRFIX-BUG-M07 (done): only advance the persisted cursor when every
+            // item applied cleanly. On partial failure, keep the old cursor so the
+            // next sync retries the page — re-applying already-applied items is a
+            // safe idempotent upsert.
+            if !first_failure {
+                self.cursor.store(engine.cursor(), Ordering::SeqCst);
+            } else {
+                tracing::warn!("sync: partial failure; cursor NOT advanced");
             }
-        }
 
-        // VTRFIX-BUG-M07 (done): only advance the persisted cursor when every
-        // item applied cleanly. On partial failure, keep the old cursor so the
-        // next sync retries the page — re-applying already-applied items is a
-        // safe idempotent upsert.
-        if !first_failure {
-            self.cursor.store(engine.cursor(), Ordering::SeqCst);
-        } else {
-            tracing::warn!("sync: partial failure; cursor NOT advanced");
-        }
-
-        // Update epoch gate from the server's min_enc_key_gen.
-        if let Ok((min_gen, _svk_blob)) = transport.account_status().await {
-            self.epoch.set_min_enc_key_gen(min_gen);
-            if local_gen < min_gen {
-                self.bus.publish(VaultStateUpdate::KeyUpdateRequired);
+            // Update epoch gate from the server's min_enc_key_gen.
+            if let Ok((min_gen, _svk_blob)) = transport.account_status().await {
+                self.epoch.set_min_enc_key_gen(min_gen);
+                if local_gen < min_gen {
+                    self.bus.publish(VaultStateUpdate::KeyUpdateRequired);
+                }
             }
-        }
 
-        // Persist the DashMap at end of session if it changed (core.md §3).
-        self.persist_blacklist_if_dirty().await?;
+            // Persist the DashMap at end of session if it changed (core.md §3).
+            self.persist_blacklist_if_dirty().await?;
 
             if self.resync_requested.swap(false, Ordering::SeqCst) {
                 continue;
@@ -707,32 +753,40 @@ impl VautrClient {
         Ok(())
     }
 
-    /// Upsert a synced item's overview + payload at the server's version.
-    async fn persist_synced_item(
+    /// Atomically upsert a synced page's items and apply its tombstones, then
+    /// persist the page-end cursor (VTRFIX: the cursor was written with the
+    /// PREVIOUS page's value and never read back — every restart re-pulled the
+    /// whole vault).
+    async fn persist_synced_page(
         &self,
-        ov: &PulledOverview,
-        payload: Vec<u8>,
+        upserts: &[(PulledOverview, Vec<u8>)],
+        deletes: &[String],
+        new_cursor: u64,
     ) -> Result<(), String> {
-        let overview_am = item_overview::ActiveModel {
-            uuid: Set(ov.uuid.to_string()),
-            version: Set(ov.version as i64),
-            enc_key_gen: Set(ov.enc_key_gen as i64),
-            deleted_date: Set(if ov.deleted {
-                Some(ov.version as i64)
-            } else {
-                None
-            }),
-            overview_title: Set(String::new()),
-            overview_subtitle: Set(String::new()),
-            overview_icon_key: Set(String::new()),
-            overview_urls: Set("[]".into()),
-            created_at: Set(0),
-            updated_at: Set(0),
-        };
-        let payload_am = item_payload::ActiveModel {
-            uuid: Set(ov.uuid.to_string()),
-            payload: Set(payload),
-        };
+        let mut overview_ams = Vec::with_capacity(upserts.len());
+        let mut payload_ams = Vec::with_capacity(upserts.len());
+        for (ov, payload) in upserts {
+            overview_ams.push(item_overview::ActiveModel {
+                uuid: Set(ov.uuid.to_string()),
+                version: Set(ov.version as i64),
+                enc_key_gen: Set(ov.enc_key_gen as i64),
+                deleted_date: Set(if ov.deleted {
+                    Some(ov.version as i64)
+                } else {
+                    None
+                }),
+                overview_title: Set(String::new()),
+                overview_subtitle: Set(String::new()),
+                overview_icon_key: Set(String::new()),
+                overview_urls: Set("[]".into()),
+                created_at: Set(0),
+                updated_at: Set(0),
+            });
+            payload_ams.push(item_payload::ActiveModel {
+                uuid: Set(ov.uuid.to_string()),
+                payload: Set(payload.clone()),
+            });
+        }
         let txn = self
             .db
             .begin()
@@ -740,24 +794,31 @@ impl VautrClient {
             .map_err(|e| format!("begin txn: {e}"))?;
         vautr_db::txn::apply_sync_batch_txn(
             &txn,
-            vec![overview_am],
-            vec![payload_am],
-            vec![],
-            self.cursor.load(Ordering::SeqCst) as i64,
+            overview_ams,
+            payload_ams,
+            deletes.to_vec(),
+            new_cursor as i64,
             self.epoch.current_min_gen() as i64,
         )
         .await
         .map_err(|e| format!("apply_sync_batch: {e}"))?;
         txn.commit().await.map_err(|e| format!("commit: {e}"))?;
-        self.bus
-            .publish(VaultStateUpdate::OverviewUpserted(DecryptedOverview {
-                uuid: ov.uuid,
-                title: String::new(),
-                subtitle: String::new(),
-                icon_key: String::new(),
-                urls: Vec::new(),
-                updated_at: 0,
-            }));
+        for (ov, _) in upserts {
+            self.bus
+                .publish(VaultStateUpdate::OverviewUpserted(DecryptedOverview {
+                    uuid: ov.uuid,
+                    title: String::new(),
+                    subtitle: String::new(),
+                    icon_key: String::new(),
+                    urls: Vec::new(),
+                    updated_at: 0,
+                }));
+        }
+        for uuid in deletes {
+            if let Ok(u) = Uuid::parse_str(uuid) {
+                self.bus.publish(VaultStateUpdate::OverviewDeleted(u));
+            }
+        }
         Ok(())
     }
 
@@ -775,9 +836,21 @@ impl VautrClient {
         let user_id = *self.server_user_id.read().await;
         let _user_id = user_id.ok_or_else(|| "no server user id".to_string())?;
 
-        // 1. Derive the new SVK. Wrap it under a KEK derived from the new SVK
-        //    (the server stores the opaque blob; the client re-derives the KEK
-        //    from the MP on next unlock via `unlock_with_password`).
+        // 1. Derive the new SVK and wrap it under the KEK derived from the
+        //    CACHED MK (the master password's key). VTRFIX (rotation brick):
+        //    the previous code wrapped under `derive_kek(&new_svk)`, a KEK no
+        //    unlock path can ever derive — the very first rotation bricked MP
+        //    unlock for the account. `unlock_with_password` derives
+        //    KEK = derive_kek(mk_from_mp), so that is what must wrap the blob
+        //    the server stores and hands back at login.
+        let mk = {
+            let g = self.mk.lock().await;
+            g.as_ref()
+                .ok_or_else(|| {
+                    "key rotation requires a master-password unlock (raw-key sessions must re-unlock with the MP first)".to_string()
+                })?
+                .clone()
+        };
         let old_svk = {
             let g = self.svk.lock().await;
             g.as_ref()
@@ -785,7 +858,7 @@ impl VautrClient {
                 .clone()
         };
         let new_svk = vautr_keyring::svk::new_vault_keys().0;
-        let kek = key_tree::derive_kek(&new_svk).map_err(|e| format!("kek: {e}"))?;
+        let kek = key_tree::derive_kek(&mk).map_err(|e| format!("kek: {e}"))?;
         let wrapped_new = vautr_keyring::wrap::wrap_svk(&kek, &new_svk);
 
         // 2. Advance the server epoch gate (idempotent, REQ-ROTATE-02).
@@ -801,28 +874,34 @@ impl VautrClient {
         // VTRFIX-BUG-C06: `list_enc_key_gens` now returns rows ORDER BY
         // enc_key_gen ASC, and we advance a row-count cursor (not a gen value)
         // so no lower-gen row can be skipped behind the cursor.
-        let rows = vautr_db::query::list_enc_key_gens(&self.db)
+        // VTRFIX (rotation push): the push OCC target must be each item's
+        // CURRENT server version, not its enc_key_gen. The old code pushed
+        // `target_version = enc_key_gen`, which matches no previously-edited
+        // item (server rejects with 412 Conflict) and the outcomes were
+        // discarded (`let _outcomes = …`), leaving the server holding
+        // old-generation ciphertext behind an advanced min_enc_key_gen —
+        // silent, undecryptable data loss for every other device.
+        let rows = vautr_db::query::list_rotation_items(&self.db, confirmed_gen as i64)
             .await
-            .map_err(|e| format!("list gens: {e}"))?;
+            .map_err(|e| format!("list rotation items: {e}"))?;
         let batch_size: usize = 100;
         let mut cursor_row: usize = 0;
+        let dek_old = key_tree::derive_dek(&old_svk).map_err(|e| format!("dek: {e}"))?;
         loop {
-            let batch: Vec<(Uuid, i64, Vec<u8>)> = rows
+            let rows_batch: Vec<(Uuid, i64, i64, Vec<u8>)> = rows
                 .iter()
-                .filter(|(_, gen, _)| *gen < confirmed_gen as i64)
                 .skip(cursor_row)
                 .take(batch_size)
-                .map(|(u, g, p)| (*u, *g, p.clone()))
+                .cloned()
                 .collect();
-            if batch.is_empty() {
+            if rows_batch.is_empty() {
                 break;
             }
-            cursor_row += batch.len();
+            cursor_row += rows_batch.len();
 
-            let mut push_items = Vec::with_capacity(batch.len());
-            for (uuid, gen, payload) in &batch {
+            let mut push_items = Vec::with_capacity(rows_batch.len());
+            for (uuid, version, gen, payload) in &rows_batch {
                 // Decrypt under the OLD DEK, re-encrypt under the NEW SVK.
-                let dek_old = key_tree::derive_dek(&old_svk).map_err(|e| format!("dek: {e}"))?;
                 let pt = aead::decrypt(&dek_old, uuid, *gen as u64, payload)
                     .map_err(|_| "re-encrypt decrypt failed".to_string())?;
                 let rot = vautr_keyring::rotate::RotationBatch {
@@ -843,12 +922,65 @@ impl VautrClient {
                 .await
                 .map_err(|e| format!("persist re-encrypt: {e}"))?;
                 txn.commit().await.map_err(|e| format!("commit: {e}"))?;
-                push_items.push((*uuid, *gen as u64, confirmed_gen, Some(new_payload)));
+                // Push target = the item's CURRENT local/server version (the
+                // server's OCC matches `version = target_version`).
+                push_items.push((*uuid, *version as u64, confirmed_gen, Some(new_payload)));
             }
-            let _outcomes = transport
+            let outcomes = transport
                 .push_batch(push_items)
                 .await
                 .map_err(|e| format!("push_batch: {e}"))?;
+            // Handle every outcome (VTRFIX: never discard). On a 412 Conflict
+            // the server told us its real current version: re-encrypt THAT
+            // payload under the new key and push at the server's version, so
+            // the newest server content (possibly edited by another device)
+            // is what gets re-encrypted.
+            for (outcome, item) in outcomes.iter().zip(rows_batch.iter()) {
+                let (uuid, _version, gen, _payload) = item;
+                match outcome {
+                    vautr_sync::engine::PushOutcome::Applied => {}
+                    vautr_sync::engine::PushOutcome::EpochTooOld => {
+                        return Err(format!("rotate_key: server rejected epoch for item {uuid}"));
+                    }
+                    vautr_sync::engine::PushOutcome::Conflict(server_version) => {
+                        let server_payload =
+                            transport
+                                .fetch_payload(uuid, *server_version)
+                                .await
+                                .map_err(|e| format!("rotate_key conflict fetch: {e}"))?;
+                        // The server payload is encrypted at the item's key
+                        // generation (gens only change through this rotation),
+                        // so the OLD DEK + old-gen AD is the right envelope.
+                        let pt = aead::decrypt(&dek_old, uuid, *gen as u64, &server_payload)
+                            .map_err(|_| {
+                                "rotate_key: cannot decrypt the server's current payload"
+                                    .to_string()
+                            })?;
+                        let rot = vautr_keyring::rotate::RotationBatch {
+                            old_gen: *gen as u64,
+                            new_gen: confirmed_gen,
+                        };
+                        let new_payload = rot.reencrypt(uuid, &new_svk, &pt);
+                        let retry = transport
+                            .push_batch(vec![(
+                                *uuid,
+                                *server_version,
+                                confirmed_gen,
+                                Some(new_payload),
+                            )])
+                            .await
+                            .map_err(|e| format!("rotate_key conflict push: {e}"))?;
+                        if !matches!(
+                            retry.first(),
+                            Some(vautr_sync::engine::PushOutcome::Applied)
+                        ) {
+                            return Err(format!(
+                                "rotate_key: conflict re-push failed for item {uuid}"
+                            ));
+                        }
+                    }
+                }
+            }
         }
 
         // 4. Persist the new wrapped SVK blob into `sync_meta`.
@@ -872,6 +1004,21 @@ impl VautrClient {
     }
 
     // --- Internal DashMap persistence (core.md §3) --------------------------
+
+    /// Restore the sync cursor persisted by the last completed page (VTRFIX:
+    /// it was written but never read back — every restart re-pulled the whole
+    /// vault). Fresh vaults start at 0.
+    async fn load_persisted_cursor(&self) {
+        match vautr_db::query::get_sync_cursor(&self.db).await {
+            Ok(c) => {
+                self.cursor.store(c, Ordering::SeqCst);
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "could not load persisted sync cursor; starting at 0");
+                self.cursor.store(0, Ordering::SeqCst);
+            }
+        }
+    }
 
     /// Load the persisted DashMap from SQLite at unlock (crash recovery).
     async fn load_blacklist(&self) {
@@ -1043,10 +1190,10 @@ impl VautrClient {
     /// Read-Only gate (requires re-authentication) — reported as an
     /// `EpochMismatch` failure.
     // VTRFIX-BUG-M14 (tracked): export_vault currently buffers the entire
-// decrypted vault in memory. A streaming rewrite is deferred to a follow-up;
-// the current caps (MAX_ITEMS_PER_CHUNK et al.) bound peak memory for typical
-// vaults. See docs/issues/VTRFIX-LOG.md.
-pub async fn export_vault(
+    // decrypted vault in memory. A streaming rewrite is deferred to a follow-up;
+    // the current caps (MAX_ITEMS_PER_CHUNK et al.) bound peak memory for typical
+    // vaults. See docs/issues/VTRFIX-LOG.md.
+    pub async fn export_vault(
         &self,
         format: vautr_export::ExportFormat,
         path: &str,
@@ -1066,8 +1213,8 @@ pub async fn export_vault(
         // instead of O(vault). `ExportWriter` owns the file handle and writes
         // the CSV header / JSON `[` once, then each row is decrypted +
         // serialized + written + dropped before the next.
-        let mut writer =
-            vautr_export::ExportWriter::begin(path, format).map_err(|e| format!("export open: {e}"))?;
+        let mut writer = vautr_export::ExportWriter::begin(path, format)
+            .map_err(|e| format!("export open: {e}"))?;
 
         let rows_raw = self.list_local_items().await?;
         let total = rows_raw.len() as u64;
@@ -1108,9 +1255,7 @@ pub async fn export_vault(
             // `pt`, `secret`, `row`, `dek` guard drop here, zeroizing plaintext.
         }
 
-        writer
-            .finish()
-            .map_err(|e| format!("export finish: {e}"))
+        writer.finish().map_err(|e| format!("export finish: {e}"))
     }
 
     /// Seed the server with all locally-persisted items via `push_batch`
@@ -1142,6 +1287,51 @@ pub async fn export_vault(
             self.blacklist.clone(),
             self.cursor.load(Ordering::SeqCst),
         );
+
+        // VTRFIX (delete round-trip): flush recorded tombstones first. Local
+        // deletes previously never reached the server (the tombstone push
+        // shape existed only as dead code), so deleted items resurrected on
+        // other devices and on full resync.
+        match vautr_db::txn::list_pending_deletes(&self.db).await {
+            Ok(pending) if !pending.is_empty() => {
+                let items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)> = pending
+                    .iter()
+                    .filter_map(|(u, v, g)| {
+                        Uuid::parse_str(u)
+                            .ok()
+                            .map(|uuid| (uuid, *v as u64, *g as u64, None::<Vec<u8>>))
+                    })
+                    .collect();
+                match engine.push_batch(items).await {
+                    Ok(outcomes) => {
+                        let all_applied = outcomes
+                            .iter()
+                            .all(|(_, o)| matches!(o, vautr_sync::engine::PushOutcome::Applied));
+                        if all_applied {
+                            let uuids: Vec<String> =
+                                pending.iter().map(|(u, _, _)| u.clone()).collect();
+                            if let Err(e) =
+                                vautr_db::txn::clear_pending_deletes(&self.db, &uuids).await
+                            {
+                                tracing::warn!(error = %e, "failed to clear pending deletes");
+                            }
+                        } else {
+                            tracing::warn!(
+                                "pending delete flush hit conflicts; tombstones kept for retry"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "pending delete flush failed; kept for retry");
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "list_pending_deletes failed");
+            }
+        }
+
         let rows = self.list_local_items().await?;
         for chunk in rows.chunks(100) {
             let items: Vec<(Uuid, u64, u64, Option<Vec<u8>>)> = chunk
@@ -1197,10 +1387,23 @@ pub async fn export_vault(
             .ok_or_else(|| "sync not connected".to_string())?;
 
         if !force_overwrite {
-            // Keep server: drop the local copy, then re-pull to fetch the
-            // server's authoritative version.
-            self.delete_local_item(uuid).await?;
-            self.sync().await?;
+            // Keep server: download the authoritative payload directly.
+            // VTRFIX (data loss): the old path deleted the local row and then
+            // called `sync()` — which pulls from the ALREADY-ADVANCED cursor,
+            // so the server never re-delivered the item and the local copy
+            // was gone for good.
+            let payload = transport
+                .fetch_payload(&uuid, server_version)
+                .await
+                .map_err(|e| format!("conflict fetch: {e}"))?;
+            let ov = PulledOverview {
+                uuid,
+                version: server_version,
+                enc_key_gen: self.local_gen.load(Ordering::SeqCst),
+                deleted: false,
+            };
+            self.persist_synced_page(&[(ov, payload)], &[], self.cursor.load(Ordering::SeqCst))
+                .await?;
             return Ok(());
         }
 
@@ -1269,8 +1472,13 @@ pub async fn export_vault(
             enc_key_gen: i64,
             payload: Vec<u8>,
         }
+        // VTRFIX: INNER JOIN — the LEFT JOIN decoded SQL NULL into a
+        // non-Option `Vec<u8>` for metadata-only items and failed the whole
+        // query (breaking export/seed/conflict resolution). Same class as the
+        // VTRFIX-BUG-M05 fix in `list_enc_key_gens`.
         let sql = "SELECT o.uuid, o.version, o.enc_key_gen, p.payload \
-                   FROM item_overviews o LEFT JOIN item_payloads p ON p.uuid = o.uuid";
+                   FROM item_overviews o INNER JOIN item_payloads p ON p.uuid = o.uuid \
+                   WHERE p.payload IS NOT NULL";
         let stmt =
             sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Sqlite, sql, []);
         let rows = Row::find_by_statement(stmt)
@@ -1542,6 +1750,7 @@ pub async fn export_vault(
         *self.svk.lock().await = Some(svk);
         *self.dek.lock().await = Some(dek);
         *self.server_user_id.write().await = Some(server_user_id);
+        self.load_persisted_cursor().await;
         self.locked.store(false, Ordering::SeqCst);
         *self.recovery_creds.lock().await = Some(creds);
         self.recovery_pending.store(true, Ordering::SeqCst);
@@ -1714,10 +1923,14 @@ pub async fn export_vault(
                 crate::worker::TaskOutcome::Committed(_) => {
                     // Drop the applied entry from the queue.
                     let _ = self.offline.pop_front_if(|head| match (head, &m) {
-                        (QueuedMutation::Save { item: a, .. },
-                         QueuedMutation::Save { item: b, .. }) => a.overview.uuid == b.overview.uuid,
-                        (QueuedMutation::Delete { uuid: a },
-                         QueuedMutation::Delete { uuid: b }) => a == b,
+                        (
+                            QueuedMutation::Save { item: a, .. },
+                            QueuedMutation::Save { item: b, .. },
+                        ) => a.overview.uuid == b.overview.uuid,
+                        (
+                            QueuedMutation::Delete { uuid: a },
+                            QueuedMutation::Delete { uuid: b },
+                        ) => a == b,
                         _ => false,
                     });
                     applied += 1;
