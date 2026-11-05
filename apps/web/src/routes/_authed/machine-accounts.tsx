@@ -109,7 +109,8 @@ function MachineAccountsPage() {
           acc.status === 'active' ? 'Machine account disabled' : 'Machine account enabled',
         );
         void load();
-      });
+      })
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
   };
 
   return (
@@ -195,10 +196,15 @@ function MachineAccountsPage() {
                           <DropdownMenuItem
                             className="text-danger"
                             onClick={() => {
-                              void mlp.deleteMachineAccount(acc.uuid).then(() => {
-                                toast.success('Machine account deleted');
-                                void load();
-                              });
+                              void mlp
+                                .deleteMachineAccount(acc.uuid)
+                                .then(() => {
+                                  toast.success('Machine account deleted');
+                                  void load();
+                                })
+                                .catch((e: unknown) =>
+                                  toast.error(e instanceof Error ? e.message : String(e)),
+                                );
                             }}
                           >
                             <Trash2 className="mr-2 size-4" aria-hidden="true" />
