@@ -205,14 +205,18 @@ fn write_csv_row(
         .unwrap_or_default();
     // csv::Writer auto-quotes/escapes fields with delimiters, quotes, or
     // newlines (RFC 4180), so pass raw values and let it handle quoting.
+    // VTRFIX-BUG-M13 (wired): RFC quoting alone does NOT neutralize formula
+    // injection — a title starting with `=`/`+`/`-`/`@` executes as a
+    // spreadsheet formula on open. Every text cell goes through
+    // `sanitize_csv_cell` (the uuid is hex and cannot start a formula).
     let record = [
         row.uuid.to_string(),
-        row.title.clone(),
-        row.username.clone(),
-        row.password.as_str().to_string(),
-        row.urls.join(" | "),
-        row.notes.as_str().to_string(),
-        totp,
+        sanitize_csv_cell(&row.title),
+        sanitize_csv_cell(&row.username),
+        sanitize_csv_cell(row.password.as_str()),
+        sanitize_csv_cell(&row.urls.join(" | ")),
+        sanitize_csv_cell(row.notes.as_str()),
+        sanitize_csv_cell(&totp),
     ];
     csv.write_record(record)?;
     Ok(())
