@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { takePendingEmergencyKit } from '@/lib/client';
 import { renderKitHtml } from '@/lib/kit';
 import { MlpApiError, mlp } from '@/lib/mlp';
 import { router } from '@/router';
@@ -76,8 +77,10 @@ function CreateVaultStep() {
 function EmergencyKitStep() {
   const { next } = useOnboarding();
   const [revealed, setRevealed] = useState(false);
-  const mnemonic =
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('vautr:pending-kit') : null;
+  // VTRFIX-D: the pending kit is handed over in-memory via
+  // `setPendingEmergencyKit()` at registration (VTRFIX-SEC-M24: never
+  // sessionStorage). Take-and-clear it exactly once, on mount.
+  const [mnemonic] = useState(() => takePendingEmergencyKit());
   const words = mnemonic ? mnemonic.split(/\s+/).filter(Boolean) : [];
 
   const download = () => {
@@ -92,7 +95,6 @@ function EmergencyKitStep() {
     a.download = 'vautr-emergency-kit.html';
     a.click();
     URL.revokeObjectURL(url);
-    sessionStorage.removeItem('vautr:pending-kit');
   };
 
   return (
@@ -142,13 +144,7 @@ function EmergencyKitStep() {
       >
         Open security settings
       </Button>
-      <Button
-        onClick={() => {
-          sessionStorage.removeItem('vautr:pending-kit');
-          next();
-        }}
-        className="w-auto"
-      >
+      <Button onClick={() => next()} className="w-auto">
         Continue
       </Button>
     </div>
