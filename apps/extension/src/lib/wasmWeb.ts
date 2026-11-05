@@ -29,6 +29,13 @@ export const {
   wrap_svk_with_rk_js,
   seal_mnemonic_js,
   open_mnemonic_js,
+  // --- VTRFIX-FEAT-H02: recovery-auth Ed25519 key (auth.rs) ---
+  sign_recovery_nonce_js,
+  recovery_public_key_js,
+  recover_svk_js,
+  // --- VTRFIX-SEC-M02: user-scoped AD wrap/unwrap (auth.rs) ---
+  wrap_svk_with_ad_js,
+  unwrap_svk_with_ad_or_legacy_js,
   derive_dek_js,
 }: {
   generate_kdf_salt_js: () => Uint8Array;
@@ -41,6 +48,19 @@ export const {
   wrap_svk_with_rk_js: (svk: Uint8Array, mnemonic: string) => Uint8Array;
   seal_mnemonic_js: (kek: Uint8Array, plaintext: Uint8Array) => Uint8Array;
   open_mnemonic_js: (kek: Uint8Array, ciphertext: Uint8Array) => Uint8Array;
+  sign_recovery_nonce_js: (mnemonic: string, nonce_b64: string) => string;
+  recovery_public_key_js: (mnemonic: string) => Uint8Array;
+  recover_svk_js: (
+    mnemonic: string,
+    svk_rk_wrapped_b64: string,
+    server_user_id: string,
+  ) => Uint8Array;
+  wrap_svk_with_ad_js: (svk: Uint8Array, kek: Uint8Array, user_id: string) => Uint8Array;
+  unwrap_svk_with_ad_or_legacy_js: (
+    wrapped: Uint8Array,
+    kek: Uint8Array,
+    user_id: string,
+  ) => { svk: Uint8Array | number[]; used_legacy: boolean };
   derive_dek_js: (svk: Uint8Array) => Uint8Array;
 } = raw as any;
 
