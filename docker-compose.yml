@@ -28,7 +28,8 @@ services:
         # Extra cargo features for the server build. Set VAUTR_FEATURES=postgres
         # to build a Postgres-enabled image (requires the manifest feature).
         FEATURES: ${VAUTR_FEATURES:-}
-        VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:vautr.db}
+        # VTRFIX: VAUTR_DB_URL is runtime env ONLY — it used to be passed as a
+        # build arg and baked into the image config (credential leak).
     image: vautr/server:latest
     restart: unless-stopped
     ports:
@@ -45,7 +46,11 @@ services:
     #   postgres:
     #     condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/account/status"]
+      # VTRFIX (HIGH): /account/status is auth-gated (401 without a bearer),
+      # which curl -f treats as failure — the container was permanently
+      # unhealthy and caddy (depends_on: service_healthy) never started.
+      # Probe the unauthenticated liveness endpoint instead.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -77,7 +82,8 @@ services:
       - devtarget:/build/target
       - serverdata:/data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/account/status"]
+      # VTRFIX (HIGH): probe /health (see the server service healthcheck note).
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -92,10 +98,13 @@ services:
     profiles: ["postgres"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-vautr}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vautr}
+      # VTRFIX (LOW): no default password — the operator MUST set
+      # POSTGRES_PASSWORD (the old default "vautr" shipped a known credential).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-vautr}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # VTRFIX (LOW): loopback only — do not expose Postgres on all interfaces.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
