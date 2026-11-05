@@ -41,7 +41,9 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
   const setError = usePopupStore((s) => s.setError);
 
   const [projectUuid, setProjectUuid] = useState<string>('__none__');
-  const [showCreate] = useState(false);
+  // VTRFIX-F: the create dialog needs a real setter — previously the state was
+  // write-once (`useState(false)` with no setter) and could never open.
+  const [showCreate, setShowCreate] = useState(false);
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
   const [query, setQuery] = useState('');
@@ -142,7 +144,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
                 {secrets.length} in “{selectedProject.name}”
               </p>
             </div>
-            <Button size="sm" onClick={() => void handleCreate()}>
+            <Button size="sm" onClick={() => setShowCreate(true)}>
               New secret
             </Button>
           </div>
@@ -183,7 +185,7 @@ export function SecretsTab({ mlp, client }: SecretsTabProps) {
         <p className="text-sm text-muted-foreground">Select a project to manage its secrets.</p>
       )}
 
-      <Dialog open={showCreate} onOpenChange={() => undefined}>
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New secret</DialogTitle>
