@@ -64,7 +64,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { performAction, release, reveal } from '@/lib/client';
+import { getClient } from '@/lib/client';
 import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/projects/$uuid')({
@@ -76,10 +76,6 @@ const PERMISSIONS = [
   { value: 'can_edit', label: 'Can Edit' },
   { value: 'can_manage', label: 'Can Manage' },
 ];
-
-function b64encode(value: string): string {
-  return btoa(value);
-}
 
 function ProjectDetailPage() {
   const { uuid } = Route.useParams();
@@ -204,10 +200,13 @@ function DeleteProjectButton({ uuid }: { uuid: string }) {
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
-              void mlp.deleteProject(uuid).then(() => {
-                toast.success('Project deleted');
-                window.location.href = '/projects';
-              });
+              void mlp
+                .deleteProject(uuid)
+                .then(() => {
+                  toast.success('Project deleted');
+                  window.location.href = '/projects';
+                })
+                .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
             }}
           >
             Delete
@@ -243,10 +242,13 @@ function SecretsTab({
     if (!key.trim()) return;
     setBusy(true);
     try {
+      // ZK create (VTRFIX): encrypt the value with the vault DEK via the SDK
+      // before it leaves the device — never a plaintext `btoa` blob.
+      const value_ciphertext = await getClient().encryptSecretValue(projectUuid, value);
       await mlp.createSecret({
         project_uuid: projectUuid,
         key: key.trim(),
-        value_ciphertext: b64encode(value),
+        value_ciphertext,
       });
       toast.success('Secret created');
       setOpen(false);
@@ -260,20 +262,18 @@ function SecretsTab({
     }
   };
 
-  // ZK reveal: decrypt in the wasm `WebClient` behind an opaque handle and
-  // copy to the clipboard via `perform_action`; plaintext never enters React
-  // state (data.md §1 rule 4 / VTR-062).
+  // ZK reveal (VTRFIX): fetch the server-held `value_ciphertext`, decrypt it
+  // locally with the vault DEK via the SDK, and copy the plaintext straight to
+  // the clipboard. MLP secrets are encrypted with the vault DEK, so the vault
+  // `reveal()` (IndexedDB payload) path can never resolve them.
   const onReveal = async (secretUuid: string) => {
     try {
-      const handle = await reveal(secretUuid);
-      try {
-        await performAction({ type: 'CopyToClipboard', handle });
-        setCopied((prev) => ({ ...prev, [secretUuid]: true }));
-        window.setTimeout(() => setCopied((prev) => ({ ...prev, [secretUuid]: false })), 1500);
-        setRevealError((prev) => ({ ...prev, [secretUuid]: '' }));
-      } finally {
-        await release(handle);
-      }
+      const res = await mlp.revealSecret(secretUuid);
+      const plaintext = await getClient().decryptSecretValue(projectUuid, res.value_ciphertext);
+      await navigator.clipboard.writeText(plaintext);
+      setCopied((prev) => ({ ...prev, [secretUuid]: true }));
+      window.setTimeout(() => setCopied((prev) => ({ ...prev, [secretUuid]: false })), 1500);
+      setRevealError((prev) => ({ ...prev, [secretUuid]: '' }));
     } catch (err) {
       setRevealError((prev) => ({
         ...prev,
@@ -334,10 +334,15 @@ function SecretsTab({
                         <DropdownMenuItem
                           className="text-danger"
                           onClick={() => {
-                            void mlp.deleteSecret(s.uuid).then(() => {
-                              toast.success('Secret deleted');
-                              onChanged();
-                            });
+                            void mlp
+                              .deleteSecret(s.uuid)
+                              .then(() => {
+                                toast.success('Secret deleted');
+                                onChanged();
+                              })
+                              .catch((e: unknown) =>
+                                toast.error(e instanceof Error ? e.message : String(e)),
+                              );
                           }}
                         >
                           <Trash2 className="mr-2 size-4" aria-hidden="true" />
@@ -452,10 +457,13 @@ function MembersTab({
   };
 
   const changePermission = (userUuidValue: string, next: string) => {
-    void mlp.updateMember(projectUuid, userUuidValue, { permission: next }).then(() => {
-      toast.success('Permission updated');
-      onChanged();
-    });
+    void mlp
+      .updateMember(projectUuid, userUuidValue, { permission: next })
+      .then(() => {
+        toast.success('Permission updated');
+        onChanged();
+      })
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)));
   };
 
   return (
@@ -525,10 +533,15 @@ function MembersTab({
                           <DropdownMenuItem
                             className="text-danger"
                             onClick={() => {
-                              void mlp.removeMember(projectUuid, m.user_uuid).then(() => {
-                                toast.success('Member removed');
-                                onChanged();
-                              });
+                              void mlp
+                                .removeMember(projectUuid, m.user_uuid)
+                                .then(() => {
+                                  toast.success('Member removed');
+                                  onChanged();
+                                })
+                                .catch((e: unknown) =>
+                                  toast.error(e instanceof Error ? e.message : String(e)),
+                                );
                             }}
                           >
                             <Trash2 className="mr-2 size-4" aria-hidden="true" />
@@ -656,10 +669,15 @@ function GroupsTab({
                 size="sm"
                 className="text-danger"
                 onClick={() => {
-                  void mlp.deleteGroup(projectUuid, g.id).then(() => {
-                    toast.success('Group deleted');
-                    onChanged();
-                  });
+                  void mlp
+                    .deleteGroup(projectUuid, g.id)
+                    .then(() => {
+                      toast.success('Group deleted');
+                      onChanged();
+                    })
+                    .catch((e: unknown) =>
+                      toast.error(e instanceof Error ? e.message : String(e)),
+                    );
                 }}
               >
                 <Trash2 className="mr-1.5 size-4" aria-hidden="true" />
