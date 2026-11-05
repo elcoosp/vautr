@@ -58,12 +58,18 @@ jobs:
         run: |
           set -uo pipefail
           # GPUI is the Desktop rendering crate. It must never be referenced by
-          # the React Native package.json or the Manifest V3 extension manifest.
-          if grep -q "gpui" \
-              apps/mobile/package.json \
-              apps/extension/manifest.json \
-              2>/dev/null; then
-            echo "::error::CRITICAL SECURITY BREACH: 'gpui' marker found in apps/mobile/package.json or apps/extension/manifest.json. Remove the Desktop dependency and re-run."
+          # the React Native package.json or the extension manifest source.
+          # VTRFIX: apps/extension/manifest.json is GENERATED (from
+          # manifest.config.ts) and absent from a fresh checkout — grep the
+          # manifest source (manifest.config.ts) plus the built artifact when
+          # it exists.
+          if grep -q "gpui" apps/mobile/package.json apps/extension/manifest.config.ts 2>/dev/null; then
+            echo "::error::CRITICAL SECURITY BREACH: 'gpui' marker found in apps/mobile/package.json or apps/extension/manifest.config.ts. Remove the Desktop dependency and re-run."
+            exit 1
+          fi
+          if [ -f apps/extension/manifest.json ] \
+            && grep -q "gpui" apps/extension/manifest.json 2>/dev/null; then
+            echo "::error::CRITICAL SECURITY BREACH: 'gpui' marker found in the generated apps/extension/manifest.json. Remove the Desktop dependency and re-run."
             exit 1
           fi
           echo "::notice::No 'gpui' markers in mobile/extension manifests"
