@@ -33,7 +33,9 @@ pub mod ingest;
 pub use error::{ImportError, ImportFailure, ImportFailureReason, Result};
 
 #[cfg(feature = "pipeline")]
-use crate::encrypt::{encrypt_chunk, plaintext_size, EncryptedItem, MAX_ITEMS_PER_CHUNK, MAX_PLAINTEXT_BYTES};
+use crate::encrypt::{
+    encrypt_chunk, plaintext_size, EncryptedItem, MAX_ITEMS_PER_CHUNK, MAX_PLAINTEXT_BYTES,
+};
 #[cfg(feature = "pipeline")]
 use crate::ingest::ingest;
 #[cfg(feature = "pipeline")]
@@ -193,7 +195,10 @@ async fn run_pipeline(
             parse_result.item.url.clone().unwrap_or_default(),
         );
         match translate(parse_result.item, existing, parse_result.line_number) {
-            Ok(TranslatedItem { domain, source_id: _ }) => {
+            Ok(TranslatedItem {
+                domain,
+                source_id: _,
+            }) => {
                 existing.insert(dedup_key_pre);
                 let size = plaintext_size(&domain);
                 chunk_bytes += size;
@@ -211,7 +216,9 @@ async fn run_pipeline(
                 // Per-item failures accumulate (duplicates included, so the
                 // "View Details" modal in §5.2 can show why items were skipped).
                 errors.push(e);
-                if errors.last().map(|x| x.reason == ImportFailureReason::DuplicateSkip)
+                if errors
+                    .last()
+                    .map(|x| x.reason == ImportFailureReason::DuplicateSkip)
                     == Some(true)
                 {
                     skipped += 1;
@@ -272,11 +279,20 @@ pub async fn import_items(
     let records: Vec<core::result::Result<ParseRecord, String>> = items
         .into_iter()
         .enumerate()
-        .map(|(i, item)| Ok(ParseRecord {
-            line_number: (i + 1) as u32,
-            item,
-        }))
+        .map(|(i, item)| {
+            Ok(ParseRecord {
+                line_number: (i + 1) as u32,
+                item,
+            })
+        })
         .collect();
     let mut existing = preflight(db).await?;
-    run_pipeline(Box::new(records.into_iter()), &mut existing, db, keys, progress).await
+    run_pipeline(
+        Box::new(records.into_iter()),
+        &mut existing,
+        db,
+        keys,
+        progress,
+    )
+    .await
 }
