@@ -158,17 +158,13 @@ fn totp_verifier(secret: &[u8]) -> Result<TOTP, ApiError> {
         .map_err(|e| internal(format!("invalid totp secret: {e}")))
 }
 
-
 /// VTRFIX-SEC-H11: verify a TOTP code against a secret while enforcing the
 /// replay cache. Returns the matched time step on success.
 ///
 /// We compute the code for each candidate step in the skew window manually
 /// (rather than `check_current`) so we know *which* step matched and can
 /// refuse re-use.
-fn verify_totp_with_step(
-    secret: &[u8],
-    code: &str,
-) -> Result<Option<i64>, ApiError> {
+fn verify_totp_with_step(secret: &[u8], code: &str) -> Result<Option<i64>, ApiError> {
     let totp = totp_verifier(secret)?;
     let step_seconds = totp.step;
     let now = std::time::SystemTime::now()
@@ -265,9 +261,9 @@ fn validate_policy(req: &MfaPolicyUpdateReq) -> Result<(), ApiError> {
     }
     for m in &req.allowed_methods {
         // VTRFIX-FEAT-M02: "email" is accepted by the wire contract but has no
-            // server-side transport (no Mailer is wired). Accepting it would
-            // let an org lock everyone out with an unimplementable method.
-            if !matches!(m.as_str(), "totp" | "webauthn") {
+        // server-side transport (no Mailer is wired). Accepting it would
+        // let an org lock everyone out with an unimplementable method.
+        if !matches!(m.as_str(), "totp" | "webauthn") {
             return Err(ApiError::bad_request(
                 "invalid_policy",
                 &format!("unknown MFA method: {m}"),
@@ -474,7 +470,6 @@ pub(crate) async fn verify_totp(
     }
 }
 
-
 /// Request body for `POST /mfa/totp/verify-login` (VTRFIX-SEC-C03).
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct TotpVerifyLoginReq {
@@ -529,11 +524,7 @@ pub(crate) async fn verify_login_totp(
         .0;
     // VTRFIX-SEC-H11: lockout + replay cache.
     let now_ts = now_ms();
-    let (_, lock_until) = st
-        .repo
-        .totp_lock_state(&user_id)
-        .await
-        .map_err(internal)?;
+    let (_, lock_until) = st.repo.totp_lock_state(&user_id).await.map_err(internal)?;
     if lock_until > now_ts {
         return Err(ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
@@ -611,8 +602,6 @@ pub(crate) async fn verify_login_totp(
         mfa_required: None,
     }))
 }
-
-
 
 /// Request body for `POST /mfa/recovery/verify-login` (VTRFIX-SEC-H11).
 #[derive(Debug, serde::Deserialize)]
@@ -847,22 +836,12 @@ mod tests {
             .execute(repo.pool())
             .await
             .unwrap();
-        repo.set_org_member(
-            org_id,
-            "u1",
-            vautr_domain::OrgRole::Owner,
-            now,
-        )
-        .await
-        .unwrap();
-        repo.set_org_member(
-            org_id,
-            "u2",
-            vautr_domain::OrgRole::Member,
-            now,
-        )
-        .await
-        .unwrap();
+        repo.set_org_member(org_id, "u1", vautr_domain::OrgRole::Owner, now)
+            .await
+            .unwrap();
+        repo.set_org_member(org_id, "u2", vautr_domain::OrgRole::Member, now)
+            .await
+            .unwrap();
 
         AppState::new(repo)
     }
