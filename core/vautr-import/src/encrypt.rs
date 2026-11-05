@@ -86,7 +86,7 @@ pub fn encrypt_chunk(
 mod tests {
     use super::*;
     use crate::translate::{self, TranslatedItem};
-    use crate::{VaultKeys};
+    use crate::VaultKeys;
     use std::collections::HashSet;
 
     fn one_domain(title: &str) -> DomainModel {
@@ -96,8 +96,7 @@ mod tests {
             url: Some(format!("https://{title}.example")),
             fields: serde_json::json!({"password": "hunter2"}),
         };
-        let TranslatedItem { domain, .. } =
-            translate::translate(raw, &HashSet::new(), 1).unwrap();
+        let TranslatedItem { domain, .. } = translate::translate(raw, &HashSet::new(), 1).unwrap();
         domain
     }
 
