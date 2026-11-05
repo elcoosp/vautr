@@ -70,7 +70,13 @@ async fn download_backup(
         .get_backup_run(&id)
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?
-        .ok_or_else(|| ApiError::new(axum::http::StatusCode::NOT_FOUND, "unknown_backup", "backup_id not found"))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                axum::http::StatusCode::NOT_FOUND,
+                "unknown_backup",
+                "backup_id not found",
+            )
+        })?;
 
     let bytes = std::fs::read(&run.archive_path)
         .map_err(|e| ApiError::internal(&format!("read archive: {e}")))?;
@@ -141,7 +147,10 @@ async fn backup_status(
     State(st): State<AppState>,
     auth: Bearer,
 ) -> Result<Json<BackupStatus>, ApiError> {
-    auth_user(&st.repo, &auth.0).await?;
+    // VTRFIX (LOW): the status response leaks the on-disk backup location and
+    // is now gated like export/restore (admin-only, VTRFIX-SEC-H04/H05).
+    let caller = auth_user(&st.repo, &auth.0).await?;
+    require_admin(&st, &caller).await?;
     let s: BackupState = st
         .repo
         .backup_state()
