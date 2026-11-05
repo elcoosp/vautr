@@ -122,8 +122,8 @@ pub(crate) struct InboxItem {
     share_id: String,
     sender_uuid: String,
     item_uuid: String,
-    wrapped_sik: String,          // base64
-    ephemeral_public_key: String, // base64
+    wrapped_sik: String,               // base64
+    ephemeral_public_key: String,      // base64
     encrypted_payload: Option<String>, // base64 (may be absent)
 }
 
@@ -183,7 +183,12 @@ async fn put_public_key(
     // storage always keys on `caller`, so accept either form.
     let accepted = if caller == user_id {
         true
-    } else if let Some(user) = st.repo.get_user_by_id(&caller).await.map_err(|e| ApiError::internal(&e.to_string()))? {
+    } else if let Some(user) = st
+        .repo
+        .get_user_by_id(&caller)
+        .await
+        .map_err(|e| ApiError::internal(&e.to_string()))?
+    {
         user.email == user_id
     } else {
         false
