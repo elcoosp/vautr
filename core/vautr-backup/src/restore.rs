@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use sqlx::sqlite::SqlitePool;
 use thiserror::Error;
 
-use crate::archive::{self, ArchiveError, ArchivePayload, ArchiveMeta};
+use crate::archive::{self, ArchiveError, ArchiveMeta, ArchivePayload};
 
 /// Outcome of a restore operation (schema validation, not a full data audit).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,10 +88,7 @@ pub fn write_snapshot(snapshot: &[u8], dest: &Path) -> RestoreResult<()> {
 
 /// Allocate a fresh, unique scratch file path under the system temp dir.
 pub fn scratch_file() -> RestoreResult<PathBuf> {
-    Ok(std::env::temp_dir().join(format!(
-        "vautr-restore-test-{}.db",
-        uuid::Uuid::new_v4()
-    )))
+    Ok(std::env::temp_dir().join(format!("vautr-restore-test-{}.db", uuid::Uuid::new_v4())))
 }
 
 /// Open a fresh SQLite pool against a single DB file (max 1 connection so the
@@ -100,8 +97,13 @@ pub async fn open_scratch_pool(path: &Path) -> Result<SqlitePool, sqlx::Error> {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use std::str::FromStr;
     let url = format!("sqlite://{}", path.display());
-    let opts = SqliteConnectOptions::from_str(&url)?.create_if_missing(true).read_only(false);
-    SqlitePoolOptions::new().max_connections(1).connect_with(opts).await
+    let opts = SqliteConnectOptions::from_str(&url)?
+        .create_if_missing(true)
+        .read_only(false);
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await
 }
 
 /// Restore an archive to a target database file and validate it opens cleanly.
@@ -163,9 +165,13 @@ mod tests {
         {
             let pool = open_scratch_pool(&scratch).await.unwrap();
             sqlx::query("CREATE TABLE items (uuid TEXT PRIMARY KEY) STRICT")
-                .execute(&pool).await.unwrap();
+                .execute(&pool)
+                .await
+                .unwrap();
             sqlx::query("INSERT INTO items (uuid) VALUES ('a'), ('b')")
-                .execute(&pool).await.unwrap();
+                .execute(&pool)
+                .await
+                .unwrap();
             pool.close().await;
         }
         let snapshot = std::fs::read(&scratch).unwrap();
@@ -192,7 +198,9 @@ mod tests {
         let key = [4u8; 32];
         let archive = sample_archive(&key).await;
         let dest = scratch_file().unwrap();
-        let err = restore_to_db(&[5u8; 32], &archive, &dest).await.unwrap_err();
+        let err = restore_to_db(&[5u8; 32], &archive, &dest)
+            .await
+            .unwrap_err();
         assert!(matches!(err, RestoreError::Archive(ArchiveError::Decrypt)));
         std::fs::remove_file(&dest).ok();
     }
