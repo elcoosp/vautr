@@ -31,7 +31,10 @@ pub struct TranslatedItem {
 
 /// Extract a string field from the record's `fields` JSON object.
 fn field_str(fields: &Value, key: &str) -> Option<String> {
-    fields.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    fields
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Translate one raw record. Returns an [`ImportError`] for per-record failures
