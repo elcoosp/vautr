@@ -250,3 +250,15 @@ describe('conflict resolution queue (VTR-056)', () => {
     unsub();
   });
 });
+
+describe('lock / unlock lifecycle', () => {
+  it('unlock clears the read-only gate (VTRFIX-L: KeyUpdateRequired re-auth)', () => {
+    resetStore();
+    // Simulate the read-only state a stale key generation put the store in.
+    vaultStore.setState({ isReadOnly: true });
+    expect(state().isReadOnly).toBe(true);
+    vaultStore.getState().unlock();
+    expect(state().isLocked).toBe(false);
+    expect(state().isReadOnly).toBe(false);
+  });
+});
