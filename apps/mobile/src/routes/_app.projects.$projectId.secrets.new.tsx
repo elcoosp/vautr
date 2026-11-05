@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Alert, AlertDescription } from '../../components/ui/alert';
@@ -7,51 +7,39 @@ import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Text } from '../../components/ui/text';
-import { useToast } from '../../components/ui/toast';
-import { services } from '../../lib/client';
 
 export const Route = createFileRoute('/_app/projects/$projectId/secrets/new')({
   component: NewSecretScreen,
 });
 
+/**
+ * VTRFIX-SEC-C01: mobile secret creation is gated OFF. The linked native module
+ * does not yet expose item encryption, so there is no way to produce a
+ * `value_ciphertext` on device — uploading the raw value would break the
+ * zero-knowledge model. The form stays visible (so the UX gap is discoverable)
+ * but the submit action is disabled and nothing is ever sent to the server.
+ * Re-enable once the uniffi core exposes item encryption (follow-up VTR).
+ */
+const SECRET_CREATION_DISABLED = true;
+
 function NewSecretScreen() {
   const { projectId } = Route.useParams();
-  const router = useRouter();
-  const toast = useToast();
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const create = async () => {
-    if (!key.trim()) {
-      setError('Secret key is required.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      // In a zero-knowledge client the value would be encrypted locally with the
-      // DEK before upload; here we persist the value as provided (the server
-      // treats it as opaque ciphertext).
-      await services.api.createSecret({
-        project_uuid: projectId,
-        key: key.trim(),
-        value_ciphertext: value,
-      });
-      toast.show({ title: 'Secret created', description: key.trim() });
-      router.navigate({ to: '/projects/$projectId', params: { projectId } });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create secret.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <View className="gap-4">
       <Text variant="h3">New secret</Text>
-      <Card className="p-4 gap-4">
+
+      <Alert>
+        <AlertDescription>
+          Creating secrets on mobile is disabled until on-device encryption ships in the native
+          vault core — saving here would upload the value unencrypted. Use the web or desktop client
+          to add secrets to project {projectId} for now.
+        </AlertDescription>
+      </Alert>
+
+      <Card className="gap-4 p-4">
         <View className="gap-1.5">
           <Label htmlFor="secret-key">Key</Label>
           <Input
@@ -60,6 +48,7 @@ function NewSecretScreen() {
             onChangeText={setKey}
             placeholder="DATABASE_URL"
             autoCapitalize="characters"
+            editable={!SECRET_CREATION_DISABLED}
           />
         </View>
         <View className="gap-1.5">
@@ -70,18 +59,13 @@ function NewSecretScreen() {
             onChangeText={setValue}
             placeholder="Secret value"
             secureTextEntry
-            textContentType="oneTimeCode"
+            textContentType="newPassword"
+            editable={!SECRET_CREATION_DISABLED}
           />
         </View>
 
-        {error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        <Button className="self-end" disabled={busy} onPress={() => void create()}>
-          <ButtonText>{busy ? 'Saving…' : 'Save secret'}</ButtonText>
+        <Button className="self-end" disabled>
+          <ButtonText>Save secret (disabled)</ButtonText>
         </Button>
       </Card>
     </View>
