@@ -99,4 +99,66 @@ describe('POST /sync/push-batch', () => {
         expect(body.results[0].version).toBeGreaterThan(0);
       });
   });
+
+  // VTRFIX-BUG-C12: documents the OCC conflict result the SDK's conflict
+  // re-target logic depends on. The server answers a stale `target_version`
+  // with `status: "conflict"`, `version: null`, and the row it currently holds
+  // in `current_server_state` (sync.rs `PushResult`), so the SDK can re-base
+  // the pending item and land the local edit at `serverVersion + 1`.
+  it('returns a conflict result carrying the server row state for a stale target_version', async () => {
+    await provider
+      .uponReceiving('a push-batch item whose target_version is stale')
+      .withRequest({
+        method: 'POST',
+        path: '/sync/push-batch',
+        headers: {
+          Authorization: `Bearer ${PACT_SESSION_TOKEN}`,
+        },
+        body: {
+          items: MatchersV3.eachLike({ ...pushBatchItem, target_version: 2 }, 1),
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          results: MatchersV3.eachLike(
+            {
+              uuid: MatchersV3.string(pushBatchItem.uuid),
+              status: MatchersV3.string('conflict'),
+              version: null,
+              enc_key_gen: null,
+              updated_at: null,
+              current_server_state: MatchersV3.like({
+                version: MatchersV3.integer(3),
+                enc_key_gen: MatchersV3.integer(1),
+              }),
+            },
+            1,
+          ),
+        },
+      })
+      .executeTest(async (mockserver) => {
+        const base = (mockserver as unknown as { url: string }).url;
+        const stalePush = { ...pushBatchItem, target_version: 2 };
+        const res = await fetch(`${base}/sync/push-batch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${PACT_SESSION_TOKEN}`,
+          },
+          body: JSON.stringify({ items: [stalePush] }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          results: {
+            uuid: string;
+            status: string;
+            current_server_state: { version: number } | null;
+          }[];
+        };
+        expect(body.results[0]?.status).toBe('conflict');
+        expect(body.results[0]?.current_server_state?.version).toBe(3);
+      });
+  });
 });
