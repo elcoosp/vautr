@@ -152,11 +152,16 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
     .await;
     assert_eq!(status, 200, "register/start: {resp}");
     let sresp = decode_b64(resp["registration_response"].as_str().unwrap());
+    // VTRFIX (HIGH): echo the server public key distributed by register/start
+    // (the server verifies the echo in register/finish).
+    let server_pk = resp["server_public_key"]
+        .as_str()
+        .expect("register/start carries server_public_key")
+        .to_string();
 
     let (upload, _export) =
         opaque::client_register_finish(&cstate, &sresp, password, username.as_bytes())
             .expect("reg finish");
-    let server_pk = opaque::generate_server_setup().expect("setup pk");
     let (status, resp) = http(
         addr,
         "POST",
@@ -165,7 +170,7 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
         Some(json!({
             "username": username,
             "registration_finish": b64(&upload),
-            "server_public_key": b64(&server_pk),
+            "server_public_key": server_pk,
             "kdf_salt": b64(&[7u8; 16]),
             "svk_ciphertext_blob": b64(&[8u8; 48]),
             "svk_ciphertext_blob_rk": b64(&[9u8; 48]),
