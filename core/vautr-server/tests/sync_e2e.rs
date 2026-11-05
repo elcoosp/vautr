@@ -62,7 +62,9 @@ async fn http(
     body: Option<Value>,
 ) -> (u16, Value) {
     let mut stream = TcpStream::connect(addr).await.expect("connect");
-    let body_bytes = body.map(|b| serde_json::to_vec(&b).unwrap()).unwrap_or_default();
+    let body_bytes = body
+        .map(|b| serde_json::to_vec(&b).unwrap())
+        .unwrap_or_default();
     let mut req = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n");
     if let Some(t) = token {
         req.push_str(&format!("Authorization: Bearer {t}\r\n"));
@@ -117,10 +119,15 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
     .await;
     assert_eq!(status, 200);
     let sresp = decode_b64(resp["registration_response"].as_str().unwrap());
+    // VTRFIX (HIGH): echo the server public key distributed by register/start
+    // (the server verifies the echo in register/finish).
+    let server_pk = resp["server_public_key"]
+        .as_str()
+        .expect("register/start carries server_public_key")
+        .to_string();
     let (upload, _) =
         opaque::client_register_finish(&cstate, &sresp, password, username.as_bytes())
             .expect("reg finish");
-    let server_pk = opaque::generate_server_setup().expect("setup pk");
     let (status, _resp) = http(
         addr,
         "POST",
@@ -129,7 +136,7 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
         Some(json!({
             "username": username,
             "registration_finish": b64(&upload),
-            "server_public_key": b64(&server_pk),
+            "server_public_key": server_pk,
             "kdf_salt": b64(&[7u8; 16]),
             "svk_ciphertext_blob": b64(&[8u8; 48]),
             "svk_ciphertext_blob_rk": b64(&[9u8; 48]),
@@ -151,9 +158,8 @@ async fn login(addr: SocketAddr, username: &str, password: &[u8]) -> String {
     .await;
     assert_eq!(status, 200);
     let sresp = decode_b64(resp["login_response"].as_str().unwrap());
-    let (finish, _) =
-        opaque::client_login_finish(&cstate, &sresp, password, username.as_bytes())
-            .expect("login finish");
+    let (finish, _) = opaque::client_login_finish(&cstate, &sresp, password, username.as_bytes())
+        .expect("login finish");
     let (status, resp) = http(
         addr,
         "POST",
@@ -212,8 +218,18 @@ async fn sync_conflict_engine_e2e() {
     });
 
     // Register + login a user.
-    register(addr, "sync-alice@vautr.test", b"correct-horse-battery-staple").await;
-    let token = login(addr, "sync-alice@vautr.test", b"correct-horse-battery-staple").await;
+    register(
+        addr,
+        "sync-alice@vautr.test",
+        b"correct-horse-battery-staple",
+    )
+    .await;
+    let token = login(
+        addr,
+        "sync-alice@vautr.test",
+        b"correct-horse-battery-staple",
+    )
+    .await;
 
     let item = "11111111-1111-1111-1111-111111111111";
 
@@ -235,7 +251,9 @@ async fn sync_conflict_engine_e2e() {
     let r3 = push(addr, &token, item, 1, 1, Some(b"v2-ciphertext-stale")).await;
     assert_eq!(r3["status"].as_str().unwrap(), "conflict");
     assert_eq!(r3["version"].is_null(), true);
-    let srv = r3["current_server_state"].as_object().expect("server state");
+    let srv = r3["current_server_state"]
+        .as_object()
+        .expect("server state");
     assert_eq!(srv["version"].as_i64().unwrap(), 2);
 
     // 4. A correct OCC push (target_version 2) advances to version 3.
