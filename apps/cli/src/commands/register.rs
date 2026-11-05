@@ -45,23 +45,25 @@ pub async fn run(cfg: &mut Config, username: &str) -> CliResult<()> {
         .map_err(|e| CliError::Crypto(e.to_string()))?;
 
     // ── OPAQUE registration (api.md §3.1) ──────────────────────────
-    let (cstate, creq) = state::registration_start(&password);
+    let (cstate, creq) =
+        state::registration_start(&password).map_err(|e| CliError::Crypto(e.to_string()))?;
     let reg_start_b64 = b64::encode(&creq);
-    let reg_response_b64 = api.register_start(username, &reg_start_b64).await?;
+    let (reg_response_b64, server_public_key_b64) =
+        api.register_start(username, &reg_start_b64).await?;
     let reg_response = b64::decode(&reg_response_b64)?;
 
     let (upload, _export, _state) =
-        state::registration_finish(&cstate, &reg_response, &password, username.as_bytes());
+        state::registration_finish(&cstate, &reg_response, &password, username.as_bytes())
+            .map_err(|e| CliError::Crypto(e.to_string()))?;
 
-    // The server ignores the exact server public key on register/finish, so we
-    // pass a freshly generated one (matches the wire contract).
-    let server_pk = vautr_crypto::opaque::generate_server_setup()
-        .map_err(|e| CliError::Crypto(e.to_string()))?;
-
+    // VTRFIX: echo the SERVER's public key from register/start. The old code
+    // generated a client-side OPAQUE `ServerSetup` and sent its serialization
+    // — which contains the OPRF PRIVATE KEY — under a field named
+    // `server_public_key`. The server now rejects anything but its own key.
     api.register_finish(
         username,
         &b64::encode(&upload),
-        &b64::encode(&server_pk),
+        &server_public_key_b64,
         &b64::encode(&kdf_salt),
         &b64::encode(&svk_wrapped),
         &b64::encode(&svk_rk_wrapped),
