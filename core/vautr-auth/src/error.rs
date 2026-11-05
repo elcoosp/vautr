@@ -11,6 +11,10 @@ pub enum AuthError {
     InvalidCredentials,
     #[error("biometric unlock unavailable")]
     BiometricUnavailable,
+    /// A malformed/mis-sequenced OPAQUE or server response (server-controlled
+    /// input failed client-side protocol validation). Never panics the client.
+    #[error("protocol error: {0}")]
+    Protocol(String),
     #[error("keystore error: {0}")]
     KeystoreError(String),
     /// MP verification succeeded but the account has a registered WebAuthn
