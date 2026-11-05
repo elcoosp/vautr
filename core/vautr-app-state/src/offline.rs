@@ -59,7 +59,10 @@ impl OfflineQueue {
 
     /// Remove and return the front entry if it matches `predicate`. Used by
     /// the flush loop to advance the queue only after a successful apply.
-    pub fn pop_front_if<F: FnOnce(&QueuedMutation) -> bool>(&self, predicate: F) -> Option<QueuedMutation> {
+    pub fn pop_front_if<F: FnOnce(&QueuedMutation) -> bool>(
+        &self,
+        predicate: F,
+    ) -> Option<QueuedMutation> {
         let mut g = self.queue.lock().unwrap();
         if let Some(front) = g.front() {
             if predicate(front) {
