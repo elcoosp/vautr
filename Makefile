@@ -19,14 +19,17 @@ help:
 	@echo "  prepare-wasm      Build all WASM crypto artifacts (web + extension)"
 	@echo "  check-wasm        Fail if any prebuilt WASM artifact is missing"
 
-# Mobile: build the host + ios-sim FFI lib, regenerate Swift/Kotlin bindings, then
-# install JS deps. The .so cross-compile is a separate step (see vautr-mobile-uniffi
+# Mobile: build the host FFI lib, regenerate Swift/Kotlin bindings, then
+# install JS deps. The ios-sim cross-compile is Darwin-only (it fails on
+# Linux); the .so cross-compile is a separate step (see vautr-mobile-uniffi
 # skill) because it needs the Android NDK.
 mobile-bootstrap:
 	$(CARGO) build -p vautr-ffi
+ifeq ($(shell uname),Darwin)
 	$(CARGO) build -p vautr-ffi --target aarch64-apple-ios-sim --release
+endif
 	bash scripts/gen-ffi-bindings.sh
-	cd apps/mobile && $(PNPM) install
+	$(PNPM) install
 
 web-bootstrap:
 	bash scripts/prepare-wasm.sh
