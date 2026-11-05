@@ -2,7 +2,9 @@
 //! Spec: docs/architecture/db-contract.md §5 — save_item_txn,
 //! apply_sync_batch_txn, persist_dashmap_txn, reaper_reset_ttl_txn.
 
-use crate::entity::{item_overview, item_payload, local_blacklist, quarantine, sync_meta};
+use crate::entity::{
+    item_overview, item_payload, local_blacklist, pending_delete, quarantine, sync_meta,
+};
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
 use sea_orm::{DatabaseTransaction, DbErr, EntityTrait, Set};
@@ -133,10 +135,13 @@ pub async fn apply_sync_batch_txn(
         .filter(sync_meta::Column::Id.eq(1))
         .exec(txn)
         .await?;
-    debug_assert!(
-        res.rows_affected == 1,
-        "sync_meta singleton row missing — migration failed to seed it"
-    );
+    // VTRFIX: fail loudly instead of a release-mode silent no-op — a missing
+    // singleton means the cursor/min_gen write was dropped entirely.
+    if res.rows_affected != 1 {
+        return Err(DbErr::Custom(
+            "sync_meta singleton row missing (apply_sync_batch_txn)".into(),
+        ));
+    }
 
     Ok(())
 }
@@ -328,5 +333,59 @@ pub async fn store_svk_rk_blob(db: &DatabaseConnection, blob: &[u8]) -> Result<(
          ON CONFLICT(id) DO UPDATE SET svk_ciphertext_blob = excluded.svk_ciphertext_blob"
     );
     db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
+// --- Pending deletes (VTRFIX: local delete → server tombstone round-trip) ---
+
+/// Record a tombstone intent for `uuid` inside the caller's transaction, so a
+/// local delete is pushed to the server on the next flush even if the process
+/// crashes before it. The row stores the OCC target (`version`) and the item's
+/// key generation at delete time.
+pub async fn record_pending_delete_txn(
+    txn: &DatabaseTransaction,
+    uuid: &str,
+    version: i64,
+    enc_key_gen: i64,
+) -> Result<(), DbErr> {
+    pending_delete::Entity::insert(pending_delete::ActiveModel {
+        uuid: Set(uuid.to_string()),
+        version: Set(version),
+        enc_key_gen: Set(enc_key_gen),
+    })
+    .on_conflict(
+        OnConflict::column(pending_delete::Column::Uuid)
+            .update_columns([
+                pending_delete::Column::Version,
+                pending_delete::Column::EncKeyGen,
+            ])
+            .to_owned(),
+    )
+    .exec(txn)
+    .await?;
+    Ok(())
+}
+
+/// List all pending tombstones as `(uuid, version, enc_key_gen)`.
+pub async fn list_pending_deletes(
+    db: &DatabaseConnection,
+) -> Result<Vec<(String, i64, i64)>, DbErr> {
+    let rows = pending_delete::Entity::find()
+        .into_tuple::<(String, i64, i64)>()
+        .all(db)
+        .await?;
+    Ok(rows)
+}
+
+/// Remove flushed tombstones. Called only after the transport reports every
+/// corresponding push as `Applied` (or the item already tombstoned server-side).
+pub async fn clear_pending_deletes(db: &DatabaseConnection, uuids: &[String]) -> Result<(), DbErr> {
+    if uuids.is_empty() {
+        return Ok(());
+    }
+    pending_delete::Entity::delete_many()
+        .filter(pending_delete::Column::Uuid.is_in(uuids.iter().cloned()))
+        .exec(db)
+        .await?;
     Ok(())
 }
