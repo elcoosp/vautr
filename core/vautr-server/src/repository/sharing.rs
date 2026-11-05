@@ -161,7 +161,6 @@ impl Repository {
         Ok(row.is_some())
     }
 
-
     /// VTRFIX-SEC-H06: return the owning user for an item UUID, or `None`.
     ///
     /// Ownership is not stored on `items` (which only has uuid+user_id and is
@@ -192,11 +191,10 @@ impl Repository {
         }
         // 3. User-scoped item: if exactly one user holds this uuid, treat them
         //    as the owner. If multiple users hold the uuid, refuse (ambiguous).
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT user_id FROM items WHERE uuid = ?")
-                .bind(uuid)
-                .fetch_all(&self.pool)
-                .await?;
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT user_id FROM items WHERE uuid = ?")
+            .bind(uuid)
+            .fetch_all(&self.pool)
+            .await?;
         match rows.as_slice() {
             [single] => Ok(Some(single.0.clone())),
             _ => Ok(None),
