@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { login, register } from '@/lib/client';
+import { login, register, setPendingEmergencyKit } from '@/lib/client';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
@@ -41,10 +41,10 @@ function RegisterPage() {
     try {
       const { recoveryMnemonic } = await register(username.trim(), password);
       // Hand the freshly-generated Recovery Key to the onboarding flow so it can
-      // be shown once. Stored in sessionStorage (cleared on tab close) — never
-      // persisted in plaintext; the durable copy is KEK-sealed in IndexedDB.
-      // VTRFIX-SEC-M24: mnemonic held in memory only — no sessionStorage persistence.
-      (globalThis as { __vautrPendingKit?: string }).__vautrPendingKit = recoveryMnemonic;
+      // be shown once. In-memory global (cleared when consumed) — never persisted;
+      // the durable copy is KEK-sealed in IndexedDB.
+      // VTRFIX-SEC-M24: mnemonic held in memory only.
+      setPendingEmergencyKit(recoveryMnemonic);
       await login(username.trim(), password);
       void navigate({ to: '/dashboard' });
     } catch (err) {
