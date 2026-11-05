@@ -96,7 +96,17 @@ pub(crate) async fn sync_pull(
     Query(q): Query<PullQuery>,
     auth: Bearer,
 ) -> Result<Json<PullResp>, ApiError> {
-    let user_id = auth_any(&st.repo, &auth.0).await?;
+    let caller = auth_any(&st.repo, &auth.0).await?;
+    // VTRFIX (HIGH): machine-account tokens must present a read scope. There is
+    // no dedicated sync scope in `VALID_SCOPES`, so any read scope the token was
+    // minted with grants per-user metadata pulls. A project-bound token is
+    // intentionally allowed here: /sync/pull only ever returns the owning
+    // user's own item metadata (per-user rows keyed by `user_id`), so it cannot
+    // expose another tenant's data.
+    if caller.is_machine_token() {
+        caller.require_any_scope(&["secrets:read", "projects:read"])?;
+    }
+    let user_id = caller.user_id;
     let min_gen = st
         .repo
         .min_enc_key_gen(&user_id)
@@ -296,9 +306,11 @@ pub(crate) async fn sync_push_batch(
             // A push that cleared a prior tombstone is a successful write; also
             // notify clients so they re-sync to fetch the recovered payload.
             UpsertOutcome::Recovered => {
-                st.events.publish(
-                    crate::handlers::events::VaultEvent::ItemRecovered { user_id: user_id.clone(), uuid: item.uuid.parse().unwrap_or_default() },
-                );
+                st.events
+                    .publish(crate::handlers::events::VaultEvent::ItemRecovered {
+                        user_id: user_id.clone(),
+                        uuid: item.uuid.parse().unwrap_or_default(),
+                    });
                 let row = st
                     .repo
                     .get_item(&item.uuid, &user_id)
