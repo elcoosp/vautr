@@ -32,7 +32,9 @@ fn make_manifest(total_size: u64) -> FileManifest {
 
 async fn roundtrip(plaintext: &[u8]) -> Result<()> {
     let manifest = make_manifest(plaintext.len() as u64);
-    manifest.validate().map_err(|_| FileError::ManifestGeometry("validate".into()))?;
+    manifest
+        .validate()
+        .map_err(|_| FileError::ManifestGeometry("validate".into()))?;
     let mut ct = Vec::new();
     encrypt_file_stream(Cursor::new(plaintext), &mut ct, &fek(), &manifest).await?;
     let mut pt = Vec::new();
@@ -94,7 +96,10 @@ async fn t4_resume_deterministic_ciphertext() {
         .await
         .unwrap();
 
-    assert_eq!(ct1, ct2, "same plaintext + manifest => byte-identical ciphertext (resumable)");
+    assert_eq!(
+        ct1, ct2,
+        "same plaintext + manifest => byte-identical ciphertext (resumable)"
+    );
 }
 
 #[tokio::test]
@@ -164,4 +169,3 @@ proptest! {
 }
 
 // `tokio` is pulled in via dev-dependency for the async test runtime (see #[tokio::test]).
-
