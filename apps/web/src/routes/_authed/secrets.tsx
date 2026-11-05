@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { performAction, release, reveal } from '@/lib/client';
+import { getClient } from '@/lib/client';
 import { MlpApiError, mlp } from '@/lib/mlp';
 
 export const Route = createFileRoute('/_authed/secrets')({
@@ -72,24 +72,22 @@ function SecretsManagerPage() {
     [rows, q],
   );
 
-  // ZK reveal: the plaintext is decrypted in the wasm `WebClient` behind an
-  // opaque handle and copied to the clipboard via `perform_action`; it never
-  // enters React state (data.md §1 rule 4 / VTR-062).
-  const onReveal = async (uuid: string) => {
+  // ZK reveal (VTRFIX): fetch the server-held `value_ciphertext`, decrypt it
+  // locally with the vault DEK via the SDK, and copy the plaintext straight to
+  // the clipboard. MLP secrets are encrypted with the vault DEK, so the vault
+  // `reveal()` (IndexedDB payload) path can never resolve them (data.md §1 / VTR-062).
+  const onReveal = async (projectUuid: string, secretUuid: string) => {
     try {
-      const handle = await reveal(uuid);
-      try {
-        await performAction({ type: 'CopyToClipboard', handle });
-        setCopied((prev) => ({ ...prev, [uuid]: true }));
-        window.setTimeout(() => setCopied((prev) => ({ ...prev, [uuid]: false })), 1500);
-        setRevealError((prev) => ({ ...prev, [uuid]: '' }));
-      } finally {
-        await release(handle);
-      }
+      const res = await mlp.revealSecret(secretUuid);
+      const plaintext = await getClient().decryptSecretValue(projectUuid, res.value_ciphertext);
+      await navigator.clipboard.writeText(plaintext);
+      setCopied((prev) => ({ ...prev, [secretUuid]: true }));
+      window.setTimeout(() => setCopied((prev) => ({ ...prev, [secretUuid]: false })), 1500);
+      setRevealError((prev) => ({ ...prev, [secretUuid]: '' }));
     } catch (err) {
       setRevealError((prev) => ({
         ...prev,
-        [uuid]: err instanceof MlpApiError ? err.message : String(err),
+        [secretUuid]: err instanceof MlpApiError ? err.message : String(err),
       }));
     }
   };
@@ -178,7 +176,7 @@ function SecretsManagerPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void onReveal(secret.uuid)}
+                        onClick={() => void onReveal(project.uuid, secret.uuid)}
                         className="vault-btn-press"
                       >
                         {copied[secret.uuid] ? (
