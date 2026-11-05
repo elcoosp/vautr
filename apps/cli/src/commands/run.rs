@@ -7,6 +7,8 @@
 
 use std::process::Command;
 
+use zeroize::Zeroizing;
+
 use crate::api::Api;
 use crate::config::Config;
 use crate::error::CliResult;
@@ -16,7 +18,8 @@ pub async fn run(cfg: &Config, api: &Api, command: &[String]) -> CliResult<()> {
     let token = crate::commands::common::session_token(cfg)?;
     let projects = api.list_projects(token).await?;
 
-    let mut injected: Vec<(String, String)> = Vec::new();
+    // Plaintexts are held in Zeroizing guards so they are wiped on drop.
+    let mut injected: Vec<(String, Zeroizing<String>)> = Vec::new();
     for p in &projects {
         let secrets = api.list_secrets(token, &p.uuid).await?;
         for s in &secrets {
@@ -43,9 +46,12 @@ pub async fn run(cfg: &Config, api: &Api, command: &[String]) -> CliResult<()> {
     let mut cmd = Command::new(prog);
     cmd.args(&command[1..]);
     for (k, v) in &injected {
-        cmd.env(k, v);
+        cmd.env(k, v.as_str());
     }
 
+    // Drop (and thereby zeroize) our copies of the plaintexts before waiting
+    // on the child. The child's environment inevitably holds its own copies.
+    drop(injected);
     let status = cmd.status().map_err(crate::error::CliError::Io)?;
     if !status.success() {
         let code = status.code().unwrap_or(1);
