@@ -82,6 +82,15 @@ impl HandleStore {
     }
 
     /// Spawn the reaper loop using `setInterval` (wasm has no threads).
+    ///
+    /// # Leak note (accepted)
+    /// The `Closure` and its `setInterval` timer are intentionally leaked
+    /// (`closure.forget()`) for the lifetime of the page: there is no way to
+    /// cancel the interval without keeping the id, and the closure holds an
+    /// `Rc` to the handle table. This is safe ONLY because a `WebClient` is
+    /// expected to be **long-lived** (one instance per service worker/page).
+    /// Creating and dropping many `WebClient`s accumulates one reaper closure
+    /// per instance — do not do that.
     fn spawn_reaper(&self) {
         let handles = self.handles.clone();
         let closure = Closure::wrap(Box::new(move || {
@@ -109,6 +118,11 @@ extern "C" {
 
 /// Web-facing crypto-only client. Holds the unlocked vault key (SVK) + derived
 /// DEK, and a handle store for revealed secrets.
+///
+/// # Lifetime note (accepted)
+/// Each instance spawns a leaked reaper `Closure` + `setInterval` timer (see
+/// [`HandleStore::spawn_reaper`]). A `WebClient` must therefore be **long-lived**
+/// — create one per page/worker and reuse it; do not churn instances.
 #[wasm_bindgen]
 pub struct WebClient {
     svk: Rc<RefCell<Option<Zeroizing<[u8; 32]>>>>,
@@ -179,6 +193,10 @@ impl WebClient {
     /// serialized action (`{"CopyToClipboard":{"handle":N}}` or
     /// `{"Autofill":{"handle":N}}`). The handler receives the plaintext secret
     /// directly and is responsible for zeroizing it after use.
+    ///
+    /// A failing handler (JS exception / rejected call) is surfaced as `Err`
+    /// instead of being silently swallowed, so the caller does not report
+    /// success for an action that never happened.
     pub fn perform_action(&self, action_json: String, handle: u32) -> Result<(), JsValue> {
         let secret = self
             .store
@@ -190,12 +208,14 @@ impl WebClient {
             .clone()
             .ok_or_else(|| JsValue::from_str("no platform action handler registered"))?;
         let secret = String::from_utf8_lossy(&secret).into_owned();
-        let _ = handler.call2(
-            &JsValue::NULL,
-            &JsValue::from_str(&action_json),
-            &JsValue::from_str(&secret),
-        );
-        Ok(())
+        handler
+            .call2(
+                &JsValue::NULL,
+                &JsValue::from_str(&action_json),
+                &JsValue::from_str(&secret),
+            )
+            .map(|_| ())
+            .map_err(|e| JsValue::from_str(&format!("platform action handler failed: {e:?}")))
     }
 
     /// Explicitly release a handle (zeroizes the in-memory secret).
