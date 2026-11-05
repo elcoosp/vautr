@@ -4,8 +4,16 @@
 //! These wrappers drive `vautr_crypto::opaque` so the (async) HTTP layer only
 //! ferries byte blobs between client and server.
 
+use vautr_crypto::error::CryptoError;
 use vautr_crypto::opaque;
 use zeroize::Zeroizing;
+
+use crate::error::AuthError;
+
+/// Map a raw OPAQUE/crypto failure to the auth-level protocol error.
+fn protocol_err(context: &str, e: CryptoError) -> AuthError {
+    AuthError::Protocol(format!("{context}: {e}"))
+}
 
 /// Client-side registration flow state (api.md §3.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,56 +32,72 @@ pub enum LoginState {
 }
 
 /// Begin OPAQUE registration. Returns `(client_state_bytes, message_to_server)`.
-pub fn registration_start(password: &str) -> (Vec<u8>, Vec<u8>) {
-    let (msg, state) =
-        opaque::client_register_start(password.as_bytes()).expect("opaque registration start");
-    (state, msg)
+///
+/// # Errors
+/// Returns [`AuthError::Protocol`] instead of panicking when the OPAQUE
+/// handshake machinery rejects the input (server-controlled data must never
+/// panic the client).
+pub fn registration_start(password: &str) -> Result<(Vec<u8>, Vec<u8>), AuthError> {
+    let (msg, state) = opaque::client_register_start(password.as_bytes())
+        .map_err(|e| protocol_err("opaque registration start", e))?;
+    Ok((state, msg))
 }
 
 /// Finish OPAQUE registration after the server responds.
 /// Returns `(registration_upload, export_key, client_state)`.
+///
+/// # Errors
+/// Returns [`AuthError::Protocol`] on a malformed server response.
 pub fn registration_finish(
     client_state: &[u8],
     server_response: &[u8],
     password: &str,
     credential_identifier: &[u8],
-) -> (Vec<u8>, Vec<u8>, RegistrationState) {
+) -> Result<(Vec<u8>, Vec<u8>, RegistrationState), AuthError> {
     let (upload, export) = opaque::client_register_finish(
         client_state,
         server_response,
         password.as_bytes(),
         credential_identifier,
     )
-    .expect("opaque registration finish");
-    (upload, export, RegistrationState::Complete)
+    .map_err(|e| protocol_err("opaque registration finish", e))?;
+    Ok((upload, export, RegistrationState::Complete))
 }
 
 /// Begin OPAQUE login. Returns `(client_state_bytes, message_to_server)`.
-pub fn login_start(password: &str) -> (Vec<u8>, Vec<u8>) {
-    let (msg, state) = opaque::client_login_start(password.as_bytes()).expect("opaque login start");
-    (state, msg)
+///
+/// # Errors
+/// Returns [`AuthError::Protocol`] instead of panicking on bad input.
+pub fn login_start(password: &str) -> Result<(Vec<u8>, Vec<u8>), AuthError> {
+    let (msg, state) = opaque::client_login_start(password.as_bytes())
+        .map_err(|e| protocol_err("opaque login start", e))?;
+    Ok((state, msg))
 }
 
 /// Finish OPAQUE login after the server responds.
 /// Returns `(login_upload, session_key, client_state)`.
+///
+/// # Errors
+/// Returns [`AuthError::Protocol`] on a malformed/tampered server response
+/// (including an OPAQUE authentication failure).
 pub fn login_finish(
     client_state: &[u8],
     server_response: &[u8],
     password: &str,
     credential_identifier: &[u8],
-) -> (Vec<u8>, Zeroizing<Vec<u8>>, LoginState) {
+) -> Result<(Vec<u8>, Zeroizing<Vec<u8>>, LoginState), AuthError> {
     let (upload, session_key) = opaque::client_login_finish(
         client_state,
         server_response,
         password.as_bytes(),
         credential_identifier,
     )
-    .expect("opaque login finish");
-    (
+    .map_err(|e| protocol_err("opaque login finish", e))?;
+    Ok((
         upload,
         Zeroizing::new(session_key),
         LoginState::Authenticated,
-    )
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -136,49 +160,53 @@ pub struct LoginFinishResult {
 }
 
 /// Begin OPAQUE registration via the structured API.
-pub fn registration_start_struct(p: RegistrationStartParams) -> RegistrationStartResult {
-    let (client_state, message) = registration_start(&p.password);
-    RegistrationStartResult {
+pub fn registration_start_struct(
+    p: RegistrationStartParams,
+) -> Result<RegistrationStartResult, AuthError> {
+    let (client_state, message) = registration_start(&p.password)?;
+    Ok(RegistrationStartResult {
         client_state,
         message,
-    }
+    })
 }
 
 /// Finish OPAQUE registration via the structured API.
-pub fn registration_finish_struct(p: RegistrationFinishParams) -> RegistrationFinishResult {
+pub fn registration_finish_struct(
+    p: RegistrationFinishParams,
+) -> Result<RegistrationFinishResult, AuthError> {
     let (upload, export_key, state) = registration_finish(
         &p.client_state,
         &p.server_response,
         &p.password,
         &p.credential_identifier,
-    );
-    RegistrationFinishResult {
+    )?;
+    Ok(RegistrationFinishResult {
         upload,
         export_key,
         state,
-    }
+    })
 }
 
 /// Begin OPAQUE login via the structured API.
-pub fn login_start_struct(p: LoginStartParams) -> LoginStartResult {
-    let (client_state, message) = login_start(&p.password);
-    LoginStartResult {
+pub fn login_start_struct(p: LoginStartParams) -> Result<LoginStartResult, AuthError> {
+    let (client_state, message) = login_start(&p.password)?;
+    Ok(LoginStartResult {
         client_state,
         message,
-    }
+    })
 }
 
 /// Finish OPAQUE login via the structured API.
-pub fn login_finish_struct(p: LoginFinishParams) -> LoginFinishResult {
+pub fn login_finish_struct(p: LoginFinishParams) -> Result<LoginFinishResult, AuthError> {
     let (upload, session_key, state) = login_finish(
         &p.client_state,
         &p.server_response,
         &p.password,
         &p.credential_identifier,
-    );
-    LoginFinishResult {
+    )?;
+    Ok(LoginFinishResult {
         upload,
         session_key,
         state,
-    }
+    })
 }
