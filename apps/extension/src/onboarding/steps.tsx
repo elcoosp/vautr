@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { renderKitHtml } from '@/lib/kit';
+import { renderKitHtml, takePendingEmergencyKit } from '@/lib/kit';
 import { getPopupMlpClient } from '@/popup/popupClient';
 import { usePopupStore } from '@/popup/store';
 
@@ -75,8 +75,10 @@ function EmergencyKitStep() {
   const setActiveTab = usePopupStore((s) => s.setActiveTab);
   const { next } = useOnboarding();
   const [revealed, setRevealed] = useState(false);
-  const mnemonic =
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('vautr:pending-kit') : null;
+  // VTRFIX-E (port of web fix D): the pending kit is handed over in-memory via
+  // `setPendingEmergencyKit()` at registration (VTRFIX-SEC-M24: never
+  // sessionStorage). Take-and-clear it exactly once, on mount.
+  const [mnemonic] = useState(() => takePendingEmergencyKit());
   const words = mnemonic ? mnemonic.split(/\s+/).filter(Boolean) : [];
 
   const download = () => {
@@ -90,7 +92,6 @@ function EmergencyKitStep() {
     a.download = 'vautr-emergency-kit.html';
     a.click();
     URL.revokeObjectURL(url);
-    sessionStorage.removeItem('vautr:pending-kit');
   };
 
   return (
@@ -137,13 +138,7 @@ function EmergencyKitStep() {
       <Button variant="outline" onClick={() => setActiveTab('mfa')} className="w-full">
         Open MFA &amp; security
       </Button>
-      <Button
-        onClick={() => {
-          sessionStorage.removeItem('vautr:pending-kit');
-          next();
-        }}
-        className="w-full"
-      >
+      <Button onClick={() => next()} className="w-full">
         Continue
       </Button>
     </div>
@@ -179,10 +174,17 @@ function DoneStep() {
 }
 
 export const onboardingSteps: OnboardingStep[] = [
-  { id: 'welcome', type: 'CUSTOM_COMPONENT', component: WelcomeStep, nextStep: 'create-vault' },
+  {
+    id: 'welcome',
+    type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'welcome' },
+    component: WelcomeStep,
+    nextStep: 'create-vault',
+  },
   {
     id: 'create-vault',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'create-vault' },
     component: CreateVaultStep,
     previousStep: 'welcome',
     nextStep: 'emergency-kit',
@@ -190,6 +192,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'emergency-kit',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'emergency-kit' },
     component: EmergencyKitStep,
     previousStep: 'create-vault',
     nextStep: 'add-secret',
@@ -199,6 +202,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'add-secret',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'add-secret' },
     component: AddSecretStep,
     previousStep: 'emergency-kit',
     nextStep: 'done',
@@ -208,8 +212,18 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'done',
     type: 'CUSTOM_COMPONENT',
+    payload: { componentKey: 'done' },
     component: DoneStep,
     previousStep: 'add-secret',
     nextStep: null,
   },
 ];
+
+/** Maps each onboarding step's `componentKey` to its React component. */
+export const onboardingComponents = {
+  welcome: WelcomeStep,
+  'create-vault': CreateVaultStep,
+  'emergency-kit': EmergencyKitStep,
+  'add-secret': AddSecretStep,
+  done: DoneStep,
+};
