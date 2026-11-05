@@ -15,7 +15,8 @@ services:
       dockerfile: Dockerfile
       args:
         FEATURES: ${VAUTR_FEATURES:-}
-        VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:vautr.db}
+        # VTRFIX: VAUTR_DB_URL is runtime env ONLY — it used to be passed as a
+        # build arg and baked into the image config (credential leak).
     image: vautr/server:latest
     restart: unless-stopped
     # VTRFIX-SEC-M14: do NOT publish plaintext 8080 in prod. Caddy fronts this
@@ -26,10 +27,18 @@ services:
     environment:
       VAUTR_DB_URL: ${VAUTR_DB_URL:-sqlite:/data/vautr.db}
       RUST_LOG: ${RUST_LOG:-info}
+      # OPAQUE server setup provisioned out-of-band (the prod server fails
+      # closed without it). Moved here from the backup sidecar, where it was
+      # dead config — litestream never reads this variable.
+      VAUTR_OPAQUE_SETUP_FILE: /run/secrets/opaque-setup.bin
     volumes:
       - serverdata:/data
+      - ./secrets/opaque-setup.bin:/run/secrets/opaque-setup.bin:ro
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/account/status"]
+      # VTRFIX (HIGH): /account/status is auth-gated (401 without a bearer),
+      # which curl -f treats as failure — the container was permanently
+      # unhealthy and caddy never started. Probe /health instead.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -43,16 +52,18 @@ services:
     restart: unless-stopped
     profiles: ["backup"]
     command: ["replicate"]
+    # VTRFIX (HIGH): this service had a DUPLICATE `volumes:` key (the second one
+    # silently overwrote the first) and the S3 credentials were indented under
+    # `volumes:` instead of `environment:`. Restructured into a single
+    # environment map + a single volumes list.
     volumes:
       - serverdata:/data:ro
       - ./deploy/litestream.yml:/etc/litestream.yml:ro
     environment:
-      - VAUTR_LITESTREAM_URL=${VAUTR_LITESTREAM_URL:-}
-      - VAUTR_OPAQUE_SETUP_FILE=/run/secrets/opaque-setup.bin
-    volumes:
-      - ./secrets/opaque-setup.bin:/run/secrets/opaque-setup.bin:ro
-      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID:-}
-      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY:-}
+      LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+      # Replica target consumed by deploy/litestream.yml (${VAUTR_LITESTREAM_URL}).
+      VAUTR_LITESTREAM_URL: ${VAUTR_LITESTREAM_URL:-}
     depends_on:
       server:
         condition: service_healthy
