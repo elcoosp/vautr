@@ -60,7 +60,13 @@ async fn edit_secret(
         .ok_or_else(|| CliError::MissingProjectKey(secret.project_uuid.clone()))?;
 
     let value_ct = match value {
-        Some(v) => Some(crypto::encrypt_value(&key_b64, v.as_bytes())?),
+        Some(v) => {
+            // VTRFIX-SEC-M: the secret was passed on the command line and is
+            // visible in the process list (ps, /proc/*/cmdline) and shell
+            // history. Warn loudly; stdin remains the recommended path.
+            eprintln!("warning: --value exposes the secret in the process list; prefer stdin");
+            Some(crypto::encrypt_value(&key_b64, v.as_bytes())?)
+        }
         None => None,
     };
 
