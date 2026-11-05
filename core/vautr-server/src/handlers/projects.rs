@@ -488,15 +488,26 @@ async fn list_projects(
     auth: Bearer,
 ) -> Result<Json<ProjectListResp>, ApiError> {
     let caller = auth_any(&st.repo, &auth.0).await?;
-    let rows = st
+    // VTRFIX (HIGH): machine-account tokens must carry `projects:read`, and a
+    // token bound to a project only ever sees that project. User sessions are
+    // unaffected (the scope check is a no-op and no binding exists).
+    caller.require_scope("projects:read")?;
+    let mut rows = st
         .repo
-        .list_projects_for_user(&caller)
+        .list_projects_for_user(&caller.user_id)
         .await
         .map_err(internal_err)?;
+    if let Some(bound) = caller
+        .token
+        .as_ref()
+        .and_then(|t| t.project_uuid.as_deref())
+    {
+        rows.retain(|p| p.id == bound);
+    }
     let mut projects = Vec::with_capacity(rows.len());
     for p in rows {
-        let role = caller_role_in_project(&st, &p, &caller).await?;
-        let perm = effective_perm(&st, &p, &caller).await?;
+        let role = caller_role_in_project(&st, &p, &caller.user_id).await?;
+        let perm = effective_perm(&st, &p, &caller.user_id).await?;
         projects.push(project_resp(&p, role, perm));
     }
     Ok(Json(ProjectListResp { projects }))
