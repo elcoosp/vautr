@@ -149,11 +149,16 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
     .await;
     assert_eq!(status, 200, "register/start: {resp}");
     let sresp = decode_b64(resp["registration_response"].as_str().unwrap());
+    // VTRFIX (HIGH): echo the server public key distributed by register/start
+    // (the server verifies the echo in register/finish).
+    let server_pk = resp["server_public_key"]
+        .as_str()
+        .expect("register/start carries server_public_key")
+        .to_string();
 
     let (upload, _export) =
         opaque::client_register_finish(&cstate, &sresp, password, username.as_bytes())
             .expect("reg finish");
-    let server_pk = opaque::generate_server_setup().expect("setup pk");
     let (status, resp) = http(
         addr,
         "POST",
@@ -162,7 +167,7 @@ async fn register(addr: SocketAddr, username: &str, password: &[u8]) {
         Some(json!({
             "username": username,
             "registration_finish": b64(&upload),
-            "server_public_key": b64(&server_pk),
+            "server_public_key": server_pk,
             "kdf_salt": b64(&[7u8; 16]),
             "svk_ciphertext_blob": b64(&[8u8; 48]),
             "svk_ciphertext_blob_rk": b64(&[9u8; 48]),
@@ -260,8 +265,7 @@ async fn shares_live_server_inbox_accept_e2e() {
     )
     .await;
     assert_eq!(status, 201, "create secret: {resp}");
-    let item_uuid =
-        Uuid::parse_str(resp["uuid"].as_str().unwrap()).expect("secret item uuid");
+    let item_uuid = Uuid::parse_str(resp["uuid"].as_str().unwrap()).expect("secret item uuid");
 
     // 3. Recipient publishes their sharing public key; sender fetches it.
     let recip_keypair = SharingKeyPair::generate();
@@ -340,7 +344,10 @@ async fn shares_live_server_inbox_accept_e2e() {
             .as_str()
             .unwrap()
             .to_string(),
-        encrypted_payload: incoming_json["encrypted_payload"].as_str().unwrap().to_string(),
+        encrypted_payload: incoming_json["encrypted_payload"]
+            .as_str()
+            .unwrap()
+            .to_string(),
     };
 
     // 6. Recipient decapsulates + decrypts -> recovers the original plaintext.
