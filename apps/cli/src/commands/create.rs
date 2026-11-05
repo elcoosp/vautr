@@ -74,7 +74,13 @@ async fn create_secret(
         .ok_or_else(|| CliError::MissingProjectKey(project_uuid.to_string()))?;
 
     let plaintext = match value {
-        Some(v) => v.into_bytes(),
+        Some(v) => {
+            // VTRFIX-SEC-M: the secret was passed on the command line and is
+            // visible in the process list (ps, /proc/*/cmdline) and shell
+            // history. Warn loudly; stdin remains the recommended path.
+            eprintln!("warning: --value exposes the secret in the process list; prefer stdin");
+            v.into_bytes()
+        }
         None => {
             let mut buf = Vec::new();
             std::io::stdin()
