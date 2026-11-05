@@ -414,13 +414,7 @@ pub(crate) async fn assert_verify(
             sk.update_credential(&res);
             let new_serialized = serde_json::to_vec(&sk).map_err(internal)?;
             st.repo
-                .update_webauthn_counter(
-                    &user_id,
-                    &cred_id,
-                    new_counter,
-                    &new_serialized,
-                    now,
-                )
+                .update_webauthn_counter(&user_id, &cred_id, new_counter, &new_serialized, now)
                 .await
                 .map_err(internal)?;
         }
