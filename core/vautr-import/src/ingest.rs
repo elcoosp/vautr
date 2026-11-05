@@ -72,7 +72,8 @@ pub async fn ingest(
 
     let overviews: Vec<item_overview::ActiveModel> =
         items.iter().map(|e| e.overview.clone()).collect();
-    let payloads: Vec<item_payload::ActiveModel> = items.iter().map(|e| e.payload.clone()).collect();
+    let payloads: Vec<item_payload::ActiveModel> =
+        items.iter().map(|e| e.payload.clone()).collect();
 
     // VTRFIX-BUG-M03: the entire drop→insert→recreate→rebuild sequence runs
     // inside ONE transaction. Previously DROP and RECREATE were separate
