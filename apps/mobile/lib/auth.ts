@@ -300,9 +300,20 @@ export class VautrAuth {
     return this.store.getUsername();
   }
 
-  /** Clear the local session (does not revoke the server token). */
+  /**
+   * Clear the local session (does not revoke the server token).
+   * VTRFIX-SEC-L07: wipe EVERY `vautr.*` keychain entry this class writes
+   * (session token, KDF salt, username, KEK-sealed recovery mnemonic) — the
+   * old logout only removed the token, leaving the salt/username/sealed
+   * mnemonic behind on the device after sign-out.
+   */
   async logout(): Promise<void> {
     this.api.setToken(null);
     await this.store.setToken(null);
+    await this.store.setKdfSalt(null);
+    await this.store.setUsername(null);
+    await this.store.setRecoveryMnemonicEnc(null);
+    this.cachedMnemonic = null;
+    this.pendingRecoveryMnemonic = null;
   }
 }
