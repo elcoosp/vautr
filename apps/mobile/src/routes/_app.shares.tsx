@@ -6,7 +6,7 @@ import {
 } from '@vautr/client-sdk/mobile';
 import { Skeleton as BoneSkeleton } from 'boneyard-js/native';
 import { Box, Inbox } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
@@ -34,6 +34,16 @@ interface GroupItem {
 }
 
 /**
+ * VTRFIX-SEC-C03: item *sharing* (as opposed to inbox/group management) is
+ * gated OFF on mobile. The linked native module does not yet expose item
+ * encryption, so there is no real payload to share — the old buttons sent a
+ * hardcoded demo payload (plaintext `'shared-secret'`), which breaks the
+ * zero-knowledge model. The share actions are disabled with an explanatory
+ * notice until the uniffi core exposes item encryption (follow-up VTR).
+ */
+const SHARE_PAYLOAD_DISABLED = true;
+
+/**
  * Native-gated sharing inbox + group sharing (VTR-070). Only meaningful when
  * the uniffi core is linked (`getMobileClient() !== null`); on an HTTP-only
  * build the FFI client is absent and we surface a clear gated message. The
@@ -54,20 +64,27 @@ function SharesScreen() {
   const [groupItemUuid, setGroupItemUuid] = useState('');
   const [groupItems, setGroupItems] = useState<GroupItem[] | null>(null);
 
-  let native: VautrNativeBridge | null = null;
-  let sharing: MobileSharingClient | null = null;
-  try {
-    const client = getMobileClient();
-    native = (client?.getNativeBridge() as VautrNativeBridge | undefined) ?? null;
-    if (native && services.api) {
-      sharing = new MobileSharingClient(native, services.api);
+  // VTRFIX-BUG-H03: memoize the clients. `getMobileClient()` and `services` are
+  // module singletons, so an empty dep list is correct; reconstructing
+  // `MobileSharingClient` every render made the `useCallback`/`useEffect` deps
+  // below change on every pass and looped renders/network calls indefinitely
+  // once the native module is linked.
+  const { native, sharing } = useMemo<{
+    native: VautrNativeBridge | null;
+    sharing: MobileSharingClient | null;
+  }>(() => {
+    try {
+      const client = getMobileClient();
+      const bridge = (client?.getNativeBridge() as VautrNativeBridge | undefined) ?? null;
+      if (bridge && services.api) {
+        return { native: bridge, sharing: new MobileSharingClient(bridge, services.api) };
+      }
+    } catch {
+      // FFI sharing client unavailable in this build/context — fall through to
+      // the gated message below instead of crashing the renderer.
     }
-  } catch {
-    // FFI sharing client unavailable in this build/context — fall through to
-    // the gated message below instead of crashing the renderer.
-    native = null;
-    sharing = null;
-  }
+    return { native: null, sharing: null };
+  }, []);
 
   const loadInbox = useCallback(async () => {
     if (!sharing) return;
@@ -106,28 +123,6 @@ function SharesScreen() {
     );
   }
 
-  const shareToUser = async () => {
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      const sender = username ?? 'self';
-      const itemUuid = `item-${Date.now()}`;
-      await sharing.shareItem(
-        sender,
-        recipient,
-        itemUuid,
-        new TextEncoder().encode('shared-secret'),
-      );
-      setInfo(`Shared to ${recipient}.`);
-      setRecipient('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Share failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const createGroup = async () => {
     setBusy(true);
     setError(null);
@@ -161,32 +156,6 @@ function SharesScreen() {
       setMemberId('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Add member failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const shareToGroup = async () => {
-    if (!activeGroupId) {
-      setError('Create or select a group first.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      const groupJson = sharing.getGroupKey(activeGroupId);
-      if (!groupJson) throw new Error('group key not found locally');
-      await sharing.shareToGroup(
-        groupJson,
-        activeGroupId,
-        groupItemUuid,
-        new TextEncoder().encode('shared-secret'),
-      );
-      setInfo(`Shared ${groupItemUuid} into the group.`);
-      setGroupItemUuid('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Share to group failed.');
     } finally {
       setBusy(false);
     }
@@ -245,15 +214,19 @@ function SharesScreen() {
 
       <Card className="gap-2 p-4">
         <Text variant="label">Share an item</Text>
+        <Alert variant="info">
+          <AlertDescription>
+            Sharing items from mobile is disabled until on-device encryption ships in the native
+            vault core. Accepting shares and managing groups still works below.
+          </AlertDescription>
+        </Alert>
         <Input
           placeholder="Recipient user id"
           value={recipient}
           onChangeText={setRecipient}
           autoCapitalize="none"
+          editable={!SHARE_PAYLOAD_DISABLED}
         />
-        <Button onPress={() => void shareToUser()} disabled={busy || recipient.length === 0}>
-          <ButtonText>{busy ? 'Sharing…' : 'Share'}</ButtonText>
-        </Button>
       </Card>
 
       <Card className="gap-2 p-4">
@@ -278,17 +251,18 @@ function SharesScreen() {
         </Button>
 
         <Text variant="small">Share item to group</Text>
+        <Text variant="tiny" className="text-muted-foreground">
+          Disabled until mobile item encryption ships — no payload is sent from this screen.
+        </Text>
         <Input
           placeholder="Item uuid"
           value={groupItemUuid}
           onChangeText={setGroupItemUuid}
           autoCapitalize="none"
+          editable={!SHARE_PAYLOAD_DISABLED}
         />
-        <Button
-          onPress={() => void shareToGroup()}
-          disabled={busy || groupItemUuid.length === 0 || !activeGroupId}
-        >
-          <ButtonText>{busy ? 'Sharing…' : 'Share to group'}</ButtonText>
+        <Button disabled>
+          <ButtonText>Share to group (disabled)</ButtonText>
         </Button>
 
         <Button
