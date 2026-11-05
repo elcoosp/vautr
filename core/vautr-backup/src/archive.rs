@@ -66,7 +66,11 @@ pub struct ArchiveMeta {
 
 impl ArchiveMeta {
     /// Construct a manifest from its fields.
-    pub fn new(created_at: impl Into<String>, vault_id: impl Into<String>, entry_count: u64) -> Self {
+    pub fn new(
+        created_at: impl Into<String>,
+        vault_id: impl Into<String>,
+        entry_count: u64,
+    ) -> Self {
         Self {
             format_version: CURRENT_FORMAT_VERSION,
             created_at: created_at.into(),
@@ -127,7 +131,13 @@ pub fn seal(key: &[u8; 32], payload: &[u8]) -> ArchiveResult<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(key.into());
     let n: XNonce = nonce.as_slice().try_into().expect("nonce len");
     let ct = cipher
-        .encrypt(&n, Payload { msg: payload, aad: MAGIC })
+        .encrypt(
+            &n,
+            Payload {
+                msg: payload,
+                aad: MAGIC,
+            },
+        )
         .map_err(|_| ArchiveError::Integrity("AEAD encryption failed"))?;
 
     let mut out = Vec::with_capacity(MAGIC.len() + 4 + NONCE_LEN + ct.len());
@@ -160,7 +170,13 @@ pub fn open(key: &[u8; 32], archive: &[u8]) -> ArchiveResult<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(key.into());
     let nonce: XNonce = nonce_bytes.try_into().expect("nonce len");
     cipher
-        .decrypt(&nonce, Payload { msg: ct, aad: MAGIC })
+        .decrypt(
+            &nonce,
+            Payload {
+                msg: ct,
+                aad: MAGIC,
+            },
+        )
         .map_err(|_| ArchiveError::Decrypt)
 }
 
@@ -191,7 +207,10 @@ mod tests {
 
     #[test]
     fn current_version_is_accepted() {
-        assert_eq!(meta_with_version(CURRENT_FORMAT_VERSION).verify_format(), Ok(()));
+        assert_eq!(
+            meta_with_version(CURRENT_FORMAT_VERSION).verify_format(),
+            Ok(())
+        );
     }
 
     #[test]
@@ -216,7 +235,9 @@ mod tests {
         let payload = b"the encrypted secret snapshot".to_vec();
         let sealed = seal(&key, &payload).unwrap();
         // No plaintext anywhere in the envelope.
-        assert!(!sealed.windows(payload.len()).any(|w| w == payload.as_slice()));
+        assert!(!sealed
+            .windows(payload.len())
+            .any(|w| w == payload.as_slice()));
         let opened = open(&key, &sealed).unwrap();
         assert_eq!(opened, payload);
     }
