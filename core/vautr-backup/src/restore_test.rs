@@ -51,7 +51,10 @@ pub type RestoreTestResult<T> = Result<T, RestoreTestError>;
 /// Run the one-click restore test against an archive: decrypt, write to a
 /// scratch DB, validate, discard. Returns a [`RestoreTestOutcome`] describing
 /// pass/fail. The live store is never touched.
-pub async fn run_restore_test(key: &[u8; 32], archive: &[u8]) -> RestoreTestResult<RestoreTestOutcome> {
+pub async fn run_restore_test(
+    key: &[u8; 32],
+    archive: &[u8],
+) -> RestoreTestResult<RestoreTestOutcome> {
     // Decrypt first. A decrypt failure is a *failed test*, not a crash.
     let payload = match restore::decrypt_archive(key, archive) {
         Ok(p) => p,
@@ -140,10 +143,15 @@ mod tests {
         {
             let pool = open_scratch_pool(&scratch).await.unwrap();
             sqlx::query("CREATE TABLE items (uuid TEXT PRIMARY KEY) STRICT")
-                .execute(&pool).await.unwrap();
+                .execute(&pool)
+                .await
+                .unwrap();
             for e in entries {
                 sqlx::query("INSERT INTO items (uuid) VALUES (?)")
-                    .bind(e).execute(&pool).await.unwrap();
+                    .bind(e)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
             }
             pool.close().await;
         }
@@ -182,7 +190,11 @@ mod tests {
         // Clear any leftovers from prior crashed runs so this assertion is about
         // the run we just performed, not the whole temp dir history.
         for entry in std::fs::read_dir(&temp).unwrap().flatten() {
-            if entry.file_name().to_string_lossy().starts_with("vautr-restore-test-") {
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("vautr-restore-test-")
+            {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
@@ -193,9 +205,14 @@ mod tests {
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.file_name().to_string_lossy().starts_with("vautr-restore-test-")
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("vautr-restore-test-")
             })
             .collect();
-        assert!(leftovers.is_empty(), "scratch DBs left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "scratch DBs left behind: {leftovers:?}"
+        );
     }
 }
