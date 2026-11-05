@@ -9,11 +9,13 @@
 #
 # Usage:
 #   DB=/abs/path/vautr.db TOKEN=loadtok ./seed_db.sh
-# Defaults: DB=./.loadtest/vautr.db, TOKEN=loadtok, 2000 seeded items.
+# Defaults: DB=../.loadtest/vautr.db (the repo-root .loadtest/ dir that
+# docker-compose.loadtest.yml mounts at /data), TOKEN=loadtok, 2000 seeded
+# items.
 
 set -euo pipefail
 
-DB="${DB:-./.loadtest/vautr.db}"
+DB="${DB:-../.loadtest/vautr.db}"
 TOKEN="${TOKEN:-loadtok}"
 N_ITEMS="${N_ITEMS:-2000}"
 USER_ID="load-user-1"
