@@ -1,0 +1,48 @@
+---
+title: Sync and Optimistic Concurrency
+description: How Vautr's metadata-first sync engine, optimistic concurrency control, offline mutation queue, and quarantine reaper keep clients consistent.
+type: explanation
+---
+
+Vautr clients keep working offline and converge when they reconnect, without a server that can read what it syncs. This page explains the sync engine's design: what moves over the wire, how conflicts are detected and resolved, and which safety nets clean up the edge cases.
+
+## Metadata-first sync
+
+The sync protocol separates metadata from payloads so that listing and searching stay cheap while ciphertext downloads stay selective:
+
+- `GET /sync/pull` returns the metadata state — item versions, tombstones, and epochs — without payload bodies.
+- `POST /sync/pull-payloads` downloads the encrypted payloads you actually need, selected by you or your client.
+- `POST /sync/push-batch` uploads a batch of local changes.
+
+Because metadata is small, a client can reconcile after weeks offline with a single pull, then fetch payloads only for items the user opens.
+
+## Optimistic concurrency control (OCC)
+
+Every item carries a monotonically increasing version. Writes are optimistic: the server applies an update only if the version it received matches the version it has stored, as an atomic `UPDATE ... WHERE version = ?` on the database. If another client wrote first, the update affects zero rows and the server answers `412 Conflict` with the current server version.
+
+The same contract is enforced identically on SQLite and PostgreSQL, so self-hosters who scale up do not inherit weaker consistency semantics.
+
+### What a conflict looks like in a client
+
+When your local edit races a server version, the client surfaces a conflict with two choices:
+
+- **acceptServer** — drop the local change and take the server state.
+- **pushLocal** — re-encrypt and force your local version forward.
+
+The client emits a `ConflictEvent` and holds a revertible state until you choose, so a conflicting edit is never silently lost or silently overwritten.
+
+## The offline mutation queue
+
+While offline, clients queue mutations locally and replay them on reconnect. The queue interacts with key rotations through epochs: each queued mutation is tied to the key generation that encrypted it, and the engine re-encrypts stale entries before pushing, so an offline stretch followed by a rotation still produces valid, current-epoch ciphertext.
+
+## Blacklist and the quarantine reaper
+
+Two safety nets handle pathological cases:
+
+- **DashMap blacklist.** Clients keep a lock-free in-memory blacklist of item versions known to be in conflict or quarantined, batch-persisted to SQLite so it survives restarts without locking the hot path.
+- **Safety Reaper.** A background task on the client reconciles orphaned sync state — payloads that arrived without matching metadata, mutations stranded by crashes — and quarantines anything it cannot resolve. Telemetry watches the reaper: an alert fires at P2 priority when `reaper_orphans_cleaned` exceeds 10 in a 24-hour window, because a busy reaper means something upstream is wrong.
+
+## Next steps
+
+- Understand the encryption that rides on top in the [zero-knowledge model](/explanation/zero-knowledge-model/).
+- Watch the protocol end to end in [Your First Vautr Vault](/tutorials/first-vault/).
