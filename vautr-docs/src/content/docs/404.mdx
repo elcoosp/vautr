@@ -1,0 +1,20 @@
+---
+title: "404"
+description: The page you requested does not exist.
+template: splash
+hero:
+  title: "404"
+  tagline: The page you are looking for does not exist or has moved.
+  actions:
+    - text: Go to the overview
+      link: /
+      icon: right-arrow
+---
+
+import { LinkCard } from '@astrojs/starlight/components';
+
+The address you requested is not part of the Vautr documentation. Start again from the overview, or jump straight to a common destination:
+
+<LinkCard title="Your First Vautr Vault" href="/tutorials/first-vault/" description="Run a server, register, and store your first secret." />
+
+<LinkCard title="Self-Host with Docker" href="/guides/self-host-docker/" description="Run the zero-knowledge server in one command." />
