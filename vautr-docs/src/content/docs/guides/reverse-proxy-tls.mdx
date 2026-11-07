@@ -1,0 +1,65 @@
+---
+title: Reverse Proxy and TLS
+description: Terminate TLS 1.3 in front of the Vautr server with Caddy or nginx, apply the recommended proxy hardening, and wire up health probes.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide when you manage your own reverse proxy instead of the automated `https` profile or the install script. The Vautr server binds plain HTTP on `0.0.0.0:8080`; terminate TLS in front of it and forward to `127.0.0.1:8080`.
+
+## Prerequisites
+
+- A running Vautr server (see [Docker](/guides/self-host-docker/) or [bare metal](/guides/self-host-bare-metal/))
+- A DNS record for your domain
+
+## Caddy
+
+The repository's `deploy/Caddyfile` proxies `https://$VAUTR_DOMAIN` to the server and handles the ACME challenge automatically. If you run your own Caddy, an equivalent site block looks like this (Caddyfile syntax, shown unstyled because no Caddyfile grammar ships with the highlighter):
+
+```txt
+vautr.example.com {
+    tls { protocols tls1.3 }
+    header_up -X-User-Email
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Caddy obtains and auto-renews Let's Encrypt certificates without further configuration.
+
+## nginx
+
+Run nginx with certbot and a renewal timer — the bare-metal install script sets this up for you with `--proxy nginx`:
+
+```bash
+sudo ./scripts/install.sh --domain vault.example.com --email admin@example.com --proxy nginx
+```
+
+## Proxy hardening checklist
+
+The architecture documentation (`docs/architecture/server-scaling.md` §3) defines the proxy contract. Apply these rules:
+
+- **TLS 1.3 only.** Do not negotiate TLS 1.2 or lower.
+- **Request size limits.** Cap `/sync/*` and `/auth/*` bodies at 10 MB and the file-upload initiate endpoint at 1 MB.
+- **Body logging blackout.** Never log request bodies or response payloads — payloads are ciphertext, but logs that accumulate encrypted blobs still widen your blast radius and violate the no-plaintext rule.
+- **PII stripping.** Strip `X-User-Email`-style headers at the proxy so upstream identity hints never reach application logs. The `header_up -X-User-Email` directive above does this for Caddy.
+
+<Aside type="note">
+  Security headers such as `X-Content-Type-Options` and `Referrer-Policy` are set by the server middleware itself, so you do not need to duplicate them at the proxy. The CORS allowlist is controlled by `VAUTR_CORS_ORIGINS` on the server.
+</Aside>
+
+## Health probes for uptime monitoring
+
+Wire your uptime checker to the two endpoints the server exposes:
+
+| Endpoint | Kind | Behavior |
+| --- | --- | --- |
+| `GET /health` | Liveness | Always returns `200` while the process is serving. |
+| `GET /health/ready` | Readiness | Returns `200` when the database connection is healthy, and fails when connectivity breaks. |
+
+Alert on the readiness endpoint to catch database problems, and on liveness to catch a dead process. For server-down alerting, monitor the container or systemd service state with your preferred uptime probe.
+
+## Next steps
+
+- Keep ciphertext-safe copies of your data with [Back up and restore](/guides/backups/).
+- Review the full set of proxy-relevant environment variables in [Server configuration](/reference/server-configuration/).
