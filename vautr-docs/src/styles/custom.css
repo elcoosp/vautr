@@ -1,0 +1,21 @@
+/*
+ * Vautr brand overrides for Starlight.
+ *
+ * The accent palette is derived from the project logo's "aurora" gradient
+ * (brand/logo-app-*.svg): indigo #4F46E5 flowing to cyan #06B6D4.
+ * All pairings verified against WCAG AA (scripts/contrast.mjs):
+ *   light: accent #4F46E5 on #F6F6F7 -> 5.82:1; accent-high on accent-low -> 8.88:1
+ *   dark:  accent #818CF8 on #1B1A1F -> 5.80:1; accent-high on accent-low -> 7.66:1
+ */
+
+:root {
+	--sl-color-accent-low: #eef2ff;
+	--sl-color-accent: #4f46e5;
+	--sl-color-accent-high: #3730a3;
+}
+
+[data-theme='dark'] {
+	--sl-color-accent-low: #312e81;
+	--sl-color-accent: #818cf8;
+	--sl-color-accent-high: #c7d2fe;
+}
