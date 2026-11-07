@@ -1,0 +1,50 @@
+---
+title: Import and Export Vault Data
+description: Migrate from 1Password, Bitwarden, or browser CSV exports into Vautr, and stream your vault out to CSV or JSON at any time.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide to move your data into and out of Vautr. The project's Constitution guarantees data sovereignty — standard exports are a structural commitment, not a goodwill gesture — so the import and export pipelines are first-class features.
+
+## Import from a competitor
+
+Vautr parses the most common export formats in a memory-bounded streaming fashion:
+
+| Source | Format |
+| --- | --- |
+| 1Password | `.1pux` (ZIP archive containing JSON) |
+| Bitwarden | `.json` (plain or encrypted) |
+| Chrome, Safari, Firefox | `.csv` |
+| Vautr | `.vautr` native backup archive |
+
+Start an import from your client's vault menu and select the export file you produced in the other product.
+
+### What happens during an import
+
+The import pipeline is built for hostile input and large vaults:
+
+- **Zero-trust parsing.** The parser treats every file as malformed or malicious and never panics; malformed rows are collected as errors while the rest of the vault still imports.
+- **Encrypted exports.** For an encrypted Bitwarden or 1Password export, the client prompts for that product's master password, derives the decryption key with the competitor's own KDF parameters, stream-decrypts, and zeroizes the password immediately after.
+- **Fresh identities.** Competitor item IDs are discarded and new cryptographically secure UUIDs are generated, because foreign identifiers would break Vautr's AEAD associated-data binding. The original ID is preserved in a non-indexed metadata field.
+- **Deduplication.** Items that match an existing title and primary URL are flagged as duplicates, and you choose whether to skip or overwrite them.
+- **Bulk fast-path.** Imports bypass the interactive persistence queue and encrypt items in bounded parallel chunks, so importing 1,000 items does not freeze the UI or drain your battery.
+
+<Aside type="caution">
+  Run the import on a synced client and let it finish before you go offline. The pipeline batches work aggressively, and interrupting it mid-run leaves a partially imported vault to clean up.
+</Aside>
+
+## Export your data
+
+The export pipeline is fully offline: it reveals each secret locally, writes one row at a time to disk, and never makes a network call or loads the whole vault into memory. Two plaintext formats are supported, selected by file extension:
+
+- **CSV** — spreadsheet-friendly, one row per item.
+- **JSON** — structure-preserving, including TOTP seeds.
+
+Export from your client's vault settings, and store the plaintext result only where you can protect it. Plaintext export is the escape hatch that keeps your data yours; the encrypted alternative for routine backups is the `.vautr` archive from [Back up and restore](/guides/backups/).
+
+## Next steps
+
+- Use the encrypted `.vautr` archive for recurring backups in [Back up and restore](/guides/backups/).
+- Read the key-handling rules behind the UUID mandate in the [zero-knowledge model](/explanation/zero-knowledge-model/).
