@@ -1,0 +1,54 @@
+---
+title: Vautr Documentation
+description: Documentation for Vautr, the constitutionally open-source, zero-knowledge password manager built in Rust.
+template: splash
+hero:
+  tagline: The password manager that belongs to you.
+  title: Vautr Docs
+  subtitle: Constitutionally open-source, forever free to self-host, built in Rust. Plaintext never reaches the server.
+  actions:
+    - text: Run your first vault
+      link: /tutorials/first-vault/
+      icon: right-arrow
+    - text: Self-host in minutes
+      link: /guides/self-host-docker/
+      icon: external
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+Vautr is a zero-knowledge password and secrets manager. The server validates OPAQUE authentication and version integrity while it stores only wrapped keys and ciphertext — it never sees your master password, your keys, or your plaintext payloads. A binding [Constitution](https://github.com/elcoosp/vautr/blob/main/CONSTITUTION.md) legally locks in AGPL licensing, free self-hosting, data sovereignty, and an exit clause.
+
+## Choose your path
+
+<CardGrid stagger>
+        <Card title="Run your first vault">
+                An end-to-end tutorial: start a server, register, save your Emergency Recovery Kit, and store your first secret.
+        </Card>
+        <Card title="Self-host Vautr">
+                Run the zero-knowledge server with Docker Compose or the one-command install script.
+        </Card>
+        <Card title="Automate with the CLI">
+                Log in, inject secrets into any command with <code>run</code>, and provision machine accounts for CI/CD.
+        </Card>
+        <Card title="Integrate with the SDK">
+                Drive the WASM worker bridge from TypeScript with the <code>@vautr/client-sdk</code> package.
+        </Card>
+</CardGrid>
+
+## What you can do with Vautr
+
+- **Organize secrets into projects** — personal or shared, with members, roles, per-project permissions, and user groups.
+- **Share end-to-end encrypted items** — 1:1 or with groups; the relay stores only wrapped keys and ciphertext.
+- **Add second factors** — TOTP, FIDO2/WebAuthn, recovery codes, and organization-wide MFA policy.
+- **Work as a machine** — non-human identities with scoped, revocable access tokens.
+- **Attach files** — chunked, resumable, encrypted uploads with bounded memory.
+- **Sleep well** — encrypted backup archives, a one-click restore test, and a 24-word BIP-39 Emergency Recovery Kit.
+
+<Aside type="tip">
+        The server exposes a health liveness probe at <code>GET /health</code> (always <code>200</code>) and a readiness probe at <code>GET /health/ready</code> (database connectivity).
+</Aside>
+
+## Next steps
+
+<LinkCard title="Tutorial: your first Vautr vault" href="/tutorials/first-vault/" description="From docker run to a stored secret in one sitting." />
