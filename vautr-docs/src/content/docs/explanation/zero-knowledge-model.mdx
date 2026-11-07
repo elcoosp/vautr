@@ -1,0 +1,57 @@
+---
+title: Zero-Knowledge Security Model
+description: How Vautr's OPAQUE authentication, client-side encryption, opaque handles, and CI isolation gates keep plaintext away from the server.
+type: explanation
+---
+
+Vautr's central guarantee is structural: the server never sees your master password, your keys, or your plaintext. This page explains which mechanisms enforce that guarantee and where each one lives, so you can evaluate the design rather than trust a slogan.
+
+## OPAQUE authentication
+
+Vautr authenticates with OPAQUE, a password-authenticated key exchange (PAKE). During registration the client sends an OPAQUE registration record derived from your master password; during login, client and server run the OPAQUE handshake. The server stores only the registration record — a value that is useless for offline password guessing in the way a password hash is not — and never receives the password itself.
+
+This is why a compromised server cannot mount an offline brute-force attack against your master password, and why nobody — including the operator — can reset it. Recovery goes through the Emergency Recovery Kit instead.
+
+## Client-side encryption everywhere
+
+Every payload the server stores is ciphertext produced on your device:
+
+- Item payloads, item overviews, sharing envelopes, file chunks, and backup archives all use XChaCha20-Poly1305, an authenticated encryption with associated data (AEAD) scheme.
+- Each ciphertext binds associated data to the item's UUID and its encryption key generation, so a ciphertext cannot be replayed against a different item or an older key generation.
+- The server validates structure and versions (Optimistic Concurrency Control) but cannot interpret content.
+
+## Opaque handles: secrets never cross the bridge
+
+Client platforms isolate the Rust core from JavaScript and React Native through bindings (UniFFI on mobile, wasm-bindgen on web). The API surface is designed so plaintext cannot leak through those bridges:
+
+- `reveal_secret` returns a `u64` **handle**, not a string. The plaintext stays inside the Rust process.
+- The host performs actions — copy to clipboard, autofill — by passing the handle to `perform_action`, which delegates to the native platform adapter.
+- The unrestricted `read_secret` API is compiled only for the GPUI desktop client behind a `desktop-api` feature gate.
+
+Continuous integration enforces the boundary mechanically: the `verify-isolation.yml` workflow fails if `read_secret` or GPUI markers appear in a mobile, web, or extension artifact, and `scripts/check-restricted-api.sh` audits the symbols on every push and nightly.
+
+## Memory hardening and fuzzing
+
+Two further layers protect the plaintext that legitimately exists in client memory:
+
+- **mlock.** Secret heap pages can be locked so the operating system never swaps them to disk (requirement VTR-040).
+- **Crash-report scrubbing.** Crash reports are scrubbed of secrets, UUIDs, emails, and titles before they leave the device.
+- **Fuzzing.** `cargo-fuzz` targets AEAD decryption to prove that malformed or hostile ciphertext panics nothing and leaks nothing.
+
+## What the server can and cannot see
+
+| The server sees | The server cannot see |
+| --- | --- |
+| OPAQUE registration records | Your master password |
+| Ciphertext payloads and overviews | Item titles, URLs, usernames, notes, secrets |
+| Wrapped share keys | Shared plaintext |
+| Metadata: sync versions, timestamps, sizes, account email | File contents |
+| Audit events (logins, key rotations, account changes) | Any key material (SVK, OEK, DEK) |
+
+The audit log is metadata-only by design. Telemetry, when you opt in, is anonymous and aggregated into a daily heartbeat containing an installation UUID, the OS version, and aggregated counters — no per-event data, no user IDs, no PII.
+
+## Next steps
+
+- Walk the key tree step by step in [Key Hierarchy and Recovery](/explanation/key-hierarchy-recovery/).
+- See how encrypted peers stay consistent in [Sync and Optimistic Concurrency](/explanation/sync-occ/).
+- Set up your own instance with [Self-Host with Docker](/guides/self-host-docker/).
