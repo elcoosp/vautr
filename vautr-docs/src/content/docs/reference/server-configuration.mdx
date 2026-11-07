@@ -1,0 +1,90 @@
+---
+title: Server Configuration
+description: Every environment variable the Vautr server reads — database, auth, rate limiting, CORS, WebAuthn, tokens, files, and backups — with defaults.
+type: reference
+---
+
+The Vautr server is configured entirely through environment variables (12-factor style). Nothing is compiled into the binary except runtime defaults. Compose-only variables apply to `docker-compose.yml` profiles rather than the server process itself.
+
+## Core
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VAUTR_DB_URL` | `sqlite:vautr.db` | Database connection URL. Use `sqlite:<path>` or a `postgres://` URL. |
+| `RUST_LOG` | (empty ⇒ `info`) | `tracing` filter, e.g. `debug` or `vautr_server=info,info`. |
+| `VAUTR_CORS_ORIGINS` | — | CORS allowlist for browser clients. |
+| `VAUTR_ENV` | — | Deployment environment marker. |
+
+The SQLite pool runs in WAL mode with `synchronous=NORMAL`, `busy_timeout=5000`, and foreign keys enabled; a background task bounds WAL growth with periodic checkpoints, and a final `PRAGMA wal_checkpoint(TRUNCATE)` runs on graceful shutdown.
+
+## Authentication, OPAQUE, and WebAuthn
+
+| Variable | Description |
+| --- | --- |
+| `VAUTR_OPAQUE_SETUP_FILE` | Path provisioning the OPAQUE server setup record. |
+| `VAUTR_ALLOW_DB_OPRF` | Opt-in gate for database-backed OPRF operations. |
+| `VAUTR_WEBAUTHN_RP_ID` | WebAuthn relying-party ID (e.g. `vault.example.com`). |
+| `VAUTR_WEBAUTHN_ORIGIN` | WebAuthn expected origin (e.g. `https://vault.example.com`). |
+
+Set both WebAuthn variables to the origin your clients actually use, or FIDO2 ceremonies fail registration.
+
+## Access tokens
+
+| Variable | Description |
+| --- | --- |
+| `VAUTR_MAX_TOKEN_LIFETIME_DAYS` | Cap on access-token lifetime in days. |
+| `VAUTR_ALLOW_NON_EXPIRING_TOKENS` | Opt-in gate allowing tokens without expiration. |
+
+## Files and quotas
+
+| Variable | Description |
+| --- | --- |
+| `VAUTR_FILE_QUOTA_BYTES` | Per-account storage quota for encrypted attachments. |
+
+Uploads are chunked and resumable with fixed per-chunk limits: 512 chunks × 8 MiB maximum per file, enforced server-side with bounded memory.
+
+## Rate limiting
+
+The server applies per-route rate limiters. Tune each bucket with these variables:
+
+| Variable | Route bucket |
+| --- | --- |
+| `VAUTR_RATE_DEFAULT_MAX` | Default bucket. |
+| `VAUTR_RATE_AUTH_MAX` | `POST /auth/*` (OPAQUE start/finish). |
+| `VAUTR_RATE_SYNC_PULL_MAX` | `GET /sync/pull`. |
+| `VAUTR_RATE_SYNC_PUSH_MAX` | `POST /sync/push-batch`. |
+| `VAUTR_RATE_FILES_MAX` | File upload/download endpoints. |
+| `VAUTR_RATE_LIMIT_MAX` | Generic limiter maximum. |
+| `VAUTR_RATE_LIMIT_WINDOW_SECS` | Window length in seconds for all buckets. |
+
+## Backups and Litestream
+
+| Variable | Description |
+| --- | --- |
+| `VAUTR_BACKUP_KEY` | Key provisioning for the backup feature. |
+| `VAUTR_BACKUP_DIR` | Directory for server-managed backup archives. |
+| `VAUTR_ALLOW_DB_BACKUP_KEY` | Opt-in gate for database backup key operations. |
+| `VAUTR_LITESTREAM_URL` | Litestream replica URL for continuous WAL streaming. |
+
+## Compose-only variables
+
+These configure the Compose files, not the server binary:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VAUTR_PORT` | `8080` | Host port published for the server. |
+| `VAUTR_DOMAIN` | — | Hostname for the Caddy HTTPS profile. |
+| `VAUTR_EMAIL` | — | Optional ACME account email for Caddy. |
+| `VAUTR_FEATURES` | — | Extra Cargo features for the server build (e.g. `postgres`). |
+| `POSTGRES_USER` | `vautr` | PostgreSQL role for the `postgres` profile. |
+| `POSTGRES_PASSWORD` | `vautr` | PostgreSQL password. Change it in production. |
+| `POSTGRES_DB` | `vautr` | PostgreSQL database name. |
+
+## Security headers
+
+The server middleware sets `X-Content-Type-Options` and `Referrer-Policy` itself; a reverse proxy does not need to duplicate them. Body-size limits and PII header stripping remain proxy responsibilities — see [Reverse Proxy and TLS](/guides/reverse-proxy-tls/).
+
+## Next steps
+
+- Apply these variables in a deployment with [Self-Host with Docker](/guides/self-host-docker/).
+- Check live configuration through the [REST API](/api/).
