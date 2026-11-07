@@ -1,0 +1,84 @@
+---
+title: Self-Host on Bare Metal
+description: Install the Vautr server from source with scripts/install.sh, including automatic HTTPS via Caddy or nginx and a systemd or launchd service.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide to run the Vautr server directly on a Linux or macOS host. The one-command install script builds the server, provisions TLS, installs a service-manager unit, and starts everything idempotently.
+
+## Prerequisites
+
+- Linux or macOS
+- [Rust](https://rustup.rs) 1.85+ (the script builds `vautr-server` with Cargo)
+- A DNS record pointing your domain at the host, for automatic HTTPS
+- Ports 80 and 443 reachable from the internet, for the Let's Encrypt handshake
+
+## One-command install
+
+Clone the repository and run the install script with your domain and ACME email:
+
+```bash
+cd /path/to/vautr
+sudo ./scripts/install.sh --domain vault.example.com --email admin@example.com
+```
+
+The script is idempotent — you can re-run it to reconcile the machine state. It performs these steps:
+
+1. Builds `vautr-server` in release mode (`cargo build --release -p vautr-server`).
+2. Writes a configuration file — `/etc/vautr/vautr.env` when run as root, otherwise `$HOME/.config/vautr/vautr.env` — holding `VAUTR_DB_URL` (SQLite default) and `RUST_LOG`.
+3. Installs **Caddy** by default and provisions an HTTPS site for your domain with automatic Let's Encrypt certificates.
+4. Installs a **systemd** unit on Linux or a **launchd** agent on macOS named `vautr-server`, then starts the service.
+
+## Install options
+
+| Flag | Purpose |
+| --- | --- |
+| `--domain <fqdn>` | Public hostname; required for automatic HTTPS. |
+| `--email <addr>` | Let's Encrypt account email. |
+| `--port <port>` | Local bind port (default `8080`). |
+| `--db-url <url>` | Database URL; default `sqlite:vautr.db`. |
+| `--proxy caddy\|nginx\|none` | Reverse proxy and TLS provider (default `caddy`). |
+| `--no-build --bin <path>` | Use a prebuilt binary instead of building. |
+| `-h`, `--help` | Full option reference. |
+
+### Local or LAN install without TLS
+
+For an internal deployment where you terminate TLS elsewhere or accept plaintext on a trusted network, skip the proxy:
+
+```bash
+./scripts/install.sh --no-build --proxy none
+```
+
+<Aside type="caution">
+  Plaintext HTTP exposes your OPAQUE handshake and ciphertext to network observers. Use TLS in any deployment that leaves your machine.
+</Aside>
+
+## Verify the installation
+
+Check the health probe and the service status:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/health   # 200
+systemctl status vautr-server    # Linux
+```
+
+The configuration file, Caddyfile, and service unit that the script writes are plain files — inspect and adjust them to match your host's conventions.
+
+## Update the server
+
+Pull the latest changes and run the update helper. It builds the new binary to a temporary path, swaps it atomically, and restarts the service gracefully:
+
+```bash
+git pull
+./scripts/update.sh
+```
+
+The server drains in-flight requests within 30 seconds, flushes the SQLite WAL, and exits; the service manager then brings the new binary up. A crash mid-update never leaves a partial binary because the swap is a single `mv`.
+
+## Next steps
+
+- Manage the database in [Back up and restore](/guides/backups/).
+- Tune rate limits and CORS in [Server configuration](/reference/server-configuration/).
+- Read how the server treats your data in the [zero-knowledge model](/explanation/zero-knowledge-model/).
