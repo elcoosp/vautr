@@ -1,0 +1,54 @@
+---
+title: Share Items Securely
+description: Share vault items with a single person or a group using end-to-end encrypted envelopes, manage your share inbox, and revoke access.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide to give another person — or a whole group — access to an item in your vault without exposing plaintext to the server. Vautr implements 1:1 sharing and group sharing with a public-key envelope: an X25519 key encapsulation wraps a share key, and XChaCha20-Poly1305 encrypts the payload. The relay stores only wrapped share keys and ciphertext.
+
+## Prerequisites
+
+- A Vautr account with items in your vault
+- The recipient's Vautr account (their public key is fetched automatically from `GET /users/{uuid}/public-key`)
+
+## Share an item with one person
+
+In any Vautr client, open the item you want to share and choose the share action. The client:
+
+1. Fetches the recipient's public key.
+2. Wraps the item's key material into an encrypted envelope for that key.
+3. Uploads the envelope with `POST /shares/`.
+
+The recipient sees the pending share in their inbox and accepts it; the item then appears in their vault. The server relays ciphertext and wrapped keys only — it cannot read what you shared.
+
+## Share with a group
+
+Groups bundle recipients so you share once instead of per person. Create a group with `POST /groups`, add members with `POST /groups/{id}/members`, and attach items with `POST /groups/{id}/items`. Projects can also carry groups: add a group to a project with `POST /projects/{uuid}/groups` and manage its members and per-project permissions from there.
+
+## Work with your inbox
+
+Your inbox lists every share offered to you:
+
+| Operation | Endpoint |
+| --- | --- |
+| List the inbox | `GET /shares/inbox` |
+| Accept a share's payload | `POST /shares/{share_id}/payload` |
+| Decline or remove a share | `DELETE /shares/{share_id}` |
+
+Accepting fetches the encrypted payload and unwraps it locally with your keys.
+
+## Revoke access
+
+Revoke a 1:1 share with `DELETE /shares/{share_id}`. For group members, removing a member from the group triggers forward secrecy: their key material is rotated out, so they lose access to future item versions even if they kept old ciphertext.
+
+<Aside type="note">
+  Sharing envelopes bind keys to item identity and key generation, so a replayed envelope cannot decrypt a rotated item. The design details live in `docs/architecture/sharing-pki.md` in the repository.
+</Aside>
+
+## Next steps
+
+- Browse every sharing endpoint in the [API reference](/api/).
+- Understand the envelope cryptography in the [zero-knowledge model](/explanation/zero-knowledge-model/).
+- Organize recipients with projects and groups, then automate access with [machine accounts](/guides/machine-accounts/).
