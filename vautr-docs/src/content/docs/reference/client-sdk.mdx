@@ -1,0 +1,139 @@
+---
+title: TypeScript SDK Reference
+description: The @vautr/client-sdk worker bridge — VautrClient methods, generator helpers, and the clipboard platform event — with signatures and examples.
+type: reference
+---
+
+`@vautr/client-sdk` is the TypeScript SDK that drives the Vautr Rust core through a WASM worker bridge. The browser-extension popup and other `--target web` consumers use it; the full web app drives the richer `@vautr/client-sdk/real` entry point for register, login, and sync against a live server.
+
+Install it with your package manager:
+
+<Tabs>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @vautr/client-sdk
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```bash
+    npm install @vautr/client-sdk
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @vautr/client-sdk
+    ```
+  </TabItem>
+</Tabs>
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## Conventions
+
+- **Promises.** Every worker call returns a `Promise` resolved when the worker replies.
+- **u64 values as strings.** Handles and epochs cross the bridge as strings, never as numbers (the data-model rule in `docs/architecture/data.md` §1).
+- **No plaintext in state.** Plaintext secrets reach your code only through the clipboard platform event; they never belong in React state or logs.
+
+## `VautrClient`
+
+The promise-based client wrapping the WASM worker bridge.
+
+### `new VautrClient(options?)`
+
+Spawns the worker. Pass `{ worker: new Worker(...) }` to inject a custom worker in tests or bundler-constrained environments.
+
+### `unlock(rawKey: Uint8Array, localGen: number): Promise<void>`
+
+Unlock the vault with a raw 32-byte key and the local key generation. Call this before any operation that decrypts.
+
+### `reveal(uuid: string, encKeyGen: number, payload: Uint8Array): Promise<OpaqueHandle>`
+
+Decrypt a payload and obtain an **opaque handle** (`u64` as a string). The plaintext stays inside the Rust core; nothing secret crosses the bridge.
+
+### `performAction(action: CoreAction): Promise<void>`
+
+Delegate a copy or autofill action to the registered clipboard handler. `CoreAction` is `{ type: 'CopyToClipboard', handle }` or `{ type: 'Autofill', handle }`.
+
+### `release(handle: OpaqueHandle): Promise<void>`
+
+Dispose a handle and zeroize the in-memory secret it refers to. Call it after the clipboard write or autofill completes.
+
+### `encrypt(uuid: string, encKeyGen: number, plaintext: Uint8Array): Promise<number[]>`
+
+Re-encrypt a plaintext payload under the current data-encryption key, bound to the item's UUID and key generation.
+
+### `subscribe(listener: (update: VaultStateUpdate) => void): () => void`
+
+Receive `VaultStateUpdate` events pushed by the worker. Returns an unsubscribe function.
+
+### `setClipboardHandler(handler: ClipboardHandler | null): void`
+
+Install the clipboard/autofill platform adapter. The worker routes plaintext to this handler as a platform event; the handler writes and zeroizes without the secret ever entering application state.
+
+### `close(): void`
+
+Terminate the worker (tab close, lock). Rejects all pending requests and clears listeners.
+
+### Minimal lifecycle
+
+```ts
+import { VautrClient } from '@vautr/client-sdk';
+
+const client = new VautrClient();
+
+client.setClipboardHandler((action, secret) => {
+  navigator.clipboard.writeText(secret);
+  // zeroization is handled by the platform glue
+});
+
+await client.unlock(rawKey, localGen);
+const handle = await client.reveal(uuid, encKeyGen, payload);
+await client.performAction({ type: 'CopyToClipboard', handle });
+await client.release(handle);
+```
+
+<Aside type="note">
+  `MfaRequiredError`, exported from the SDK's real-client entry, surfaces the server-side MFA policy to your login flows — catch it and route the user to second-factor enrollment.
+</Aside>
+
+## Password generator helpers
+
+Pure, dependency-free functions shared by the extension popup and the web vault. They operate on plaintext the user is actively creating or reviewing; no crypto secrets are involved.
+
+### `generatePassword(options?): string`
+
+Generate a password with unbiased randomness (rejection sampling — no modulo bias):
+
+```ts
+const pw = generatePassword({ length: 24, symbols: true, excludeAmbiguous: true });
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `length` | `number` | `20` | Password length. |
+| `upper` | `boolean` | `true` | Include `A-Z`. |
+| `lower` | `boolean` | `true` | Include `a-z`. |
+| `digits` | `boolean` | `true` | Include `0-9`. |
+| `symbols` | `boolean` | `true` | Include punctuation. |
+| `excludeAmbiguous` | `boolean` | `true` | Drop visually ambiguous characters (`0O1lI\|`). |
+
+### `estimateEntropyBits(password: string): number`
+
+Estimate the entropy of a candidate password in bits.
+
+### `assessPassword(password: string): PasswordStrength`
+
+Return a strength assessment (score and related fields) for weak and reused detection UIs.
+
+### `isReusedPassword(candidate: string, known: readonly string[]): boolean`
+
+Check whether the candidate matches any known password already in the vault.
+
+### `strengthLabel(score): string`
+
+Map a numeric strength score to a human label for display.
+
+## Next steps
+
+- Browse the HTTP surface the SDK talks to in the [REST API](/api/).
+- See why handles exist in the [zero-knowledge model](/explanation/zero-knowledge-model/).
