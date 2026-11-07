@@ -1,0 +1,74 @@
+---
+title: Provision Machine Accounts
+description: Create non-human identities with scoped access tokens for CI/CD, apps, and agents, and control their lifetime and revocation.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide to give a pipeline, an application, or an agent programmatic access to a Vautr server without sharing a human session. Machine accounts are non-human identities that hold scoped access tokens with expiration and revocation.
+
+## Prerequisites
+
+- A Vautr server you can reach (default `http://127.0.0.1:8080`)
+- A logged-in CLI session (`vautr-cli login`)
+
+## Provision a machine account with the CLI
+
+The CLI provisions the account and issues its first access token in one step:
+
+```bash
+cargo run -p vautr-cli -- machine-account --name ci-deploy --scopes secrets:read,secrets:reveal
+```
+
+- `--name` labels the identity (default `cli`).
+- `--scopes` is a comma-separated list; omit it to use the CLI's standard secret and project scopes.
+
+Store the issued token in your CI secret store. Treat it like a password: it grants exactly the scopes you listed, and nothing more.
+
+## Available scopes
+
+The server handler recognizes these scopes:
+
+| Scope | Grants |
+| --- | --- |
+| `secrets:read` | Read secret metadata and values in permitted projects. |
+| `secrets:write` | Create and update secrets. |
+| `secrets:reveal` | Reveal secret plaintext values. |
+| `projects:read` | List and read projects. |
+| `projects:write` | Create and update projects. |
+| `machine_accounts:manage` | Manage machine accounts. |
+| `tokens:manage` | Issue and revoke access tokens. |
+| `admin:all` | Full administrative access. |
+
+<Aside type="caution">
+        Grant <code>secrets:reveal</code> only when the consumer must read plaintext — a deployment job usually needs it, a build linter does not. Revealing values is gated by this scope everywhere in the product.
+</Aside>
+
+## Authenticate API requests
+
+Every generated API operation accepts HTTP bearer authentication. Send the token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8080/projects
+```
+
+The full request and response shapes for each endpoint live in the generated [API reference](/api/).
+
+## Control token lifetime and revocation
+
+The server caps how long a token may live with `VAUTR_MAX_TOKEN_LIFETIME_DAYS`. Issuing a non-expiring token is refused unless the operator explicitly opts in with `VAUTR_ALLOW_NON_EXPIRING_TOKENS`:
+
+```bash
+VAUTR_MAX_TOKEN_LIFETIME_DAYS=90 \
+VAUTR_ALLOW_NON_EXPIRING_TOKENS=0 \
+vautr-server
+```
+
+Manage issued tokens through the API: list them with `GET /tokens`, inspect one with `GET /tokens/{uuid}`, and revoke with `DELETE /tokens/{uuid}`. Revocation takes effect for the compromised token immediately; re-issue a replacement from `POST /tokens`.
+
+## Next steps
+
+- Browse the machine-account endpoints in the [API reference](/api/).
+- Automate secrets injection in pipelines with [`vautr-cli run`](/reference/cli/).
+- Understand how encryption boundaries protect these tokens in the [zero-knowledge model](/explanation/zero-knowledge-model/).
