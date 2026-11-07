@@ -1,0 +1,25 @@
+diff --git a/dist/index.js b/dist/index.js
+index 13877d5549aaa1576cdf7845c5c943406d17ebc9..e065cfdabb1d0a787f569e55ecf3d9b87eddf1aa 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -322,10 +322,18 @@ function getCodeBlockInfo(pre) {
+   if (!text || text.type !== "text")
+     return;
+   const data = code.data;
++  // Patched (docs/decisions/0008-ec-code-language-patch.md): the Astro content
++  // layer drops hast `data` when it re-materializes stored entries, so fall
++  // back to the `language-*` class like @astrojs/markdown-satteri's own
++  // highlight plugin does.
++  const languageClass = Array.isArray(code.properties?.className)
++    ? code.properties.className.find((className) => typeof className === "string" && className.startsWith("language-"))
++    : undefined;
++  const metaClass = Array.isArray(code.properties?.metastring) ? undefined : undefined;
+   return {
+-    lang: data?.lang ?? "",
++    lang: data?.lang ?? languageClass?.slice("language-".length) ?? "",
+     text: text.value,
+-    meta: data?.meta ?? ""
++    meta: data?.meta ?? (typeof code.properties?.metastring === "string" ? code.properties.metastring : "")
+   };
+ }
+ 
