@@ -1,0 +1,29 @@
+# Vautr Documentation
+
+> Vautr is a constitutionally open-source, zero-knowledge password manager built in Rust.
+> The server stores only ciphertext; authentication uses OPAQUE so the master password never leaves the client.
+
+## Pages
+
+- [Vautr Documentation](/): Documentation for Vautr, the constitutionally open-source, zero-knowledge password manager built in Rust.
+- [404](/404/): The page you requested does not exist.
+- [Key Hierarchy and Recovery](/explanation/key-hierarchy-recovery/): How Argon2id and HKDF derive Vautr's key tree, what each key wraps, and how the 24-word Emergency Recovery Kit restores access after loss.
+- [Sync and Optimistic Concurrency](/explanation/sync-occ/): How Vautr's metadata-first sync engine, optimistic concurrency control, offline mutation queue, and quarantine reaper keep clients consistent.
+- [Zero-Knowledge Security Model](/explanation/zero-knowledge-model/): How Vautr's OPAQUE authentication, client-side encryption, opaque handles, and CI isolation gates keep plaintext away from the server.
+- [Back Up and Restore](/guides/backups/): Create encrypted backup archives, run the one-click restore test, snapshot the server database, and automate off-host backups with Litestream.
+- [Enable Multi-Factor Authentication](/guides/enable-mfa/): Add a TOTP authenticator or a FIDO2/WebAuthn security key, store recovery codes, and enforce organization-wide MFA policy.
+- [Import and Export Vault Data](/guides/import-export/): Migrate from 1Password, Bitwarden, or browser CSV exports into Vautr, and stream your vault out to CSV or JSON at any time.
+- [Provision Machine Accounts](/guides/machine-accounts/): Create non-human identities with scoped access tokens for CI/CD, apps, and agents, and control their lifetime and revocation.
+- [Reverse Proxy and TLS](/guides/reverse-proxy-tls/): Terminate TLS 1.3 in front of the Vautr server with Caddy or nginx, apply the recommended proxy hardening, and wire up health probes.
+- [Self-Host on Bare Metal](/guides/self-host-bare-metal/): Install the Vautr server from source with scripts/install.sh, including automatic HTTPS via Caddy or nginx and a systemd or launchd service.
+- [Self-Host with Docker](/guides/self-host-docker/): Run the Vautr zero-knowledge server with a single Docker container or Docker Compose, including the HTTPS and PostgreSQL profiles.
+- [Share Items Securely](/guides/share-items/): Share vault items with a single person or a group using end-to-end encrypted envelopes, manage your share inbox, and revoke access.
+- [CLI Reference](/reference/cli/): Every vautr-cli command, argument, and default — login, register, list, get, run, create, edit, export, import, and machine accounts.
+- [TypeScript SDK Reference](/reference/client-sdk/): The @vautr/client-sdk worker bridge — VautrClient methods, generator helpers, and the clipboard platform event — with signatures and examples.
+- [Server Configuration](/reference/server-configuration/): Every environment variable the Vautr server reads — database, auth, rate limiting, CORS, WebAuthn, tokens, files, and backups — with defaults.
+- [Your First Vautr Vault](/tutorials/first-vault/): Run a Vautr server, register an account, back up your Emergency Recovery Kit, and store and retrieve your first secret with the CLI.
+
+## Optional
+
+- [Full documentation as plain text](/llms-full.txt): every page rendered to text for AI consumption.
+- [OpenAPI specification](/vautr-openapi.json): machine-readable REST API contract (55 paths).
