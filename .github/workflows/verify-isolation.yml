@@ -141,7 +141,7 @@ jobs:
         # not drift under the workspace. See tech-stack.md §4.
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-08-10
+          toolchain: nightly-2026-11-07
           components: rustfmt, clippy
 
       - name: Install Linux system libs (desktop gpui deps)
@@ -232,7 +232,7 @@ jobs:
         # crypto WASM from source instead of falling back to the dev mock.
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-08-10
+          toolchain: nightly-2026-11-07
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
@@ -267,7 +267,7 @@ jobs:
       - name: Install Rust nightly + cargo-fuzz
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-08-10
+          toolchain: nightly-2026-11-07
           components: rustfmt
 
       - name: Install cargo-fuzz
@@ -306,7 +306,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-08-10
+          toolchain: nightly-2026-11-07
           components: rustfmt
 
       - name: Build server
