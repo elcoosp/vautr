@@ -1,0 +1,60 @@
+---
+title: Enable Multi-Factor Authentication
+description: Add a TOTP authenticator or a FIDO2/WebAuthn security key, store recovery codes, and enforce organization-wide MFA policy.
+type: how-to
+---
+
+Use this guide to add a second factor to your Vautr account. Vautr supports TOTP authenticator apps, FIDO2/WebAuthn security keys and platform authenticators, single-use recovery codes, and an organization-wide policy that operators can enforce.
+
+## Prerequisites
+
+- A Vautr account and a logged-in client
+- For TOTP: an authenticator app (or any app that renders the `otpauth://` secret)
+- For WebAuthn: a browser or platform that supports FIDO2
+
+## Enroll TOTP
+
+Request an enrollment challenge, which returns the shared secret:
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" http://localhost:8080/mfa/totp/issue
+```
+
+Add the secret to your authenticator app, then confirm the current 6-digit code to activate the factor:
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -d '{"code":"123456"}' http://localhost:8080/mfa/totp/verify
+```
+
+From then on, logins finish only with a valid code from the app.
+
+## Enroll a WebAuthn security key
+
+WebAuthn enrollment runs as a start/finish pair that drives a browser ceremony:
+
+1. `POST /mfa/webauthn/enroll/start` returns the registration options and a challenge.
+2. Your browser or platform authenticator signs the challenge.
+3. `POST /mfa/webauthn/enroll/finish` registers the credential.
+
+The server pins the expected relying-party ID and origin with `VAUTR_WEBAUTHN_RP_ID` and `VAUTR_WEBAUTHN_ORIGIN`, so enroll the key from the same origin your clients use.
+
+## Store your recovery codes
+
+Enrollment issues single-use recovery codes. Store them with the same care as your [Emergency Recovery Kit](/tutorials/first-vault/): each code unlocks an account once when both the authenticator and the security key are unavailable. Treat them as a second-factor fallback, not as a password replacement.
+
+## Check status and enforce policy
+
+Query which factors are active:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8080/mfa/status
+```
+
+Operators manage the organization-wide policy — for example, requiring MFA before logins succeed — with `GET /mfa/policy` and `PUT /mfa/policy`. When the policy demands a second factor, clients that skip it receive an `MfaRequiredError`, which the TypeScript SDK exports for you to handle explicitly.
+
+## Next steps
+
+- Browse the MFA endpoints in the [API reference](/api/).
+- Handle `MfaRequiredError` in integrations with the [TypeScript SDK](/reference/client-sdk/).
+- Understand why the server can enforce MFA without ever seeing your password in the [zero-knowledge model](/explanation/zero-knowledge-model/).
