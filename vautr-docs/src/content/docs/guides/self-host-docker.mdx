@@ -1,0 +1,98 @@
+---
+title: Self-Host with Docker
+description: Run the Vautr zero-knowledge server with a single Docker container or Docker Compose, including the HTTPS and PostgreSQL profiles.
+type: how-to
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use this guide to run the Vautr server in Docker. The image contains the Axum HTTP server and nothing else; your data lives in a volume that you control and can back up or move at any time.
+
+## Prerequisites
+
+- Docker and Docker Compose installed
+- A free TCP port (the examples use `8080`)
+
+## Run a single container
+
+Start the server from the official GitHub Container Registry image:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -v vautr-data:/data \
+  --name vautr-server \
+  ghcr.io/vautrorg/vautr-server:latest
+```
+
+The server uses SQLite by default (`VAUTR_DB_URL=sqlite:vautr.db`) and stores its database at `/data/vautr.db` inside the `vautr-data` volume. Verify both probes:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/health       # 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/health/ready # 200
+```
+
+You can also build the image locally from the repository root:
+
+```bash
+docker build -t vautr-server .
+docker run -d -p 8080:8080 -v vautr-data:/data --name vautr-server vautr-server
+```
+
+## Run with Docker Compose
+
+For a configuration-as-code setup, use the `docker-compose.yml` in the repository root:
+
+```bash
+cd /path/to/vautr
+docker compose up -d --build
+```
+
+This starts the SQLite server with no TLS and publishes port `8080`. Follow the logs and check status at any time:
+
+```bash
+docker compose logs -f server
+docker compose ps
+```
+
+### Enable HTTPS with the `https` profile
+
+The `https` profile runs Caddy, which obtains and auto-renews a Let's Encrypt certificate for your domain:
+
+```bash
+VAUTR_DOMAIN=vault.example.com docker compose --profile https up -d
+```
+
+Set `VAUTR_EMAIL` if you want a specific ACME account email. Your instance is then reachable at `https://vault.example.com`.
+
+### Enable PostgreSQL with the `postgres` profile
+
+PostgreSQL support is opt-in. Provide a `postgres://` database URL and enable the feature flag for the server build:
+
+```bash
+VAUTR_DB_URL=postgres://vautr:vautr@postgres:5432/vautr \
+VAUTR_FEATURES=postgres \
+docker compose --profile postgres up -d --build
+```
+
+<Aside type="caution">
+  The bundled migrations are written in SQLite-specific DDL. A PostgreSQL deployment needs a Postgres-compatible migration set; run PostgreSQL only against a schema created from such migrations until they ship in the repository.
+</Aside>
+
+Change the compose defaults for PostgreSQL credentials (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) in production. The compose file defaults exist for local evaluation, not for exposed deployments.
+
+## Update the server
+
+The repository ships an update helper that rebuilds the image and recreates the container:
+
+```bash
+./scripts/update.sh --compose
+```
+
+Compose starts the new container before stopping the old one where possible, so restarts stay short. Data in the `serverdata` volume survives the update.
+
+## Next steps
+
+- Terminate TLS in front of the server yourself with the [reverse proxy guide](/guides/reverse-proxy-tls/).
+- Plan your backup routine in [Back up and restore](/guides/backups/).
+- Review every environment variable in [Server configuration](/reference/server-configuration/).
