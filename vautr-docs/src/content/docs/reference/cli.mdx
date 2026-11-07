@@ -1,0 +1,113 @@
+---
+title: CLI Reference
+description: Every vautr-cli command, argument, and default — login, register, list, get, run, create, edit, export, import, and machine accounts.
+type: reference
+---
+
+`vautr-cli` is the `bws`-style command-line client for Vautr. It authenticates with OPAQUE, encrypts locally, and talks to any Vautr server over HTTP. This page is the complete reference for its command surface.
+
+## Global flags and configuration
+
+| Flag | Description |
+| --- | --- |
+| `--server <url>` | Server base URL, valid on every command. Defaults to the stored config, then `http://127.0.0.1:8080`. |
+
+The CLI persists its server URL and session in a single JSON file at `~/.config/vautr/config.json`. If the file is missing, the CLI starts from defaults with no credentials.
+
+## Commands
+
+### `login [username]`
+
+Log in a user with the OPAQUE handshake and store a session. Prompts for the username if omitted and for the master password interactively.
+
+```bash
+vautr-cli login you@example.com
+```
+
+### `register <username>`
+
+Register a new account. Runs the OPAQUE registration exchange; the server receives a registration record, not a password.
+
+```bash
+vautr-cli register you@example.com
+```
+
+### `logout`
+
+Clear the stored session from the local config.
+
+```bash
+vautr-cli logout
+```
+
+### `list [--project <uuid>]`
+
+List projects and their secrets. Restrict the output to one project with `--project`.
+
+```bash
+vautr-cli list --project 3f9d2e10-1c4b-4a2e-9d7f-0a1b2c3d4e5f
+```
+
+### `get <key> [--project <uuid>]`
+
+Reveal a secret's plaintext value by key. The key may be `project-name/key`; pass `--project` to restrict lookup to a project UUID.
+
+```bash
+vautr-cli get API_KEY
+```
+
+### `run <command> [args…]`
+
+Run a command with resolved secrets injected into its environment. Everything after `run` is the command to execute, including flags (hyphen values are allowed):
+
+```bash
+vautr-cli run -- ./deploy.sh --env staging
+```
+
+This is the safest way to consume secrets in scripts: plaintext enters the child process's environment and never touches your shell history or the terminal.
+
+### `create project <name> [--description <text>] [--proj-type personal|shared]`
+
+Create a project. `--proj-type` selects `personal` (default) or `shared`.
+
+```bash
+vautr-cli create project "Demo" --description "Side project secrets" --proj-type personal
+```
+
+### `create secret <key> --project <uuid> [--value <value>]`
+
+Create a secret in a project. If you omit `--value`, the CLI reads the plaintext from standard input, which keeps the secret out of shell history:
+
+```bash
+vautr-cli create secret API_KEY --project <uuid>
+```
+
+### `edit project <uuid> [--name <name>] [--description <text>]`
+
+Rename or re-describe a project. Only the flags you pass change.
+
+### `edit secret <target> [--key <new-key>] [--value <value>]`
+
+Rename a secret (`--key`) or replace its plaintext (`--value`, stdin if the flag is set). The target is a secret UUID or key, resolved if ambiguous.
+
+### `export`
+
+Export an encrypted backup archive of the vault. The archive is sealed with XChaCha20-Poly1305; validate it afterwards with `import`. See [Back up and restore](/guides/backups/).
+
+### `import <path>`
+
+Validate a local `.vautr` backup archive — the restore test — in a scratch database without touching the live store. Exits non-zero if the archive fails to decrypt.
+
+### `machine-account [--name <name>] [--scopes <scope,scope,…>]`
+
+Provision a machine account and issue an access token in one step. `--name` defaults to `cli`; `--scopes` is a comma-separated list such as `secrets:read,secrets:reveal` (see [Provision Machine Accounts](/guides/machine-accounts/) for the scope table).
+
+## Exit behavior
+
+Commands print structured output on success and a diagnostic on failure, with non-zero exit codes on errors — including a failed restore test — so the CLI composes cleanly in CI scripts.
+
+## Next steps
+
+- Walk the workflow end to end in [Your First Vautr Vault](/tutorials/first-vault/).
+- Automate pipelines with [Provision Machine Accounts](/guides/machine-accounts/).
+- Call the same operations over HTTP with the [REST API](/api/).
