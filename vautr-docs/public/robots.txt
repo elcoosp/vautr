@@ -1,0 +1,7 @@
+# Vautr documentation site
+# All pages are public documentation; allow full crawling.
+User-agent: *
+Allow: /
+
+# The sitemap is emitted automatically once a production `site` URL is
+# configured in astro.config.mjs (see docs/decisions/0005-known-warnings.md).
