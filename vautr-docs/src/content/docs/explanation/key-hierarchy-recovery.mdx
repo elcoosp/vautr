@@ -1,0 +1,52 @@
+---
+title: Key Hierarchy and Recovery
+description: How Argon2id and HKDF derive Vautr's key tree, what each key wraps, and how the 24-word Emergency Recovery Kit restores access after loss.
+type: explanation
+---
+
+This page walks the tree of keys that Vautr derives on your device, explains why each layer exists, and describes how the Emergency Recovery Kit restores access when the master password is lost. All derivation happens client-side; the server only ever stores wrapped key material.
+
+## The key tree
+
+From the master password alone, the client derives every key it needs, in layers:
+
+1. **Master Key (MK).** Argon2id, a memory-hard key derivation function, stretches your master password into the master key. Memory hardness makes large-scale GPU cracking expensive.
+2. **KEK.** HKDF, a key derivation function, expands the MK into a key-encryption key. The KEK wraps the Secret Vault Key for storage and sync.
+3. **Secret Vault Key (SVK).** The long-lived root secret of your vault. It is wrapped by the KEK and re-wrapped during rotations, and it is what the [Emergency Recovery Kit](#the-emergency-recovery-kit) ultimately protects.
+4. **OEK and DEK.** Further HKDF branches produce item-level encryption keys. Item payloads, overviews, sharing envelopes, file chunks, and backup archives are all sealed with XChaCha20-Poly1305 under keys in this layer.
+
+Every piece of key material is zeroized — overwritten in memory — as soon as it is no longer needed, and heap pages holding secrets can be locked with `mlock` so they never swap to disk.
+
+## Why layers at all
+
+Each layer answers a different operational problem:
+
+- **Argon2id** absorbs the cost of a weak or moderate password by making each guess expensive.
+- **The KEK/SVK split** lets Vautr rotate keys without re-deriving from the password: a rotation re-wraps the SVK under a fresh KEK, which is what a key-epoch bump triggers.
+- **Per-item DEKs bound the blast radius** of any single key exposure and let items be re-encrypted and shared independently.
+
+The epoch counter that tracks key generations appears in the AEAD associated data, so a ciphertext encrypted under generation 3 can never be decrypted as if it belonged to generation 4. This is the mechanism behind crash-safe key rotation: an interrupted rotation leaves the system in a state it can detect and resolve.
+
+## The Emergency Recovery Kit
+
+Because the server holds no key material that can decrypt your vault, losing the master password means losing the vault — unless you hold the Emergency Recovery Kit:
+
+- **A 24-word BIP-39 recovery key** is provisioned during onboarding. Write it down and store it offline.
+- **Onboarding includes a proof-of-possession step**, so you confirm early that the kit you saved actually corresponds to your account — before it becomes load-bearing.
+- **Recovery forces rotation.** After a recovery, Vautr forces a key rotation, so the lost password and any keys derived under it stop mattering going forward.
+
+The recovery flow runs through dedicated API endpoints: `GET /account/recover/challenge`, `POST /account/recover/verify` (which issues a short-lived, single-use recovery session token), and `POST /account/recover/complete`. A separate `POST /account/reclaim` covers account reclaim, and `POST /account/rotate-key` performs the forced rotation.
+
+## What to protect, in order of importance
+
+| Secret | Protects | Store it |
+| --- | --- | --- |
+| Master password | Derives everything | In your head and nowhere digital |
+| Emergency Recovery Kit (24 words) | Account recovery and new key wrapping | Offline: printed card, safe |
+| Recovery codes | One-time second-factor fallback | Offline, separate from the kit |
+| Access tokens | Scoped programmatic access | CI secret store, vault |
+
+## Next steps
+
+- See where these keys meet the wire in the [zero-knowledge model](/explanation/zero-knowledge-model/).
+- Practice the daily workflow in [Your First Vautr Vault](/tutorials/first-vault/).
