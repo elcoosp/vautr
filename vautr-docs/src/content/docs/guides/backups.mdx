@@ -1,0 +1,82 @@
+---
+title: Back Up and Restore
+description: Create encrypted backup archives, run the one-click restore test, snapshot the server database, and automate off-host backups with Litestream.
+type: how-to
+---
+
+Use this guide to protect your vault and your server against data loss. Backup works at two layers: clients produce encrypted backup archives of the vault, and the server operator snapshots the database that holds ciphertext blobs.
+
+## Back up your vault from a client
+
+Export an encrypted backup archive of your vault:
+
+```bash
+cargo run -p vautr-cli -- export
+```
+
+The archive is sealed with XChaCha20-Poly1305, so copying it to any storage — an external disk, object storage, a colleague's machine — exposes nothing.
+
+### Prove the archive still decrypts
+
+An untested backup is a hope, not a backup. Validate an archive with the restore test, which decrypts it in a scratch database without touching your live store:
+
+```bash
+cargo run -p vautr-cli -- import /path/to/backup.vautr
+```
+
+Run the restore test after every export and before every retention prune. The one-click flow exists because backups fail silently: bit rot, truncated uploads, and forgotten passwords all look identical until you try to restore.
+
+## Back up the server database
+
+The server stores only opaque ciphertext blobs, so a database leak exposes no plaintext — but losing the database still loses every vault. Keep backups off-host and encrypt the volumes at rest.
+
+### SQLite (default)
+
+Snapshot the database with SQLite's online backup API, which is safe against concurrent writes under WAL mode:
+
+```bash
+sqlite3 /var/lib/vautr/vautr.db ".backup /backup/vautr-$(date +%F).db"
+```
+
+If you copy files directly instead, keep the `.db` file **and** its `-wal`/`-shm` companions together, or run a checkpoint first:
+
+```bash
+sqlite3 /var/lib/vautr/vautr.db "PRAGMA wal_checkpoint(TRUNCATE);"
+```
+
+The server also checkpoints the WAL on graceful shutdown.
+
+### PostgreSQL (opt-in)
+
+Use logical dumps for portability, or WAL archiving for point-in-time recovery:
+
+```bash
+docker compose exec postgres pg_dump -U vautr vautr | gzip > /backup/vautr-$(date +%F).sql.gz
+```
+
+### Restore
+
+1. Stop the server (`systemctl stop vautr-server` or `docker compose stop server`).
+2. Replace the database files (SQLite) or restore the PostgreSQL cluster.
+3. Start the server. Migrations are idempotent-safe: on a fresh database they apply the schema, on an existing database they leave it alone.
+
+## Automate continuous backup with Litestream
+
+The repository ships `deploy/litestream.yml`, so you can stream WAL segments to object storage with [Litestream](https://litestream.io) and set `VAUTR_LITESTREAM_URL` to the replica URL. Point the replica at a bucket you own and Litestream keeps a rolling, recoverable copy of the database off-host.
+
+## Server backup environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `VAUTR_BACKUP_KEY` | Key provisioning for the server-side backup feature. |
+| `VAUTR_BACKUP_DIR` | Directory for server-managed backup archives. |
+| `VAUTR_ALLOW_DB_BACKUP_KEY` | Opt-in gate for database backup key operations. |
+| `VAUTR_LITESTREAM_URL` | Litestream replica URL for continuous backup. |
+
+The server also exposes `GET /backup`, `POST /backup/export`, and `POST /backup/restore` for programmatic backup management — see the [API reference](/api/).
+
+## Next steps
+
+- Plan disaster recovery for the machine itself in [Self-Host on Bare Metal](/guides/self-host-bare-metal/).
+- Move data between password managers with [Import and export](/guides/import-export/).
+- Review the data model that makes encrypted backups possible in the [zero-knowledge model](/explanation/zero-knowledge-model/).
