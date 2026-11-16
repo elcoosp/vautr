@@ -4,25 +4,24 @@ description: The @vautr/client-sdk worker bridge — VautrClient methods, genera
 type: reference
 ---
 
+import { Code } from '@astrojs/starlight/components';
+
 `@vautr/client-sdk` is the TypeScript SDK that drives the Vautr Rust core through a WASM worker bridge. The browser-extension popup and other `--target web` consumers use it; the full web app drives the richer `@vautr/client-sdk/real` entry point for register, login, and sync against a live server.
 
 Install it with your package manager:
 
 <Tabs>
   <TabItem label="pnpm">
-    ```bash
-    pnpm add @vautr/client-sdk
-    ```
+    <Code lang="bash" title="Terminal" code={`    pnpm add @vautr/client-sdk
+    `} />
   </TabItem>
   <TabItem label="npm">
-    ```bash
-    npm install @vautr/client-sdk
-    ```
+    <Code lang="bash" title="Terminal" code={`    npm install @vautr/client-sdk
+    `} />
   </TabItem>
   <TabItem label="yarn">
-    ```bash
-    yarn add @vautr/client-sdk
-    ```
+    <Code lang="bash" title="Terminal" code={`    yarn add @vautr/client-sdk
+    `} />
   </TabItem>
 </Tabs>
 

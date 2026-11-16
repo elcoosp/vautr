@@ -4,6 +4,8 @@ description: Terminate TLS 1.3 in front of the Vautr server with Caddy or nginx,
 type: how-to
 ---
 
+import { Code } from '@astrojs/starlight/components';
+
 import { Aside } from '@astrojs/starlight/components';
 
 Use this guide when you manage your own reverse proxy instead of the automated `https` profile or the install script. The Vautr server binds plain HTTP on `0.0.0.0:8080`; terminate TLS in front of it and forward to `127.0.0.1:8080`.
@@ -31,9 +33,7 @@ Caddy obtains and auto-renews Let's Encrypt certificates without further configu
 
 Run nginx with certbot and a renewal timer — the bare-metal install script sets this up for you with `--proxy nginx`:
 
-```bash
-sudo ./scripts/install.sh --domain vault.example.com --email admin@example.com --proxy nginx
-```
+<Code lang="bash" title="Terminal" code={`sudo ./scripts/install.sh --domain vault.example.com --email admin@example.com --proxy nginx`} />
 
 ## Proxy hardening checklist
 

@@ -4,6 +4,8 @@ description: Run a Vautr server, register an account, back up your Emergency Rec
 type: tutorial
 ---
 
+import { Code } from '@astrojs/starlight/components';
+
 import { Aside } from '@astrojs/starlight/components';
 
 In this tutorial you run your own Vautr server, create an account, store your Emergency Recovery Kit, and save and retrieve a secret with the command-line client. You finish with a working vault that you fully control and a workflow you reuse for every future secret.
@@ -18,47 +20,35 @@ In this tutorial you run your own Vautr server, create an account, store your Em
 
 Run the official server image with a named volume for its data:
 
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v vautr-data:/data \
-  --name vautr-server \
-  ghcr.io/vautrorg/vautr-server:latest
-```
+<Code lang="bash" title="Terminal" code={`docker run -d \\
+  -p 8080:8080 \\
+  -v vautr-data:/data \\
+  --name vautr-server \\
+  ghcr.io/vautrorg/vautr-server:latest`} />
 
 The server listens on port `8080` and stores its SQLite database under `/data` in the container. Confirm it is live:
 
-```bash
-curl http://localhost:8080/health
-```
+<Code lang="bash" title="Terminal" code={`curl http://localhost:8080/health`} />
 
 The liveness probe returns `200` while the process is serving. You can also check the readiness probe, which verifies database connectivity:
 
-```bash
-curl http://localhost:8080/health/ready
-```
+<Code lang="bash" title="Terminal" code={`curl http://localhost:8080/health/ready`} />
 
 ## 2. Build and log in with the CLI
 
 The CLI lives in the Vautr repository. Clone it and build the client:
 
-```bash
-git clone https://github.com/elcoosp/vautr.git
+<Code lang="bash" title="Terminal" code={`git clone https://github.com/elcoosp/vautr.git
 cd vautr
-cargo run -p vautr-cli -- --help
-```
+cargo run -p vautr-cli -- --help`} />
 
 Register a new account. OPAQUE, a password-authenticated key exchange, performs the registration handshake so the server receives only a registration record — it never sees your master password:
 
-```bash
-cargo run -p vautr-cli -- register you@example.com
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- register you@example.com`} />
 
 Enter your master password when prompted. Choose it carefully: it derives your encryption keys locally, and the server cannot help you recover it. Then log in to establish a session:
 
-```bash
-cargo run -p vautr-cli -- login you@example.com
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- login you@example.com`} />
 
 The CLI stores its session and server URL (default `http://127.0.0.1:8080`) in `~/.config/vautr/config.json`. You can point every command at a different server with the global `--server` flag.
 
@@ -74,15 +64,11 @@ After registration, your client provisions a 24-word BIP-39 recovery key as part
 
 Vautr organizes secrets into projects. Create your first project:
 
-```bash
-cargo run -p vautr-cli -- create project "Demo" --description "Secrets for my side project"
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- create project "Demo" --description "Secrets for my side project"`} />
 
 Note the project UUID in the output. Create a secret inside it — omit `--value` and the CLI reads the plaintext from standard input, so the secret stays out of your shell history:
 
-```bash
-cargo run -p vautr-cli -- create secret API_KEY --project <uuid>
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- create secret API_KEY --project <uuid>`} />
 
 The client encrypts the secret with XChaCha20-Poly1305 before it leaves your machine. The server stores ciphertext only.
 
@@ -90,29 +76,21 @@ The client encrypts the secret with XChaCha20-Poly1305 before it leaves your mac
 
 List what you have stored:
 
-```bash
-cargo run -p vautr-cli -- list
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- list`} />
 
 Reveal a secret's plaintext by key:
 
-```bash
-cargo run -p vautr-cli -- get API_KEY
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- get API_KEY`} />
 
 The most useful command is `run`: it resolves secrets and injects them into the environment of any command you execute:
 
-```bash
-cargo run -p vautr-cli -- run -- printenv API_KEY
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- run -- printenv API_KEY`} />
 
 ## 6. Log out
 
 Clear the stored session when you finish:
 
-```bash
-cargo run -p vautr-cli -- logout
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- logout`} />
 
 ## Next steps
 

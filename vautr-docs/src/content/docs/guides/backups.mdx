@@ -4,15 +4,15 @@ description: Create encrypted backup archives, run the one-click restore test, s
 type: how-to
 ---
 
+import { Code } from '@astrojs/starlight/components';
+
 Use this guide to protect your vault and your server against data loss. Backup works at two layers: clients produce encrypted backup archives of the vault, and the server operator snapshots the database that holds ciphertext blobs.
 
 ## Back up your vault from a client
 
 Export an encrypted backup archive of your vault:
 
-```bash
-cargo run -p vautr-cli -- export
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- export`} />
 
 The archive is sealed with XChaCha20-Poly1305, so copying it to any storage — an external disk, object storage, a colleague's machine — exposes nothing.
 
@@ -20,9 +20,7 @@ The archive is sealed with XChaCha20-Poly1305, so copying it to any storage — 
 
 An untested backup is a hope, not a backup. Validate an archive with the restore test, which decrypts it in a scratch database without touching your live store:
 
-```bash
-cargo run -p vautr-cli -- import /path/to/backup.vautr
-```
+<Code lang="bash" title="Terminal" code={`cargo run -p vautr-cli -- import /path/to/backup.vautr`} />
 
 Run the restore test after every export and before every retention prune. The one-click flow exists because backups fail silently: bit rot, truncated uploads, and forgotten passwords all look identical until you try to restore.
 
@@ -34,15 +32,11 @@ The server stores only opaque ciphertext blobs, so a database leak exposes no pl
 
 Snapshot the database with SQLite's online backup API, which is safe against concurrent writes under WAL mode:
 
-```bash
-sqlite3 /var/lib/vautr/vautr.db ".backup /backup/vautr-$(date +%F).db"
-```
+<Code lang="bash" title="Terminal" code={`sqlite3 /var/lib/vautr/vautr.db ".backup /backup/vautr-$(date +%F).db"`} />
 
 If you copy files directly instead, keep the `.db` file **and** its `-wal`/`-shm` companions together, or run a checkpoint first:
 
-```bash
-sqlite3 /var/lib/vautr/vautr.db "PRAGMA wal_checkpoint(TRUNCATE);"
-```
+<Code lang="bash" title="Terminal" code={`sqlite3 /var/lib/vautr/vautr.db "PRAGMA wal_checkpoint(TRUNCATE);"`} />
 
 The server also checkpoints the WAL on graceful shutdown.
 
@@ -50,9 +44,7 @@ The server also checkpoints the WAL on graceful shutdown.
 
 Use logical dumps for portability, or WAL archiving for point-in-time recovery:
 
-```bash
-docker compose exec postgres pg_dump -U vautr vautr | gzip > /backup/vautr-$(date +%F).sql.gz
-```
+<Code lang="bash" title="Terminal" code={`docker compose exec postgres pg_dump -U vautr vautr | gzip > /backup/vautr-$(date +%F).sql.gz`} />
 
 ### Restore
 
