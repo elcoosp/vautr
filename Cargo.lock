@@ -5957,9 +5957,9 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "opaque-ke"
-version = "4.1.0-pre.1"
+version = "4.1.0-pre.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79bdad4197cb9860def734cf2073a7fa898569f2f1ea89a2927c361e550c47bb"
+checksum = "2c65d1dc9028caf5939b337f655a78dc1bbb5867686e5041cb36f5d5e8b5a9ce"
 dependencies = [
  "argon2 0.5.3",
  "curve25519-dalek",
