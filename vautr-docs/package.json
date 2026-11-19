@@ -12,7 +12,8 @@
     "lint": "markdownlint-cli2 'src/content/docs/**/*.{md,mdx}'",
     "qa": "node scripts/qa-screenshots.mjs",
     "qa:interactions": "node scripts/qa-interactions.mjs",
-    "contrast": "node scripts/contrast.mjs"
+    "contrast": "node scripts/contrast.mjs",
+    "typecheck": "astro check"
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "^0.4.3",
@@ -29,13 +30,5 @@
     "markdownlint-cli2": "^0.24.0",
     "playwright": "^1.65.0",
     "typescript": "6.0.3"
-  },
-  "pnpm": {
-    "overrides": {
-      "@emnapi/runtime": "^1.11.1"
-    },
-    "patchedDependencies": {
-      "astro-expressive-code@0.44.3": "patches/astro-expressive-code@0.44.3.patch"
-    }
   }
 }

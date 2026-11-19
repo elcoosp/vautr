@@ -1,0 +1,4 @@
+overrides:
+  '@emnapi/runtime': '^1.11.1'
+patchedDependencies:
+  'astro-expressive-code@0.44.3': 'patches/astro-expressive-code@0.44.3.patch'
